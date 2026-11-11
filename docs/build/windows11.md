@@ -1,7 +1,7 @@
 # Building on Windows 11
 
-> Status: prepared, becomes a supported platform in milestone M7. The CI job builds already but
-> is allowed to fail.
+> Status: supported (M7). CI builds and runs all tests on `windows-latest` (MSVC, Qt 6.8);
+> the Packages workflow builds the installer.
 
 ## Requirements
 
@@ -21,10 +21,22 @@ ctest --preset msvc
 C:\Qt\6.10.0\msvc2022_64\bin\windeployqt.exe build\msvc\Release\NurbforgeCAD.exe
 ```
 
-The RHI uses Direct3D 11 by default; `QSG_RHI_BACKEND` is not used, select the backend in the
-application settings (M7) for debugging.
+The RHI uses Direct3D 11 by default; set `NFCAD_RHI_BACKEND=d3d12` (or `opengl`, `vulkan`) to
+choose another one.
+
+## Installer
+
+```powershell
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNFCAD_BUILD_TESTS=OFF
+cmake --build build
+cmake --install build --component app --prefix stage      # runs windeployqt
+& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DSourceDir=$PWD\stage /DOutputDir=$PWD\dist packaging\windows\nurbforge-cad.iss
+```
+
+The installer (`NurbforgeCAD-<version>-win64-setup.exe`) installs to *Program Files*, creates
+start-menu (optionally desktop) shortcuts and registers `.nfcad` files. CI: workflow
+`Packages`, job `windows` (artifact `windows-installer`).
 
 ## Notes
 
-- Cmd shortcuts on macOS map to Ctrl here (`src/platform/`).
-- Installer: WiX or Inno Setup, scripts in `packaging/windows/` (M7).
+- Shortcuts shown as Cmd on macOS are Ctrl here (Qt maps them).

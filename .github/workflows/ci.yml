@@ -36,12 +36,10 @@ jobs:
       - name: Tests
         run: ctest --preset ci
 
-  # Prepared for milestone M7; allowed to fail until then.
   almalinux10:
     name: AlmaLinux 10 (GCC, distro Qt 6)
     runs-on: ubuntu-latest
     container: almalinux:10
-    continue-on-error: true
     steps:
       - name: System packages
         run: |
@@ -63,7 +61,6 @@ jobs:
   windows11:
     name: Windows (MSVC, Qt 6)
     runs-on: windows-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
       - uses: jurplel/install-qt-action@v4

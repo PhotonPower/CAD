@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Nurbforge CAD
+GenericName=CAD
+Comment=NURBS CAD front end for the Nurbforge kernel
+Exec=NurbforgeCAD %F
+Icon=io.github.photonpower.NurbforgeCAD
+Terminal=false
+Categories=Graphics;Engineering;3DGraphics;
+MimeType=model/step;application/step;
+Keywords=CAD;NURBS;STEP;

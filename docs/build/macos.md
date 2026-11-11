@@ -36,5 +36,10 @@ Presets: `debug`, `release`, `ci` (Release with warnings as errors).
 ```bash
 export MACOSX_DEPLOYMENT_TARGET=14.0
 cmake --preset release && cmake --build --preset release
-macdeployqt build/release/NurbforgeCAD.app -dmg     # M8: plus signing and notarisation
+cmake --install build/release --component app --prefix stage     # runs macdeployqt
+packaging/macos/make_dmg.sh stage/NurbforgeCAD.app NurbforgeCAD-macos.dmg
 ```
+
+With Homebrew's Qt, macdeployqt reports unresolved `QtVirtualKeyboard` rpaths for an optional
+input-method plugin; the bundle works regardless. The DMG is unsigned (signing and notarisation:
+M8). CI: workflow `Packages`, job `macos`.

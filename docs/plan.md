@@ -144,13 +144,17 @@ jobs build from M0 on but are allowed to fail until M7.
 - Analysis: distance, angle, curvature, area/volume/mass properties
 - Export: STEP, STL; mesh via gmsh (later, optional)
 
-### M7 – Windows 11 and AlmaLinux / RHEL 10
+### M7 – Windows 11 and AlmaLinux / RHEL 10 ✅
 - CI jobs required (no longer allowed to fail)
 - Windows: MSVC 2022/2026, D3D11 backend, installer (WiX or Inno Setup), `windeployqt`
 - AlmaLinux / RHEL 10: GCC 14, distro Qt 6 packages, Wayland and X11, OpenGL backend,
   RPM package (and optionally an AppImage/Flatpak)
 - Platform differences (Cmd vs Ctrl, trackpad gestures, menu bar) handled in `src/platform/`
 - **Done when:** the M1–M6 acceptance tests pass on all three platforms.
+- Done: all unit tests run in CI on macOS, Windows (MSVC, Qt 6.8) and AlmaLinux 10 (GCC,
+  distribution Qt) as required jobs; `Packages` workflow: Inno Setup installer, RPM (installed
+  and started in the container), unsigned DMG; `NFCAD_RHI_BACKEND` selects the graphics API.
+  Not verified on real Windows / RHEL desktops yet (only CI) – manual check before 1.0.
 
 ### M8 – Release 1.0
 - macOS: signed and notarised `.dmg` (`macdeployqt`), universal binary (arm64 + x86_64)

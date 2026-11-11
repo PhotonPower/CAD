@@ -6,6 +6,10 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- M7 – Windows 11 and AlmaLinux / RHEL 10: CI jobs required; `Packages` workflow with Inno
+  Setup installer (`.nfcad` association), RPM (desktop entry, icon, AppStream metadata) and
+  unsigned macOS DMG; install component `app` with Qt deployment (windeployqt / macdeployqt);
+  `NFCAD_RHI_BACKEND` override; THIRD_PARTY_NOTICES.md
 - M6c – editing and analysis: Join (curve chains in any order, faces into shells), Explode,
   Cap planar holes (`kernel::cap_planar_holes`), Split, Trim, Intersect, Area, Volume,
   Curvature; tests incl. exact volumes of a joined box and a capped extrusion

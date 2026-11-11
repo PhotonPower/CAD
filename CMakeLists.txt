@@ -124,8 +124,29 @@ if(NFCAD_BUILD_TESTS)
   add_subdirectory(tests)
 endif()
 
-# ---------------------------------------------------------------- install
+# ---------------------------------------------------------------- install (packaging/README.md)
+# Everything of the application is in the component "app":
+#   cmake --install <build> --component app [--prefix <dir>]
+# (the Nurbforge subproject's static library and headers are not part of it).
 include(GNUInstallDirs)
 install(TARGETS NurbforgeCAD
-  BUNDLE DESTINATION .
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  BUNDLE DESTINATION . COMPONENT app
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT app)
+if(UNIX AND NOT APPLE)
+  set(_nfcad_id io.github.photonpower.NurbforgeCAD)
+  install(FILES resources/linux/${_nfcad_id}.desktop
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/applications COMPONENT app)
+  install(FILES resources/linux/${_nfcad_id}.svg
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps COMPONENT app)
+  install(FILES resources/linux/${_nfcad_id}.metainfo.xml
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo COMPONENT app)
+else()
+  # Windows: windeployqt, macOS: macdeployqt into the installed application
+  qt_generate_deploy_app_script(TARGET NurbforgeCAD OUTPUT_SCRIPT _nfcad_deploy
+                                NO_UNSUPPORTED_PLATFORM_ERROR)
+  install(SCRIPT ${_nfcad_deploy} COMPONENT app)
+  if(WIN32)
+    install(FILES LICENSE DESTINATION . RENAME LICENSE.txt COMPONENT app)
+    install(FILES THIRD_PARTY_NOTICES.md DESTINATION . COMPONENT app)
+  endif()
+endif()

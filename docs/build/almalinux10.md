@@ -1,7 +1,7 @@
 # Building on AlmaLinux / RHEL 10
 
-> Status: prepared, becomes a supported platform in milestone M7. The CI job builds already but
-> is allowed to fail.
+> Status: supported (M7). CI builds and runs all tests in an `almalinux:10` container with the
+> distribution's Qt; the Packages workflow builds and installs the RPM.
 
 ## Requirements
 
@@ -27,8 +27,16 @@ ctest --preset release
 ```
 
 Runs under Wayland and X11 (`QT_QPA_PLATFORM=xcb` to force X11). The RHI backend is OpenGL by
-default; Vulkan can be selected in the settings (M7).
+default; `NFCAD_RHI_BACKEND=vulkan` selects Vulkan.
 
-## Packaging (M7)
+## RPM
 
-RPM spec in `packaging/linux/`, optionally AppImage or Flatpak.
+```bash
+sudo dnf install -y rpm-build
+rpmbuild -bb packaging/linux/nurbforge-cad.spec --define "_srcdir $PWD" --define "_topdir $PWD/build/rpmbuild"
+sudo dnf install ./build/rpmbuild/RPMS/*/nurbforge-cad-*.rpm
+```
+
+The package installs `/usr/bin/NurbforgeCAD`, a desktop entry, an icon and AppStream metadata;
+it depends on the distribution's Qt 6 packages. CI: workflow `Packages`, job `almalinux10`
+(artifact `almalinux10-rpm`).
