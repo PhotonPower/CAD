@@ -1,4 +1,8 @@
-# Document format `.nfcad`
+# Document format `.rttf`
+
+Documents are saved with the extension **`.rttf`** (Raytatouille Fusion file). Files with the
+extension `.nfcad` from before 1.0 have the same content and are still opened; *Save As*
+offers them as `.rttf`. Inside, the format is still called `"nfcad"`.
 
 Version 2 (P1; version 1 files are still read). UTF-8 JSON, written atomically (`QSaveFile`).
 Units: millimetres.

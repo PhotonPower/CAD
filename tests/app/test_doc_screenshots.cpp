@@ -64,7 +64,7 @@ class TestDocScreenshots : public QObject {
                                                 QStringLiteral(NFCAD_SOURCE_DIR "/python/plugins/raytracer/examples/singlet_optim.rtt.json"));
     QJsonArray catalogs;
     if (const QString c = qEnvironmentVariable("NFCAD_DOC_RTT_CATALOG"); !c.isEmpty()) catalogs.append(c);
-    QJsonObject params{{"system", system}, {"catalogs", catalogs}, {"rings", 8}};
+    QJsonObject params{{"system", system}, {"catalogs", catalogs}, {"rays", 217}};
     if (const QString c = qEnvironmentVariable("NFCAD_DOC_RTT_COLOUR"); !c.isEmpty()) params.insert("colour_by", c);
     doc->setPluginParameters(QStringLiteral("raytracer"), params);
     QTRY_VERIFY_WITH_TIMEOUT(host->ready() || !host->running(), 30000);

@@ -11,6 +11,12 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
   (default 200 000 per field and wavelength, millions possible), square pixels over the
   sensor, shown in the new **Image** window and optionally on the surface in 3D. The quick
   irradiance of *Trace rays* is now optional (off).
+- Documents are saved as **`.rttf`** (Raytatouille Fusion file); `.nfcad` files from before
+  1.0 still open (same content), *Save As* offers them as `.rttf`. Windows associates both.
+- Raytracer: the number of rays is set directly (*Rays (drawn)*, *Rays (quick irradiance)*,
+  per field and wavelength) instead of pupil rings.
+- *Plugins → Uninstall plugin* lists every plugin; those from a plugin folder are shown greyed
+  out with the folder they come from.
 - **Image** window and result type: 2D images with physical axes, colour bar, linear / log
   scale, read-out under the cursor, zoom and pan; plugin API `ctx.image`.
 
@@ -25,6 +31,9 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
   `;`-separated paths (documents with the old text are still read).
 
 ### Fixed
+- Crash when hiding results (e.g. the rays of one arm) or a layer with its check box: the panel
+  rebuilt its list while Qt was still handling the click. The lists also keep their scroll
+  position now.
 - Raytracer: loading some systems failed with "Singular matrix" (a rounding error put the
   last interpolation point outside the parameter range); steep, nearly hemispherical lenses
   were drawn up to 0.1 mm off – rotationally symmetric surfaces are now surfaces of revolution

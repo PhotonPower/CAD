@@ -39,6 +39,7 @@ Name: "{autodesktop}\Raytatouille Fusion"; Filename: "{app}\bin\RaytatouilleFusi
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Registry]
+Root: HKA; Subkey: "Software\Classes\.rttf"; ValueType: string; ValueData: "RaytatouilleFusion.Document"; Flags: uninsdeletevalue
 Root: HKA; Subkey: "Software\Classes\.nfcad"; ValueType: string; ValueData: "RaytatouilleFusion.Document"; Flags: uninsdeletevalue
 Root: HKA; Subkey: "Software\Classes\RaytatouilleFusion.Document"; ValueType: string; ValueData: "Raytatouille Fusion document"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\RaytatouilleFusion.Document\shell\open\command"; ValueType: string; ValueData: """{app}\bin\RaytatouilleFusion.exe"" ""%1"""

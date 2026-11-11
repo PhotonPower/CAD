@@ -10,9 +10,10 @@ signed Python plugins ([plugin plan](docs/plugins.md)). C++20, Qt 6, native rend
 (Metal / Direct3D / OpenGL·Vulkan via Qt RHI).
 
 > Formerly *Nurbforge CAD* (renamed 2026-11-11). Internal identifiers stay: the C++ namespace and
-> the Python package `nfcad`, the document format `.nfcad`, the `NFCAD_*` environment variables.
+> the Python package `nfcad`, the `NFCAD_*` environment variables. Documents are saved as `.rttf`
+> (`.nfcad` files from before 1.0 still open).
 
-> **Status: 1.0 – milestones M0–M8 and plugin milestones P1–P7** ([user guide](docs/user-guide.md)). STEP files and `.nfcad` documents open and display in four
+> **Status: 1.0 – milestones M0–M8 and plugin milestones P1–P7** ([user guide](docs/user-guide.md)). STEP files and `.rttf` documents open and display in four
 > navigable views (wireframe / surfaces / shaded); objects, faces, edges and vertices can be
 > selected, with property and layer panels; the magnetic cursor snaps to points, ends, mids,
 > centres, axis cut points, intersections, face corners and edges; curves are drawn with

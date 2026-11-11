@@ -25,7 +25,9 @@
 namespace nfcad::app {
 
 namespace {
-const QString kNfcadFilter = QObject::tr("Raytatouille Fusion documents (*.nfcad)");
+// documents are saved as .rttf; .nfcad (the same format, from before 1.0) is still opened
+const QString kDocumentFilter = QObject::tr("Raytatouille Fusion documents (*.rttf *.nfcad)");
+const QString kSaveFilter = QObject::tr("Raytatouille Fusion documents (*.rttf)");
 const QString kStepFilter = QObject::tr("STEP files (*.step *.stp *.STEP *.STP)");
 
 bool is_step(const QString& path) {
@@ -62,8 +64,8 @@ void MainWindow::openDialog() {
   if (!maybeSave()) return;
   const QString path = QFileDialog::getOpenFileName(
       this, tr("Open"), QFileInfo(doc_->filePath()).absolutePath(),
-      tr("All supported (*.nfcad *.step *.stp *.STEP *.STP)") + QStringLiteral(";;") +
-          kNfcadFilter + QStringLiteral(";;") + kStepFilter);
+      tr("All supported (*.rttf *.nfcad *.step *.stp *.STEP *.STP)") + QStringLiteral(";;") +
+          kDocumentFilter + QStringLiteral(";;") + kStepFilter);
   if (!path.isEmpty()) openFile(path);
 }
 
@@ -165,9 +167,14 @@ bool MainWindow::save() {
 }
 
 bool MainWindow::saveAs() {
-  QString path = QFileDialog::getSaveFileName(this, tr("Save As"), doc_->filePath(), kNfcadFilter);
+  // an older .nfcad document is offered as .rttf
+  QString suggested = doc_->filePath();
+  if (suggested.endsWith(QLatin1String(".nfcad"), Qt::CaseInsensitive)) {
+    suggested = suggested.left(suggested.size() - 6) + QStringLiteral(".rttf");
+  }
+  QString path = QFileDialog::getSaveFileName(this, tr("Save As"), suggested, kSaveFilter);
   if (path.isEmpty()) return false;
-  if (QFileInfo(path).suffix().isEmpty()) path += QStringLiteral(".nfcad");
+  if (QFileInfo(path).suffix().isEmpty()) path += QStringLiteral(".rttf");
   return saveTo(path);
 }
 

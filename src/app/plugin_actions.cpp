@@ -1,6 +1,8 @@
 // Plugins in the main window (docs/plugin-api.md): menu, tool-column groups, job progress, log.
+#include <QDir>
 #include <QDockWidget>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QLabel>
 #include <QMenuBar>
@@ -161,12 +163,23 @@ void MainWindow::rebuildPluginUi() {
     dialog.exec();
   });
   plugins_menu_->addAction(tr("Install plugin…"), this, [this] { installPlugin(); });
+  // every plugin is listed: installed ones (Install plugin…) can be removed; plugins from a plugin
+  // folder (e.g. the repository's during development) only by removing their folder
   QMenu* uninstall = plugins_menu_->addMenu(tr("Uninstall plugin"));
+  uninstall->setToolTipsVisible(true);
   for (const auto& h : plugins_->plugins()) {
-    if (!plugins_->isInstalled(h.get())) continue;
     const QString id = h->manifest().id;
     const QString name = h->manifest().displayName();
-    uninstall->addAction(QStringLiteral("%1 %2").arg(name, h->manifest().version), this, [this, id, name] {
+    const QString label = QStringLiteral("%1 %2").arg(name, h->manifest().version);
+    if (!plugins_->isInstalled(h.get())) {
+      QAction* a = uninstall->addAction(tr("%1 – from a plugin folder").arg(label));
+      a->setEnabled(false);
+      a->setToolTip(tr("Not installed with Install plugin…; it comes from %1.\nRemove that folder under "
+                       "Plugins → Settings… (or delete it) to remove the plugin.")
+                        .arg(QDir::toNativeSeparators(QFileInfo(h->manifest().source_directory).absolutePath())));
+      continue;
+    }
+    uninstall->addAction(label, this, [this, id, name] {
       if (QMessageBox::question(this, tr("Uninstall plugin"), tr("Remove the plugin %1?").arg(name)) != QMessageBox::Yes) {
         return;
       }
@@ -174,7 +187,7 @@ void MainWindow::rebuildPluginUi() {
       statusBar()->showMessage(error.isEmpty() ? tr("%1 removed").arg(name) : error, 8000);
     });
   }
-  uninstall->setEnabled(!uninstall->isEmpty());
+  if (uninstall->isEmpty()) uninstall->addAction(tr("(no plugins)"))->setEnabled(false);
   plugins_menu_->addAction(tr("Reload plugins"), this, [this] { plugins_->reload(); });
   plugins_menu_->addSeparator();
   std::vector<ui::ToolGroupDef> groups;

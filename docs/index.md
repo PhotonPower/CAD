@@ -7,7 +7,7 @@
 - [Commands and keyboard input](commands.md) – drawing commands, coordinate input, ortho
 - [Rendering](rendering.md) – Qt RHI, display modes, tessellation, picking
 - [Architecture](architecture.md) – layers, main types, data flow
-- [Document format `.nfcad`](file-format.md)
+- [Document format `.rttf`](file-format.md)
 - [Benchmarks](benchmarks.md)
 - [Plugin plan](plugins.md) – computation kernels as signed Python plugins
 - [Writing plugins](plugin-api.md) – the `nfcad` Python API
