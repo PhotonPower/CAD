@@ -11,10 +11,12 @@ using nfcad::tessellation::TessParams;
 namespace {
 
 nf::Vec3 vertex(const DisplayMesh& m, std::size_t i) {
-  return {m.vertices[6 * i], m.vertices[6 * i + 1], m.vertices[6 * i + 2]};
+  const std::size_t k = nfcad::tessellation::kVertexStride * i;
+  return {m.vertices[k], m.vertices[k + 1], m.vertices[k + 2]};
 }
 nf::Vec3 normal(const DisplayMesh& m, std::size_t i) {
-  return {m.vertices[6 * i + 3], m.vertices[6 * i + 4], m.vertices[6 * i + 5]};
+  const std::size_t k = nfcad::tessellation::kVertexStride * i;
+  return {m.vertices[k + 3], m.vertices[k + 4], m.vertices[k + 5]};
 }
 
 double mesh_area(const DisplayMesh& m) {
@@ -107,6 +109,27 @@ class TestTessellator : public QObject {
     QCOMPARE(m.triangleCount(), std::size_t{2});  // flat, degree 1: one cell
     QVERIFY(std::abs(mesh_area(m) - 12.0) < 1e-9);
     QCOMPARE(m.edges.size(), std::size_t{1});
+  }
+
+  void uvCoordinatesCoverTheFace() {
+    // plane 4 x 3: (u, v) runs over [0, 1]^2 and maps linearly to the corners
+    const nf::NurbsSurface s = nf::make_rectangle({0, 0, 0}, {4, 0, 0}, {0, 3, 0});
+    const DisplayMesh m = nfcad::tessellation::tessellate(nfcad::document::Geometry(s), TessParams{});
+    for (std::uint32_t i = 0; i < m.vertexCount(); ++i) {
+      const auto [u, v] = m.uv(i);
+      const QVector3D p = m.vertex(i);
+      QVERIFY(std::abs(p.x() - 4.0F * u) < 1e-5F);
+      QVERIFY(std::abs(p.y() - 3.0F * v) < 1e-5F);
+    }
+    // trimmed face (plate with a hole): every vertex has (u, v) in [0, 1]
+    const nf::Shell plate = nf::boolean(nf::make_box({-10, -10, 0}, {20, 20, 8}),
+                                        nf::make_cylinder({0, 0, -1}, {0, 0, 1}, 5.0, 10.0),
+                                        nf::BooleanOp::Difference);
+    const DisplayMesh pm = nfcad::tessellation::tessellate(nfcad::document::Geometry(plate), TessParams{});
+    for (std::uint32_t i = 0; i < pm.vertexCount(); ++i) {
+      const auto [u, v] = pm.uv(i);
+      QVERIFY(u >= -1e-6F && u <= 1.0F + 1e-6F && v >= -1e-6F && v <= 1.0F + 1e-6F);
+    }
   }
 
   void pointEntity() {

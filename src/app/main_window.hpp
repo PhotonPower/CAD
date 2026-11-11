@@ -28,6 +28,7 @@ struct SnapPoint;
 }
 
 namespace nfcad::ui {
+class ModelTreePanel;
 class SnapBar;
 class ToolBox;
 }  // namespace nfcad::ui
@@ -97,6 +98,7 @@ class MainWindow : public QMainWindow {
   class CommandController* commands_ = nullptr;
   QLineEdit* command_line_ = nullptr;
   QToolButton* ortho_ = nullptr;
+  ui::ModelTreePanel* model_tree_ = nullptr;
   tessellation::TessellationService* tessellator_ = nullptr;
   render::Scene* scene_ = nullptr;
   bool zoom_after_tessellation_ = false;

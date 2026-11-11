@@ -180,6 +180,13 @@ QString save_nfcad(const Document& doc, const QString& path) {
                               {"color", l.color.name()},
                               {"visible", l.visible}});
   }
+  QJsonArray groups;
+  for (const Group& g : doc.groups()) {
+    groups.append(QJsonObject{{"id", static_cast<int>(g.id)},
+                              {"name", g.name},
+                              {"parent", static_cast<int>(g.parent)},
+                              {"visible", g.visible}});
+  }
   QJsonArray entities;
   for (const auto& [id, e] : doc.entities()) {
     QJsonObject o{{"id", QString::number(id)},
@@ -188,12 +195,15 @@ QString save_nfcad(const Document& doc, const QString& path) {
                   {"visible", e.visible},
                   {"geometry", geometry_to_json(*e.geometry)}};
     if (e.color) o["color"] = e.color->name();
+    if (e.group != 0) o["group"] = static_cast<int>(e.group);
+    if (!e.attributes.isEmpty()) o["attributes"] = QJsonObject::fromVariantMap(e.attributes);
     entities.append(o);
   }
   const QJsonObject root{{"format", "nfcad"},
                          {"version", kNfcadFormatVersion},
                          {"units", "mm"},
                          {"layers", layers},
+                         {"groups", groups},
                          {"entities", entities}};
 
   QSaveFile file(path);
@@ -225,6 +235,12 @@ QString load_nfcad(Document& doc, const QString& path) {
     layers.push_back({static_cast<LayerId>(l["id"].toInt()), l["name"].toString(),
                       QColor(l["color"].toString()), l["visible"].toBool(true)});
   }
+  std::vector<Group> groups;
+  for (const QJsonValue& v : root["groups"].toArray()) {  // version 2
+    const QJsonObject g = v.toObject();
+    groups.push_back({static_cast<GroupId>(g["id"].toInt()), g["name"].toString(),
+                      static_cast<GroupId>(g["parent"].toInt()), g["visible"].toBool(true)});
+  }
   std::vector<Entity> entities;
   try {
     for (const QJsonValue& v : root["entities"].toArray()) {
@@ -234,12 +250,14 @@ QString load_nfcad(Document& doc, const QString& path) {
       e.layer = static_cast<LayerId>(o["layer"].toInt());
       e.visible = o["visible"].toBool(true);
       if (o.contains("color")) e.color = QColor(o["color"].toString());
+      e.group = static_cast<GroupId>(o["group"].toInt());
+      e.attributes = o["attributes"].toObject().toVariantMap();
       entities.push_back(std::move(e));
     }
   } catch (const std::exception& ex) {
     return QObject::tr("invalid geometry: %1").arg(QString::fromUtf8(ex.what()));
   }
-  doc.reset(std::move(layers), std::move(entities));
+  doc.reset(std::move(layers), std::move(entities), std::move(groups));
   doc.setFilePath(path);
   return {};
 }

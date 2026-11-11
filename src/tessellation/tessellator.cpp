@@ -160,10 +160,18 @@ Vec3 safe_normal(const nf::NurbsSurface& s, double u, double v) {
   }
 }
 
-void push_vertex(DisplayMesh& m, const Vec3& p, const Vec3& n) {
+/// Appends a vertex; (u, v) are the surface parameters, stored normalised to [0, 1].
+void push_vertex(DisplayMesh& m, const nf::NurbsSurface& s, double u, double v) {
+  const Vec3 p = s.evaluate(u, v);
+  const Vec3 n = safe_normal(s, u, v);
+  const auto du = s.domain_u();
+  const auto dv = s.domain_v();
+  const double nu = du[1] > du[0] ? (u - du[0]) / (du[1] - du[0]) : 0.0;
+  const double nv = dv[1] > dv[0] ? (v - dv[0]) / (dv[1] - dv[0]) : 0.0;
   m.vertices.insert(m.vertices.end(),
                     {static_cast<float>(p.x), static_cast<float>(p.y), static_cast<float>(p.z),
-                     static_cast<float>(n.x), static_cast<float>(n.y), static_cast<float>(n.z)});
+                     static_cast<float>(n.x), static_cast<float>(n.y), static_cast<float>(n.z),
+                     static_cast<float>(nu), static_cast<float>(nv)});
 }
 
 struct Uv {
@@ -229,7 +237,7 @@ void tessellate_untrimmed(const nf::NurbsSurface& s, const std::vector<double>& 
   const auto base = static_cast<std::uint32_t>(out.vertexCount());
   const std::size_t nv = vs.size();
   for (double u : us) {
-    for (double v : vs) push_vertex(out, s.evaluate(u, v), safe_normal(s, u, v));
+    for (double v : vs) push_vertex(out, s, u, v);
   }
   for (std::size_t i = 0; i + 1 < us.size(); ++i) {
     for (std::size_t j = 0; j + 1 < nv; ++j) {
@@ -394,7 +402,7 @@ void tessellate_trimmed(const nf::TrimmedSurface& face, const std::vector<double
     for (const auto& p : cdt.vertices) {
       const double u = p.x / su;
       const double v = p.y / sv;
-      push_vertex(out, s.evaluate(u, v), safe_normal(s, u, v));
+      push_vertex(out, s, u, v);
     }
     for (const auto& t : cdt.triangles) {
       out.indices.insert(out.indices.end(), {base + static_cast<std::uint32_t>(t.vertices[0]),
@@ -430,7 +438,7 @@ void single_face(const nf::TrimmedSurface& face, const TessParams& params, Displ
 
 void compute_bounds(DisplayMesh& m) {
   m.bounds = {};
-  for (std::size_t i = 0; i + 5 < m.vertices.size(); i += 6) {
+  for (std::size_t i = 0; i + kVertexStride <= m.vertices.size(); i += kVertexStride) {
     m.bounds.add({m.vertices[i], m.vertices[i + 1], m.vertices[i + 2]});
   }
   auto add_flat = [&](const std::vector<float>& xyz) {

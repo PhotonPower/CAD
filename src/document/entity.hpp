@@ -2,6 +2,7 @@
 
 #include <QColor>
 #include <QString>
+#include <QVariantMap>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -17,6 +18,7 @@ namespace nfcad::document {
 
 using EntityId = std::uint64_t;
 using LayerId = std::uint32_t;
+using GroupId = std::uint32_t;  ///< 0: top level (no group)
 
 /// Geometry of an entity: exact Nurbforge values (immutable, ADR 0003).
 using Geometry =
@@ -39,6 +41,10 @@ struct Entity {
   LayerId layer = 0;
   std::optional<QColor> color;  ///< empty: layer colour
   bool visible = true;
+  GroupId group = 0;           ///< model tree (docs/plugins.md, P1)
+  /// Free key/value data, saved with the document. Plugins use namespaced keys, e.g.
+  /// "rtt.role" = "mirror", "sim.inactive" = true (excluded from computations).
+  QVariantMap attributes;
   GeometryPtr geometry;
   std::uint64_t revision = 0;  ///< increases with every change of geometry or display attributes
 };

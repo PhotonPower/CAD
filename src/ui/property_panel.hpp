@@ -3,7 +3,9 @@
 #include <QWidget>
 
 class QLabel;
+class QPushButton;
 class QTreeWidget;
+class QTreeWidgetItem;
 
 namespace nfcad::document {
 class Document;
@@ -21,11 +23,15 @@ class PropertyPanel : public QWidget {
 
  private:
   void refresh();
+  void onItemChanged(QTreeWidgetItem* item, int column);
+  void addAttribute();
 
   document::Document* doc_;
   document::Selection* selection_;
   QLabel* header_ = nullptr;
   QTreeWidget* tree_ = nullptr;
+  QPushButton* add_attribute_ = nullptr;
+  bool refreshing_ = false;
 };
 
 }  // namespace nfcad::ui

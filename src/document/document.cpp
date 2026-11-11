@@ -2,6 +2,7 @@
 
 #include <QUndoCommand>
 #include <algorithm>
+#include <set>
 
 namespace nfcad::document {
 
@@ -81,6 +82,83 @@ class EditCommand : public QUndoCommand {
   std::vector<std::pair<EntityId, GeometryPtr>> old_;
 };
 
+class GroupCommand : public QUndoCommand {
+ public:
+  GroupCommand(Document* doc, Group group, std::vector<EntityId> ids)
+      : QUndoCommand(QObject::tr("Group")), doc_(doc), group_(std::move(group)), ids_(std::move(ids)) {
+    for (EntityId id : ids_) {
+      const Entity* e = doc_->entity(id);
+      old_.push_back(e != nullptr ? e->group : 0);
+    }
+  }
+  void redo() override {
+    group_.id = doc_->insertGroup(group_);
+    for (EntityId id : ids_) doc_->setEntityGroup(id, group_.id);
+  }
+  void undo() override {
+    for (std::size_t i = 0; i < ids_.size(); ++i) doc_->setEntityGroup(ids_[i], old_[i]);
+    doc_->eraseGroup(group_.id);
+  }
+  [[nodiscard]] GroupId groupId() const { return group_.id; }
+
+ private:
+  Document* doc_;
+  Group group_;
+  std::vector<EntityId> ids_;
+  std::vector<GroupId> old_;
+};
+
+class UngroupCommand : public QUndoCommand {
+ public:
+  UngroupCommand(Document* doc, Group group)
+      : QUndoCommand(QObject::tr("Ungroup")), doc_(doc), group_(std::move(group)) {}
+  void redo() override {
+    members_.clear();
+    subgroups_.clear();
+    for (const auto& [id, e] : doc_->entities()) {
+      if (e.group == group_.id) members_.push_back(id);
+    }
+    for (const Group& g : doc_->groups()) {
+      if (g.parent == group_.id) subgroups_.push_back(g);
+    }
+    for (EntityId id : members_) doc_->setEntityGroup(id, group_.parent);
+    for (Group g : subgroups_) {
+      doc_->eraseGroup(g.id);
+      g.parent = group_.parent;
+      doc_->insertGroup(g);
+    }
+    doc_->eraseGroup(group_.id);
+  }
+  void undo() override {
+    doc_->insertGroup(group_);
+    for (const Group& g : subgroups_) {
+      doc_->eraseGroup(g.id);
+      doc_->insertGroup(g);
+    }
+    for (EntityId id : members_) doc_->setEntityGroup(id, group_.id);
+  }
+
+ private:
+  Document* doc_;
+  Group group_;
+  std::vector<EntityId> members_;
+  std::vector<Group> subgroups_;
+};
+
+class AttributeCommand : public QUndoCommand {
+ public:
+  AttributeCommand(Document* doc, EntityId id, QVariantMap before, QVariantMap after)
+      : QUndoCommand(QObject::tr("Change attribute")), doc_(doc), id_(id),
+        before_(std::move(before)), after_(std::move(after)) {}
+  void redo() override { doc_->setEntityAttributes(id_, after_); }
+  void undo() override { doc_->setEntityAttributes(id_, before_); }
+
+ private:
+  Document* doc_;
+  EntityId id_;
+  QVariantMap before_, after_;
+};
+
 class AssignLayerCommand : public QUndoCommand {
  public:
   AssignLayerCommand(Document* doc, std::vector<EntityId> ids, LayerId layer)
@@ -127,7 +205,161 @@ QColor Document::displayColor(const Entity& e) const {
 
 bool Document::isDisplayed(const Entity& e) const {
   const Layer* l = layer(e.layer);
-  return e.visible && (l == nullptr || l->visible);
+  return e.visible && (l == nullptr || l->visible) && !groupHidden(e.group);
+}
+
+const Group* Document::group(GroupId id) const {
+  const auto it = std::find_if(groups_.begin(), groups_.end(), [id](const Group& g) { return g.id == id; });
+  return it == groups_.end() ? nullptr : &*it;
+}
+
+bool Document::groupHidden(GroupId id) const {
+  for (int depth = 0; id != 0 && depth < 1000; ++depth) {  // depth guard against cycles
+    const Group* g = group(id);
+    if (g == nullptr) return false;
+    if (!g->visible) return true;
+    id = g->parent;
+  }
+  return false;
+}
+
+std::vector<EntityId> Document::entitiesInGroup(GroupId id) const {
+  auto inside = [&](GroupId g) {
+    for (int depth = 0; g != 0 && depth < 1000; ++depth) {
+      if (g == id) return true;
+      const Group* gr = group(g);
+      g = gr != nullptr ? gr->parent : 0;
+    }
+    return false;
+  };
+  std::vector<EntityId> out;
+  for (const auto& [eid, e] : entities_) {
+    if (inside(e.group)) out.push_back(eid);
+  }
+  return out;
+}
+
+GroupId Document::groupEntities(const std::vector<EntityId>& ids, const QString& name, GroupId parent) {
+  Group g;
+  g.name = name;
+  g.parent = group(parent) != nullptr ? parent : 0;
+  auto* cmd = new GroupCommand(this, g, ids);
+  undo_.push(cmd);
+  return cmd->groupId();
+}
+
+void Document::ungroup(GroupId id) {
+  if (const Group* g = group(id)) undo_.push(new UngroupCommand(this, *g));
+}
+
+void Document::renameGroup(GroupId id, const QString& name) {
+  for (Group& g : groups_) {
+    if (g.id == id && g.name != name) {
+      g.name = name;
+      emit groupsChanged();
+    }
+  }
+}
+
+void Document::setEntityVisible(EntityId id, bool visible) {
+  const auto it = entities_.find(id);
+  if (it == entities_.end() || it->second.visible == visible) return;
+  it->second.visible = visible;
+  ++it->second.revision;
+  emit entityChanged(id);
+}
+
+void Document::setGroupVisible(GroupId id, bool visible) {
+  for (Group& g : groups_) {
+    if (g.id == id && g.visible != visible) {
+      g.visible = visible;
+      touchEntities(entitiesInGroup(id));
+      emit groupsChanged();
+    }
+  }
+}
+
+void Document::isolate(const std::vector<EntityId>& ids) {
+  const std::set<EntityId> keep(ids.begin(), ids.end());
+  for (Group& g : groups_) g.visible = true;  // keep the path to the isolated objects open
+  for (auto& [id, e] : entities_) {
+    const bool v = keep.contains(id);
+    if (e.visible != v) {
+      e.visible = v;
+      ++e.revision;
+    }
+  }
+  touchEntities([this] {
+    std::vector<EntityId> all;
+    for (const auto& [id, e] : entities_) all.push_back(id);
+    return all;
+  }());
+  emit groupsChanged();
+}
+
+void Document::showAll() {
+  for (Group& g : groups_) g.visible = true;
+  for (Layer& l : layers_) l.visible = true;
+  std::vector<EntityId> all;
+  for (auto& [id, e] : entities_) {
+    e.visible = true;
+    ++e.revision;
+    all.push_back(id);
+  }
+  touchEntities(all);
+  emit groupsChanged();
+  emit layersChanged();
+}
+
+void Document::setAttribute(EntityId id, const QString& key, const QVariant& value) {
+  const Entity* e = entity(id);
+  if (e == nullptr) return;
+  QVariantMap after = e->attributes;
+  if (value.isValid() && !value.isNull()) {
+    if (after.value(key) == value) return;
+    after.insert(key, value);
+  } else {
+    if (!after.contains(key)) return;
+    after.remove(key);
+  }
+  undo_.push(new AttributeCommand(this, id, e->attributes, after));
+}
+
+GroupId Document::insertGroup(Group g) {
+  GroupId next = 1;
+  for (const Group& o : groups_) next = std::max(next, o.id + 1);
+  if (g.id == 0 || group(g.id) != nullptr) g.id = next;
+  groups_.push_back(g);
+  emit groupsChanged();
+  return g.id;
+}
+
+void Document::eraseGroup(GroupId id) {
+  std::erase_if(groups_, [id](const Group& g) { return g.id == id; });
+  emit groupsChanged();
+}
+
+void Document::setEntityGroup(EntityId id, GroupId group) {
+  const auto it = entities_.find(id);
+  if (it == entities_.end() || it->second.group == group) return;
+  it->second.group = group;
+  ++it->second.revision;
+  emit entityChanged(id);
+  emit groupsChanged();
+}
+
+void Document::setEntityAttributes(EntityId id, QVariantMap attributes) {
+  const auto it = entities_.find(id);
+  if (it == entities_.end()) return;
+  it->second.attributes = std::move(attributes);
+  ++it->second.revision;
+  emit entityChanged(id);
+}
+
+void Document::touchEntities(const std::vector<EntityId>& ids) {
+  for (EntityId id : ids) {
+    if (entities_.contains(id)) emit entityChanged(id);
+  }
 }
 
 std::vector<EntityId> Document::addEntities(std::vector<Entity> entities, const QString& text) {
@@ -235,9 +467,11 @@ void Document::touchLayer(LayerId id) {
 
 void Document::clear() { reset({default_layer()}, {}); }
 
-void Document::reset(std::vector<Layer> layers, std::vector<Entity> entities) {
+void Document::reset(std::vector<Layer> layers, std::vector<Entity> entities,
+                     std::vector<Group> groups) {
   undo_.clear();
   entities_.clear();
+  groups_ = std::move(groups);
   layers_ = std::move(layers);
   if (layer(0) == nullptr) layers_.insert(layers_.begin(), default_layer());
   next_id_ = 1;
@@ -245,10 +479,12 @@ void Document::reset(std::vector<Layer> layers, std::vector<Entity> entities) {
     if (e.id == 0) e.id = next_id_;
     next_id_ = std::max(next_id_, e.id + 1);
     if (layer(e.layer) == nullptr) e.layer = 0;
+    if (group(e.group) == nullptr) e.group = 0;
     entities_.insert_or_assign(e.id, std::move(e));
   }
   file_path_.clear();
   emit layersChanged();
+  emit groupsChanged();
   emit documentReset();
 }
 

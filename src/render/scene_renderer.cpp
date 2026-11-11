@@ -73,7 +73,7 @@ std::unique_ptr<QRhiGraphicsPipeline> make_mesh_pipeline(QRhi* rhi, QRhiRenderPa
       {QRhiShaderStage::Fragment, load_shader(QStringLiteral(":/shaders/mesh.frag.qsb"))},
   });
   QRhiVertexInputLayout layout_in;
-  layout_in.setBindings({{6 * sizeof(float)}});
+  layout_in.setBindings({{tessellation::kVertexStride * sizeof(float)}});
   layout_in.setAttributes({{0, 0, QRhiVertexInputAttribute::Float3, 0},
                            {0, 1, QRhiVertexInputAttribute::Float3, 3 * sizeof(float)}});
   p->setVertexInputLayout(layout_in);
