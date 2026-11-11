@@ -75,11 +75,17 @@ jobs:
           cmake --build --preset msvc
       - name: Tests
         run: ctest --preset msvc --output-on-failure
-      - name: Plugin tests with full output (diagnostics on failure)
+      - name: Failing tests run directly (diagnostics on failure)
         if: failure()
         run: |
-          .\build\msvc\tests\Release\test_plugin_host.exe
-          .\build\msvc\tests\Release\test_main_window_plugins.exe -platform offscreen
+          foreach ($name in @("test_support", "test_plugin_host")) {
+            $exe = Get-ChildItem -Recurse build\msvc -Filter "$name.exe" | Select-Object -First 1
+            if ($exe) {
+              Write-Host "== $($exe.FullName)"
+              & $exe.FullName -o -,txt 2>&1 | Out-Host
+              Write-Host ("exit code: 0x{0:X8}" -f $LASTEXITCODE)
+            }
+          }
 
   lint:
     name: clang-format (report only)
