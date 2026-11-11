@@ -5,6 +5,8 @@
 #include <QMenu>
 #include <QPainter>
 #include <QPainterPath>
+#include <QScrollBar>
+#include <QTimer>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -54,6 +56,7 @@ ResultsPanel::ResultsPanel(results::ResultStore* store, document::Document* doc,
 
 void ResultsPanel::rebuild() {
   rebuilding_ = true;
+  const int scroll = tree_->verticalScrollBar()->value();  // the list does not jump on every click
   tree_->clear();
   for (const results::ResultSet& s : store_->sets()) {
     auto* set = new QTreeWidgetItem(tree_, {s.name, s.source});
@@ -71,17 +74,24 @@ void ResultsPanel::rebuild() {
     }
     set->setExpanded(true);
   }
+  tree_->verticalScrollBar()->setValue(scroll);
   rebuilding_ = false;
 }
 
 void ResultsPanel::onItemChanged(QTreeWidgetItem* item, int column) {
   if (rebuilding_ || column != 0) return;
   const bool on = item->checkState(0) == Qt::Checked;
-  if (item->data(0, kSetRole).isValid()) {
-    store_->setSetVisible(item->data(0, kSetRole).toULongLong(), on);
-  } else {
-    store_->setItemVisible(item->data(0, kItemRole).toULongLong(), on);
-  }
+  const bool is_set = item->data(0, kSetRole).isValid();
+  const auto id = (is_set ? item->data(0, kSetRole) : item->data(0, kItemRole)).toULongLong();
+  // Applied after Qt has finished with the click: the store change rebuilds this tree, and
+  // rebuilding inside QTreeWidgetItem::setData deleted the item Qt was still using (crash).
+  QTimer::singleShot(0, this, [this, is_set, id, on] {
+    if (is_set) {
+      store_->setSetVisible(id, on);
+    } else {
+      store_->setItemVisible(id, on);
+    }
+  });
 }
 
 void ResultsPanel::showContextMenu(const QPoint& pos) {

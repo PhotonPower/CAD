@@ -31,6 +31,9 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
   `;`-separated paths (documents with the old text are still read).
 
 ### Fixed
+- Crash when hiding results (e.g. the rays of one arm) or a layer with its check box: the panel
+  rebuilt its list while Qt was still handling the click. The lists also keep their scroll
+  position now.
 - Raytracer: loading some systems failed with "Singular matrix" (a rounding error put the
   last interpolation point outside the parameter range); steep, nearly hemispherical lenses
   were drawn up to 0.1 mm off – rotationally symmetric surfaces are now surfaces of revolution

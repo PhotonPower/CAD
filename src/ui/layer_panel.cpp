@@ -6,6 +6,7 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
+#include <QTimer>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
@@ -87,8 +88,14 @@ void LayerPanel::rebuild() {
 void LayerPanel::onItemChanged(QTreeWidgetItem* item, int column) {
   if (rebuilding_ || column != kName) return;
   const auto id = static_cast<document::LayerId>(item->data(kName, kLayerIdRole).toUInt());
-  doc_->setLayerVisible(id, item->checkState(kName) == Qt::Checked);
-  if (!item->text(kName).trimmed().isEmpty()) doc_->renameLayer(id, item->text(kName).trimmed());
+  const bool visible = item->checkState(kName) == Qt::Checked;
+  const QString name = item->text(kName).trimmed();
+  // Applied after Qt has finished with the click / edit: the document change rebuilds this
+  // tree, which must not happen inside QTreeWidgetItem::setData (the item would be deleted).
+  QTimer::singleShot(0, this, [this, id, visible, name] {
+    doc_->setLayerVisible(id, visible);
+    if (!name.isEmpty()) doc_->renameLayer(id, name);
+  });
 }
 
 void LayerPanel::onItemDoubleClicked(QTreeWidgetItem* item, int column) {
