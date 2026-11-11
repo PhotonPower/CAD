@@ -51,7 +51,7 @@ Details: [UI concept](ui-concept.md), [object snaps](snapping.md), [rendering](r
 | Language / GUI | C++20, Qt 6 Widgets (≥ 6.8) | [0001](adr/0001-qt6-cpp-widgets.md) |
 | 3D rendering | Qt RHI (`QRhiWidget`): Metal on macOS, D3D11/12 on Windows, OpenGL/Vulkan on Linux | [0002](adr/0002-qrhi-rendering.md) |
 | Kernel link | Nurbforge C++ API (`Nurbforge::core`), via `find_package` or FetchContent | [0003](adr/0003-nurbforge-integration.md) |
-| Tessellation | In the app (adaptive, chordal and angular tolerance), cached per entity | [0004](adr/0004-display-tessellation.md) |
+| Tessellation | In the app (adaptive, chordal and angular tolerance), cached per entity; CDT for trimmed faces | [0004](adr/0004-display-tessellation.md), [0006](adr/0006-cdt-for-trimmed-faces.md) |
 | Snapping | Separate snap engine, screen-space tolerance, priority list, spatial index | [0005](adr/0005-snap-engine.md) |
 | Build | CMake ≥ 3.24 + Ninja, presets per platform | – |
 
@@ -67,16 +67,17 @@ jobs build from M0 on but are allowed to fail until M7.
   background only), view toolbar with the three display modes, snap bar in the status bar
 - **Done when:** `cmake --preset debug && cmake --build --preset debug` builds and the window opens on macOS.
 
-### M1 – Viewports and camera
+### M1 – Viewports and camera ✅
 - `Camera` (orthographic / perspective), standard views Front (XZ), Left (YZ), Top (XY), 3D iso
 - Navigation: middle-drag pan, wheel zoom to cursor, right/Alt-drag orbit (3D only), zoom extents
-- Grid in the construction plane, world axes, view cube or axis triad in the 3D view
-- Active viewport highlighted; double-click on the title (or `Space`) maximises/restores it
-- Shared scene between the four views; each view only owns its camera
+- Grid in the construction plane, world axes, axis triad in every view
+- Active viewport highlighted; `Space` or the view menu (click on the title) maximises/restores it
+- Cursor coordinates in the construction plane in the status bar
+- Shared scene between the four views moved to M2 (there is no geometry before M2)
 - Unit tests: projection / unprojection round trip, zoom to cursor keeps the point under the cursor
 - **Done when:** all four views navigate independently and stay consistent at any window size, Retina included.
 
-### M2 – Document model and display
+### M2 – Document model and display ✅
 - `Document` holding entities (point, `NurbsCurve`, `NurbsSurface`, `TrimmedSurface`, `Shell`),
   layers, colours, visibility; undo/redo via `QUndoStack`
 - Display tessellation (curves: adaptive polyline; surfaces: adaptive grid clipped by trim loops)
@@ -85,13 +86,19 @@ jobs build from M0 on but are allowed to fail until M7.
   - **Wireframe** – curves, face boundaries and iso-curves
   - **Surfaces** – flat-coloured faces with boundary edges (hidden-line look)
   - **Shaded** – Phong/Blinn shading with edges
-- Import: STEP (Nurbforge reader); native document format `.nfcad` (JSON + binary NURBS blocks)
+- Import: STEP (Nurbforge reader); native document format `.nfcad` ([JSON, version 1](file-format.md))
+- Done: 1200-face demo model, 2.9 s read + tessellate, 60 fps orbit ([benchmarks](benchmarks.md))
+- Moved to later milestones: layer panel UI (M3, together with the property panel), binary
+  blocks in `.nfcad`, crack-free display mesh between neighbouring faces (shared edge
+  tessellation), wide lines
 - **Done when:** a STEP file with ~1 000 faces loads, displays in all three modes and navigates at ≥ 60 fps on an M1 Mac.
 
-### M3 – Picking and selection
-- GPU ID-buffer picking (entity + sub-element: face, edge, vertex)
+### M3 – Picking and selection ✅
+- Picking (entity + sub-element: face, edge, vertex) on the CPU with BVHs over the display meshes ([ADR 0007](adr/0007-cpu-picking.md), instead of a GPU id buffer)
 - Click, Shift-click, window (left→right) and crossing (right→left) selection, highlight on hover
 - Property panel (right dock, collapsible) showing type, degree, knots, area / length
+- Layer panel (from M2): visibility, colour, name, new layer, move selection to layer (undoable)
+- Edit menu: delete (undoable), select all, select none
 - **Done when:** selection works in all four views and in all display modes.
 
 ### M4 – Object snaps (core of this project)

@@ -49,6 +49,7 @@ jobs:
           dnf config-manager --set-enabled crb
           dnf install -y gcc-c++ git cmake ninja-build \
                          qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtsvg-devel \
+                         qt6-qtshadertools-devel \
                          mesa-libGL-devel
           rpm -q qt6-qtbase
       - uses: actions/checkout@v5

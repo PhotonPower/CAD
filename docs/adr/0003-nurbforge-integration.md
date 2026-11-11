@@ -11,6 +11,11 @@ package, plus Python bindings. Its API is still 0.x and may change.
   types (`nf::Vec3`, `nf::NurbsCurve`, ... may be passed through as values, but calls into the
   kernel go through `kernel/`).
 
+**Amendment (M2).** Strictly limiting all `<nurbforge/...>` includes to `kernel/` would mean
+wrapping every geometry type. Instead the immutable value types are used directly in
+`document/` and `tessellation/`; algorithms are wrapped in `kernel/`. The widget layers
+(`ui/`, `viewport/`, `render/`) never see Nurbforge types.
+
 **Consequences.** API changes in Nurbforge touch one directory. The kernel is built with the
 application's compiler and flags, so no ABI issues on Windows (Debug/Release runtime).
 Features the GUI needs from the kernel (e.g. tessellation helpers) are first written in

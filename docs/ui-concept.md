@@ -7,7 +7,8 @@
 | Tool column (left) | `QDockWidget` → `ToolBox` | ~10 % of the window width (min 96 px, max 220 px), resizable; collapsible groups of icon buttons |
 | Viewports (centre) | `ViewportGrid` | 2×2 grid of `Viewport` (QRhiWidget) with splitters; Front, Left, Top, Perspective |
 | View toolbar (top) | `QToolBar` | display mode (wireframe / surfaces / shaded), standard views, zoom extents, grid on/off |
-| Property panel (right) | `QDockWidget` | hidden by default, appears with a selection (M3) |
+| Property panel (right) | `QDockWidget` → `PropertyPanel` | properties of the selection (type, degrees, knots, length / area / volume) |
+| Layer panel (right) | `QDockWidget` → `LayerPanel` | visibility, colour, name, new layer, move selection to a layer |
 | Command line (bottom) | `CommandLine` | prompt, numeric input, history (M5) |
 | Status bar | `QStatusBar` + `SnapBar` | cursor coordinates, active view, snap toggles |
 
@@ -45,26 +46,49 @@ to a text abbreviation, so the skeleton runs before the icon set exists.
 | Front | +Y | X / Z | orthographic |
 | Left | +X (from −X side) | −Y / Z | orthographic |
 | Top | −Z | X / Y | orthographic |
-| Perspective | iso direction (−1, −1, −1) | – | perspective (switchable to ortho) |
+| Perspective | iso direction (−1, 1, −1), i.e. seen from (+X, −Y, +Z) | X right-down, Y right-up, Z up | perspective (switchable to ortho) |
 
 - The active view (last clicked) has a highlighted frame; commands and keyboard navigation act on it.
-- Double-click on the view title or `Space` maximises the view; again restores the 2×2 grid.
-- The view title label (top left) opens a menu: change view, projection, display mode of this view.
+- A click on the view title (top left, "▾") opens the view menu: change to another standard view,
+  perspective/parallel projection, zoom extents, maximise / restore.
+- `Space` maximises the active view; again restores the 2×2 grid.
+- Each view has a construction plane (Front: XZ, Left: YZ, Top and Perspective: XY) with an
+  adaptive grid (minor spacing a power of ten, ≥ 12 px; every 10th line major) and the two plane
+  axes in X red / Y green / Z blue. An axis triad sits in the bottom-left corner.
+- The status bar shows the cursor position in the construction plane of the view under the cursor.
 
 ### Mouse and keyboard
 
 | Action | macOS | Windows / Linux |
 |---|---|---|
 | Pan | middle drag, Shift + right drag, two-finger trackpad scroll | middle drag, Shift + right drag |
-| Zoom (to cursor) | wheel, pinch | wheel |
-| Orbit (3D view) | right drag, Alt + left drag | right drag |
-| Zoom extents | `Z` `E` / double-click middle | same |
+| Zoom (to cursor) | wheel, pinch, Cmd + two-finger scroll | wheel |
+| Orbit (3D view; turntable around Z) | right drag, Alt + left drag | right drag, Alt + left drag |
+| Zoom extents | `Z` `E`, double-click middle, two-finger double tap; Shift + toolbar: all views | `Z` `E`, double-click middle |
 | Snap on/off | `F3` | `F3` |
 | Ortho | `F8` | `F8` |
 | Cycle snap candidates | `Tab` | `Tab` |
 | Cancel / confirm | `Esc` / `Enter`, right-click | same |
 
 `src/platform/` maps Cmd ↔ Ctrl and handles trackpad gestures.
+
+## Selection (M3)
+
+| Action | Effect |
+|---|---|
+| Click | select the object under the cursor (replaces the selection); click into empty space clears |
+| Shift + click | add |
+| Cmd (macOS) / Ctrl + click | remove |
+| Cmd / Ctrl + Shift + click | toggle a single face, edge or B-rep vertex (sub-element) |
+| Drag left → right | window: objects completely inside the rectangle (solid blue frame) |
+| Drag right → left | crossing: objects inside or touching the rectangle (dashed green frame) |
+| `Esc` / Cmd+A / `Delete` | select none / select all / delete selected objects (undoable) |
+
+The object under the cursor is highlighted in cyan (with Cmd/Ctrl + Shift held: the face, edge
+or vertex), selected objects in yellow; the status bar names the hovered object. Pick tolerance
+for curves, edges and points: 6 px. Priority: points before curves and edges before faces;
+curves hidden behind faces cannot be picked in the surfaces / shaded modes; in wireframe the
+iso-curves select their face. Picking works on the display meshes with a BVH ([ADR 0007](adr/0007-cpu-picking.md)).
 
 ## Display modes
 
