@@ -45,7 +45,7 @@ jobs:
         run: |
           dnf install -y epel-release dnf-plugins-core
           dnf config-manager --set-enabled crb
-          dnf install -y gcc-c++ git cmake ninja-build \
+          dnf install -y gcc-c++ git cmake ninja-build python3 \
                          qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtsvg-devel \
                          qt6-qtshadertools-devel \
                          mesa-libGL-devel

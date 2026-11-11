@@ -13,6 +13,7 @@ URL:            https://github.com/PhotonPower/CAD
 BuildRequires:  gcc-c++ cmake ninja-build git
 BuildRequires:  qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtsvg-devel qt6-qtshadertools-devel
 Requires:       qt6-qtbase-gui qt6-qtsvg
+Recommends:     python3
 
 %description
 Desktop CAD with four views, object snaps, drawing and modelling commands on exact NURBS
@@ -35,6 +36,7 @@ DESTDIR=%{buildroot} cmake --install build --component app
 %{_datadir}/applications/io.github.photonpower.NurbforgeCAD.desktop
 %{_datadir}/icons/hicolor/scalable/apps/io.github.photonpower.NurbforgeCAD.svg
 %{_datadir}/metainfo/io.github.photonpower.NurbforgeCAD.metainfo.xml
+%{_datadir}/nurbforge-cad/
 
 %changelog
 * Wed Nov 11 2026 Nurbforge CAD developers - 0.0.1-1

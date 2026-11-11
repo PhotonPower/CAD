@@ -1,0 +1,8 @@
+{
+  "id": "demo",
+  "name": "Demo plugin",
+  "version": "0.1.0",
+  "api": 1,
+  "entry": "demo_plugin:DemoPlugin",
+  "description": "Shows what a plugin can do: rays, a field on a face, a live curve, new geometry."
+}

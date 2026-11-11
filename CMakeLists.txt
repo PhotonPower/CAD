@@ -21,7 +21,7 @@ include(CadWarnings)
 # QRhi headers (rhi/qrhi.h) belong to the semi-public RHI API and require Qt6::GuiPrivate;
 # ADR 0002 accepts this. The private-module warning is therefore silenced.
 set(QT_NO_PRIVATE_MODULE_WARNING ON)
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Svg ShaderTools Concurrent)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Svg ShaderTools Concurrent Network)
 if(Qt6_VERSION VERSION_GREATER_EQUAL 6.9)
   # Since Qt 6.9 private modules are separate packages; before, Qt6::GuiPrivate comes with Gui.
   find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
@@ -50,6 +50,8 @@ add_library(nfcad_core STATIC
   src/kernel/properties.cpp
   src/kernel/step_import.cpp
   src/pick/picking.cpp
+  src/plugins/plugin_host.cpp
+  src/plugins/plugin_manager.cpp
   src/results/colormap.cpp
   src/results/result_store.cpp
   src/snap/snap_engine.cpp
@@ -64,7 +66,7 @@ add_library(nfcad_core STATIC
 target_include_directories(nfcad_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # Nurbforge value types appear in document/ headers (ADR 0003), hence PUBLIC.
 target_link_libraries(nfcad_core
-  PUBLIC Qt6::Core Qt6::Gui Qt6::Concurrent Nurbforge::core
+  PUBLIC Qt6::Core Qt6::Gui Qt6::Concurrent Qt6::Network Nurbforge::core
   PRIVATE CDT::headers)
 nfcad_set_warnings(nfcad_core)
 
@@ -72,12 +74,14 @@ nfcad_set_warnings(nfcad_core)
 add_library(nfcad_gui STATIC
   src/app/command_controller.cpp
   src/app/demo_results.cpp
+  src/app/plugin_actions.cpp
   src/app/file_actions.cpp
   src/app/main_window.cpp
   src/ui/tool_catalog.cpp
   src/ui/tool_box.cpp
   src/ui/layer_panel.cpp
   src/ui/model_tree_panel.cpp
+  src/ui/plugin_settings_dialog.cpp
   src/ui/property_panel.cpp
   src/ui/results_panel.cpp
   src/ui/snap_bar.cpp
@@ -119,7 +123,8 @@ set_target_properties(NurbforgeCAD PROPERTIES
   MACOSX_BUNDLE_BUNDLE_NAME "Nurbforge CAD"
   MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
   MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
-target_compile_definitions(nfcad_core PUBLIC NFCAD_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(nfcad_core PUBLIC NFCAD_VERSION="${PROJECT_VERSION}"
+                           PRIVATE NFCAD_PYTHON_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/python")
 
 # ---------------------------------------------------------------- tools
 # Demo / benchmark model: build/<preset>/tools/make_demo_model out.step [nx ny]
@@ -141,6 +146,16 @@ include(GNUInstallDirs)
 install(TARGETS NurbforgeCAD
   BUNDLE DESTINATION . COMPONENT app
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT app)
+# Python package for plugins (src/plugins/plugin_manager.cpp, nfcadPythonPath)
+if(APPLE)
+  set(_nfcad_py_dest NurbforgeCAD.app/Contents/Resources/python)
+elseif(WIN32)
+  set(_nfcad_py_dest python)
+else()
+  set(_nfcad_py_dest ${CMAKE_INSTALL_DATADIR}/nurbforge-cad/python)
+endif()
+install(DIRECTORY python/nfcad DESTINATION ${_nfcad_py_dest} COMPONENT app
+        PATTERN "__pycache__" EXCLUDE)
 if(UNIX AND NOT APPLE)
   set(_nfcad_id io.github.photonpower.NurbforgeCAD)
   install(FILES resources/linux/${_nfcad_id}.desktop

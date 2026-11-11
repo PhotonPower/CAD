@@ -22,6 +22,7 @@
 #include "document/selection.hpp"
 #include "app/command_controller.hpp"
 #include "app/demo_results.hpp"
+#include "plugins/plugin_manager.hpp"
 #include "results/result_store.hpp"
 #include "ui/results_panel.hpp"
 #include "snap/snap_engine.hpp"
@@ -41,7 +42,7 @@ namespace nfcad::app {
 using render::DisplayMode;
 
 namespace {
-constexpr int kWindowStateVersion = 3;  // 2: model tree dock (P1), 3: results + plot (P2)
+constexpr int kWindowStateVersion = 4;  // 2: model tree (P1), 3: results + plot (P2), 4: plugin log (P3)
 }
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -85,6 +86,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   createStatusBar();
   createPanels();
   connect(selection_, &document::Selection::hoverChanged, this, &MainWindow::updateHoverInfo);
+  createPlugins();
   grid_->setSnapSettings(snapbar_->mask(), snapbar_->snappingEnabled());
   connect(snapbar_, &ui::SnapBar::maskChanged, this,
           [this](snap::SnapMask mask, bool enabled) { grid_->setSnapSettings(mask, enabled); });
@@ -119,7 +121,17 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   restoreState(settings.value(QStringLiteral("window/state")).toByteArray(), kWindowStateVersion);
 }
 
-MainWindow::~MainWindow() { delete snap_engine_; }
+MainWindow::~MainWindow() {
+  // Stopping the plugin processes emits signals; the window must not receive them while it is
+  // being destroyed.
+  if (plugins_ != nullptr) {
+    for (const auto& h : plugins_->plugins()) h->disconnect(this);
+    plugins_->disconnect(this);
+    delete plugins_;
+    plugins_ = nullptr;
+  }
+  delete snap_engine_;
+}
 
 void MainWindow::createMenus() {
   QMenu* file = menuBar()->addMenu(tr("&File"));
@@ -161,6 +173,8 @@ void MainWindow::createMenus() {
   QAction* none = edit->addAction(tr("Select &None / Cancel"), this, [this] {
     if (commands_->active()) {
       commands_->cancel();
+    } else if (active_plugin_ != nullptr && active_plugin_->activeJob()) {
+      active_plugin_->cancel();
     } else {
       selection_->clear();
     }
@@ -388,6 +402,13 @@ void MainWindow::updateHoverInfo() {
 void MainWindow::onToolTriggered(const QString& tool_id) {
   if (tool_id == QLatin1String("delete")) {
     deleteSelection();
+    return;
+  }
+  if (tool_id.startsWith(QLatin1String("plugin:"))) {  // plugin:<id>/<action>
+    const QString rest = tool_id.mid(7);
+    if (plugins::PluginHost* h = plugins_->plugin(rest.section(QLatin1Char('/'), 0, 0))) {
+      runPluginAction(h, rest.section(QLatin1Char('/'), 1));
+    }
     return;
   }
   if (commands_->start(tool_id)) return;

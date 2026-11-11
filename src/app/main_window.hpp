@@ -8,6 +8,8 @@ class QActionGroup;
 class QDockWidget;
 class QLabel;
 class QLineEdit;
+class QPlainTextEdit;
+class QProgressBar;
 class QToolButton;
 class QMenu;
 
@@ -24,6 +26,10 @@ class TessellationService;
 }
 namespace nfcad::results {
 class ResultStore;
+}
+namespace nfcad::plugins {
+class PluginHost;
+class PluginManager;
 }
 namespace nfcad::snap {
 class SnapEngine;
@@ -81,6 +87,12 @@ class MainWindow : public QMainWindow {
   void zoomExtentsWhenTessellated();
   void startBenchmark();
 
+  // plugins (app/plugin_actions.cpp, docs/plugin-api.md)
+  void createPlugins();
+  void rebuildPluginUi();
+  void runPluginAction(plugins::PluginHost* host, const QString& action);
+  void connectPlugin(plugins::PluginHost* host);
+
   void createMenus();
   void createViewToolBar();
   void createToolDock();
@@ -98,6 +110,12 @@ class MainWindow : public QMainWindow {
   document::Document* doc_ = nullptr;
   document::Selection* selection_ = nullptr;
   results::ResultStore* results_ = nullptr;
+  plugins::PluginManager* plugins_ = nullptr;
+  plugins::PluginHost* active_plugin_ = nullptr;
+  QMenu* plugins_menu_ = nullptr;
+  QProgressBar* job_progress_ = nullptr;
+  QToolButton* job_cancel_ = nullptr;
+  QPlainTextEdit* plugin_log_ = nullptr;
   snap::SnapEngine* snap_engine_ = nullptr;
   class CommandController* commands_ = nullptr;
   QLineEdit* command_line_ = nullptr;

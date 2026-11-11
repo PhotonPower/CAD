@@ -9,5 +9,6 @@
 - [Document format `.nfcad`](file-format.md)
 - [Benchmarks](benchmarks.md)
 - [Plugin plan](plugins.md) – computation kernels as signed Python plugins
+- [Writing plugins](plugin-api.md) – the `nfcad` Python API
 - [Architecture decisions](adr/README.md)
 - Build guides: [macOS](build/macos.md) · [Windows 11](build/windows11.md) · [AlmaLinux / RHEL 10](build/almalinux10.md)

@@ -1,0 +1,1 @@
+{ "id": "test", "name": "Test plugin", "version": "1", "api": 1, "entry": "test_plugin:TestPlugin" }
