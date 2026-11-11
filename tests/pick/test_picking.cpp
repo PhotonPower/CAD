@@ -56,7 +56,7 @@ class TestPicking : public QObject {
   DisplayMesh above_ = mesh(nf::make_line({-20, 5, 10}, {20, 5, 10}));
   DisplayMesh below_ = mesh(nf::make_line({-20, -5, -5}, {20, -5, -5}));
   DisplayMesh point_ = mesh(nf::Vec3{25, 0, 0});
-  std::vector<Target> targets_ = {{1, &box_}, {2, &above_}, {3, &below_}, {4, &point_}};
+  std::vector<Target> targets_ = {{1, &box_, nullptr}, {2, &above_, nullptr}, {3, &below_, nullptr}, {4, &point_, nullptr}};
 
  private slots:
   void bvhIndexBuilt() {
@@ -203,7 +203,7 @@ class TestPicking : public QObject {
     nfcad::tessellation::TessParams p;
     p.chord = 0.00002;
     const DisplayMesh dense = nfcad::tessellation::tessellate(nf::make_sphere({0, 0, 0}, 9.0), p);
-    const std::vector<Target> targets = {{1, &dense}};
+    const std::vector<Target> targets = {{1, &dense, nullptr}};
     Camera c = top_camera();
     Query q;
     QElapsedTimer t;

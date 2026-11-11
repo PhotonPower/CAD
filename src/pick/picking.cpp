@@ -97,6 +97,47 @@ bool point_in_triangle(const QPointF& p, const QPointF& a, const QPointF& b, con
 
 }  // namespace
 
+std::optional<Hit> pick_face(const std::vector<Target>& targets, const viewport::Camera& camera,
+                             const QPointF& cursor_px, bool sub_elements) {
+  const viewport::Ray ray = camera.pickRay(cursor_px);
+  const QVector3D& o = ray.origin;
+  const QVector3D& d = ray.direction;
+  std::optional<Hit> face;
+  float best_t = kInf;
+  for (const Target& tg : targets) {
+    const DisplayMesh& m = *tg.mesh;
+    if (m.triangle_bvh.empty()) continue;
+    std::optional<std::size_t> hit_tri;
+    float hit_t = kInf;
+    m.triangle_bvh.raycast(o, d, 0.0F, best_t, [&](std::uint32_t t, float& t_max) {
+      const float h = ray_triangle(o, d, m.vertex(m.indices[3 * t]), m.vertex(m.indices[3 * t + 1]),
+                                   m.vertex(m.indices[3 * t + 2]));
+      if (h > 0.0F && h < t_max) {
+        t_max = h;
+        hit_t = h;
+        hit_tri = t;
+      }
+    });
+    if (hit_tri && hit_t < best_t) {
+      best_t = hit_t;
+      Hit hit;
+      hit.kind = Hit::Kind::Face;
+      hit.item.entity = tg.id;
+      if (sub_elements && m.faceCount() > 0) {
+        hit.item.sub = {SubElement::Kind::Face, m.faceOfTriangle(*hit_tri)};
+      }
+      hit.point = o + d * hit_t;
+      hit.depth = hit_t;
+      face = hit;
+    }
+  }
+  return face;
+}
+
+float farthest_world_per_pixel(const viewport::Camera& camera, const Box3& box) {
+  return farthest_wpp(camera, box);
+}
+
 std::optional<Hit> pick(const std::vector<Target>& targets, const viewport::Camera& camera,
                         const Query& query) {
   const viewport::Ray ray = camera.pickRay(query.cursor_px);
@@ -105,40 +146,7 @@ std::optional<Hit> pick(const std::vector<Target>& targets, const viewport::Came
 
   // ---- faces: closest ray hit
   std::optional<Hit> face;
-  if (query.faces) {
-    float best_t = kInf;
-    for (const Target& tg : targets) {
-      const DisplayMesh& m = *tg.mesh;
-      if (m.triangle_bvh.empty()) continue;
-      std::optional<std::size_t> hit_tri;
-      m.triangle_bvh.raycast(o, d, 0.0F, best_t, [&](std::uint32_t t, float& t_max) {
-        const float h = ray_triangle(o, d, m.vertex(m.indices[3 * t]), m.vertex(m.indices[3 * t + 1]),
-                                     m.vertex(m.indices[3 * t + 2]));
-        if (h > 0.0F && h < t_max) {
-          t_max = h;
-          hit_tri = t;
-        }
-      });
-      if (hit_tri) {
-        // raycast shrank its own copy of t_max; recompute the hit distance
-        const std::size_t t = *hit_tri;
-        const float h = ray_triangle(o, d, m.vertex(m.indices[3 * t]), m.vertex(m.indices[3 * t + 1]),
-                                     m.vertex(m.indices[3 * t + 2]));
-        if (h < best_t) {
-          best_t = h;
-          Hit hit;
-          hit.kind = Hit::Kind::Face;
-          hit.item.entity = tg.id;
-          if (query.sub_elements && m.faceCount() > 0) {
-            hit.item.sub = {SubElement::Kind::Face, m.faceOfTriangle(t)};
-          }
-          hit.point = o + d * h;
-          hit.depth = h;
-          face = hit;
-        }
-      }
-    }
-  }
+  if (query.faces) face = pick_face(targets, camera, query.cursor_px, query.sub_elements);
   const float occlusion_tol =
       face ? 2.0F * query.radius_px * camera.worldPerPixelAt(face->point) : 0.0F;
   auto occluded = [&](float depth) { return face && depth > face->depth + occlusion_tol; };

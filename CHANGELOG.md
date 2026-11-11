@@ -6,6 +6,15 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- M4 – object snaps: `SnapEngine` with Point, End, Mid, Centre, Quadrant (cut points of the
+  coordinate planes), Near, Intersection (real and apparent), Face corner, Face edge and Grid;
+  exact refinement with Nurbforge (circle detection, arc length, closest point, curve/curve
+  intersection); magnetic cursor with glyphs and labels, Tab cycles candidates, Alt suppresses,
+  F3 and status bar toggles; tools Point and Distance; tests for every snap type against exact
+  values, 0.34 ms per query with 10 000 curves
+
+### Changed
+- Snap priority: Face corner ranks right after End (corners are the ends of B-rep edges)
 - M3 – picking and selection: CPU picking with BVHs over the display meshes (ADR 0007);
   click / Shift / Cmd-Ctrl selection, Cmd/Ctrl+Shift for faces, edges and vertices, window
   (left → right) and crossing (right → left) selection with rubber band; hover highlight (cyan)

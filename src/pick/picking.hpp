@@ -15,6 +15,7 @@ namespace nfcad::pick {
 struct Target {
   document::EntityId id = 0;
   const tessellation::DisplayMesh* mesh = nullptr;
+  document::GeometryPtr geometry;  ///< exact geometry (snap refinement)
 };
 
 struct Query {
@@ -38,6 +39,15 @@ struct Hit {
 /// Curves and edges hidden behind a face (in a mode with faces) are not picked.
 [[nodiscard]] std::optional<Hit> pick(const std::vector<Target>& targets,
                                       const viewport::Camera& camera, const Query& query);
+
+/// Closest face under the cursor (ray hit), with the face index if `sub_elements`.
+[[nodiscard]] std::optional<Hit> pick_face(const std::vector<Target>& targets,
+                                           const viewport::Camera& camera, const QPointF& cursor_px,
+                                           bool sub_elements = false);
+
+/// World length of one pixel at the farthest corner of a box (conservative pick radius).
+[[nodiscard]] float farthest_world_per_pixel(const viewport::Camera& camera,
+                                             const tessellation::Box3& box);
 
 /// Window (all display geometry inside the rectangle) or crossing selection (any part inside
 /// or crossing it). Rectangle in screen pixels.

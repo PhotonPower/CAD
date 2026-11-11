@@ -12,7 +12,7 @@
  │             navigation, view presets                             │
  ├─────────────────────────────────────────────────────────────────┤
  │ commands/   command framework, drawing / modelling commands      │
- │ snap/       SnapEngine, snap providers, SnapCache                │
+ │ snap/       SnapEngine (candidates, cache, exact refinement)     │
  │ pick/       ray / rectangle picking on display meshes (BVH)      │
  │ render/     Scene, GPU buffers, pipelines, shaders, picking      │
  ├─────────────────────────────────────────────────────────────────┤
@@ -71,7 +71,7 @@ user input ─► Viewport ─► (active) Command ─► kernel/ (Nurbforge) �
 | `ViewportGrid` | viewport | 2×2 layout, active view, maximise / restore |
 | `ToolCatalog` | ui | data-driven list of tools (id, group, icon, shortcut) |
 | `ToolBox` | ui | tool column with collapsible `ToolGroup`s |
-| `SnapEngine` | snap | candidate search and ranking, see [snapping.md](snapping.md) |
+| `SnapEngine` | snap | candidate search on the pick BVHs, cached characteristic points, exact refinement via `kernel/curve_features`, see [snapping.md](snapping.md) |
 | `Command` | commands | state machine that asks for points / options and edits the document |
 
 ## Directory layout

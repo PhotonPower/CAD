@@ -67,6 +67,18 @@ void ViewportGrid::setSelection(document::Selection* selection) {
   for (Viewport* v : views_) v->setSelection(selection);
 }
 
+void ViewportGrid::setSnapEngine(snap::SnapEngine* engine) {
+  for (Viewport* v : views_) v->setSnapEngine(engine);
+}
+
+void ViewportGrid::setSnapSettings(snap::SnapMask mask, bool enabled) {
+  for (Viewport* v : views_) v->setSnapSettings(mask, enabled);
+}
+
+void ViewportGrid::setPointInput(bool on) {
+  for (Viewport* v : views_) v->setPointInput(on);
+}
+
 void ViewportGrid::zoomExtentsAll() {
   for (Viewport* v : views_) v->zoomExtents();
 }

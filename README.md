@@ -6,10 +6,11 @@
 **Desktop CAD front end for the [Nurbforge](https://github.com/PhotonPower/Nurbforge) NURBS kernel** –
 C++20, Qt 6, native rendering (Metal / Direct3D / OpenGL·Vulkan via Qt RHI).
 
-> **Status: 0.0 – milestone M3.** STEP files and `.nfcad` documents open and display in four
+> **Status: 0.0 – milestone M4.** STEP files and `.nfcad` documents open and display in four
 > navigable views (wireframe / surfaces / shaded); objects, faces, edges and vertices can be
-> selected, with property and layer panels. Object snaps and drawing commands follow in the
-> milestones of the [project plan](docs/plan.md).
+> selected, with property and layer panels; the magnetic cursor snaps to points, ends, mids,
+> centres, axis cut points, intersections, face corners and edges (tools Point and Distance).
+> Drawing commands follow in the milestones of the [project plan](docs/plan.md).
 
 ## Features (planned)
 

@@ -44,5 +44,7 @@ struct Entity {
 };
 
 [[nodiscard]] Entity make_entity(Geometry geometry, QString name = {});
+/// Point entity (for widget code that does not use Nurbforge types).
+[[nodiscard]] Entity make_point_entity(double x, double y, double z, QString name = {});
 
 }  // namespace nfcad::document
