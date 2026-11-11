@@ -12,3 +12,4 @@ New ADRs get the next number; superseded ADRs stay and are marked as such.
 | [0005](0005-snap-engine.md) | Snap engine with screen-space tolerance and priorities | accepted |
 | [0006](0006-cdt-for-trimmed-faces.md) | Constrained Delaunay triangulation (CDT) for trimmed faces | accepted |
 | [0007](0007-cpu-picking.md) | Picking on the CPU with BVHs over the display meshes | accepted |
+| [0008](0008-plugin-architecture.md) | Plugin architecture: library / CAD core / signed Python plugins | proposed |
