@@ -1,0 +1,1129 @@
+{
+ "graph": {
+  "format": "rtt-fusion-graph",
+  "version": 1,
+  "meta": {
+   "imported_from": "raytatouille",
+   "system": "Linnik (structure only, for the graph import)",
+   "paths": {
+    "measurement": [
+     "Illumination_stop",
+     "Beam_splitter",
+     "Objective_A",
+     "Sample",
+     "Objective_A",
+     "Beam_splitter",
+     "Tube_and_camera_Tube_lens_Tube_lens",
+     "Camera"
+    ],
+    "reference": [
+     "Illumination_stop",
+     "Beam_splitter",
+     "Objective_B",
+     "Reference",
+     "Objective_B",
+     "Beam_splitter",
+     "Tube_and_camera_Tube_lens_Tube_lens",
+     "Camera"
+    ],
+    "measurement_pupil": [
+     "Illumination_stop",
+     "Beam_splitter",
+     "Objective_A",
+     "Sample",
+     "Objective_A",
+     "Beam_splitter",
+     "Pupil_camera"
+    ]
+   }
+  },
+  "nodes": [
+   {
+    "id": "source",
+    "type": "rtt.source",
+    "name": "Source",
+    "sockets": [
+     {
+      "name": "to_Illumination_stop",
+      "direction": "out",
+      "kind": "light",
+      "accepts": [
+       "G",
+       "H",
+       "P",
+       "R",
+       "S"
+      ],
+      "label": "Illumination_stop"
+     }
+    ]
+   },
+   {
+    "id": "Illumination_stop",
+    "type": "rtt.section",
+    "name": "Illumination stop",
+    "params": {
+     "location": "/root/children/0",
+     "element_type": "stop",
+     "surfaces": [
+      "STO"
+     ],
+     "paths": [
+      "measurement",
+      "measurement_pupil",
+      "reference"
+     ]
+    },
+    "position": [
+     220.0,
+     0.0
+    ],
+    "sockets": [
+     {
+      "name": "from_source",
+      "direction": "in",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "source"
+     },
+     {
+      "name": "to_Beam_splitter",
+      "direction": "out",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Beam_splitter"
+     }
+    ],
+    "through": {
+     "to_Beam_splitter": [
+      "from_source"
+     ]
+    }
+   },
+   {
+    "id": "Beam_splitter",
+    "type": "rtt.splitter",
+    "name": "Beam splitter",
+    "params": {
+     "location": "/root/children/1",
+     "element_type": "thin_element",
+     "surfaces": [
+      "BS"
+     ],
+     "paths": [
+      "measurement",
+      "measurement_pupil",
+      "reference"
+     ]
+    },
+    "position": [
+     440.0,
+     0.0
+    ],
+    "sockets": [
+     {
+      "name": "from_Illumination_stop",
+      "direction": "in",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Illumination_stop"
+     },
+     {
+      "name": "from_Objective_A",
+      "direction": "in",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Objective_A"
+     },
+     {
+      "name": "from_Objective_B",
+      "direction": "in",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Objective_B"
+     },
+     {
+      "name": "to_Objective_A",
+      "direction": "out",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Objective_A"
+     },
+     {
+      "name": "to_Tube_and_camera_Tube_lens_Tube_lens",
+      "direction": "out",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Tube_and_camera_Tube_lens_Tube_lens"
+     },
+     {
+      "name": "to_Objective_B",
+      "direction": "out",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Objective_B"
+     },
+     {
+      "name": "to_Pupil_camera",
+      "direction": "out",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Pupil_camera"
+     }
+    ],
+    "through": {
+     "to_Objective_A": [
+      "from_Illumination_stop"
+     ],
+     "to_Tube_and_camera_Tube_lens_Tube_lens": [
+      "from_Objective_A",
+      "from_Objective_B"
+     ],
+     "to_Objective_B": [
+      "from_Illumination_stop"
+     ],
+     "to_Pupil_camera": [
+      "from_Objective_A"
+     ]
+    }
+   },
+   {
+    "id": "Objective_A",
+    "type": "rtt.section",
+    "name": "Objective A",
+    "params": {
+     "location": "/root/children/2",
+     "element_type": "section",
+     "surfaces": [
+      "A.AP",
+      "A.L2.S1",
+      "A.L2.S2",
+      "A.L1.S1",
+      "A.L1.S2"
+     ],
+     "paths": [
+      "measurement",
+      "measurement_pupil"
+     ]
+    },
+    "position": [
+     660.0,
+     0.0
+    ],
+    "sockets": [
+     {
+      "name": "from_Beam_splitter",
+      "direction": "in",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "side": "front",
+      "label": "Beam_splitter"
+     },
+     {
+      "name": "from_Sample",
+      "direction": "in",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "side": "back",
+      "label": "Sample"
+     },
+     {
+      "name": "to_Sample",
+      "direction": "out",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "side": "back",
+      "label": "Sample"
+     },
+     {
+      "name": "to_Beam_splitter",
+      "direction": "out",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "side": "front",
+      "label": "Beam_splitter"
+     }
+    ],
+    "through": {
+     "to_Sample": [
+      "from_Beam_splitter"
+     ],
+     "to_Beam_splitter": [
+      "from_Sample"
+     ]
+    }
+   },
+   {
+    "id": "Sample",
+    "type": "rtt.mirror",
+    "name": "Sample",
+    "params": {
+     "location": "/root/children/2/children/3",
+     "element_type": "mirror",
+     "surfaces": [
+      "SPM"
+     ],
+     "paths": [
+      "measurement",
+      "measurement_pupil"
+     ]
+    },
+    "position": [
+     880.0,
+     0.0
+    ],
+    "sockets": [
+     {
+      "name": "from_Objective_A",
+      "direction": "in",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Objective_A"
+     },
+     {
+      "name": "to_Objective_A",
+      "direction": "out",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Objective_A"
+     }
+    ],
+    "through": {
+     "to_Objective_A": [
+      "from_Objective_A"
+     ]
+    }
+   },
+   {
+    "id": "Objective_B",
+    "type": "rtt.section",
+    "name": "Objective B",
+    "params": {
+     "location": "/root/children/3",
+     "element_type": "section",
+     "surfaces": [
+      "B.AP",
+      "B.L1.S1",
+      "B.L1.S2"
+     ],
+     "paths": [
+      "reference"
+     ]
+    },
+    "position": [
+     1540.0,
+     0.0
+    ],
+    "sockets": [
+     {
+      "name": "from_Beam_splitter",
+      "direction": "in",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "side": "front",
+      "label": "Beam_splitter"
+     },
+     {
+      "name": "from_Reference",
+      "direction": "in",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "side": "back",
+      "label": "Reference"
+     },
+     {
+      "name": "to_Reference",
+      "direction": "out",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "side": "back",
+      "label": "Reference"
+     },
+     {
+      "name": "to_Beam_splitter",
+      "direction": "out",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "side": "front",
+      "label": "Beam_splitter"
+     }
+    ],
+    "through": {
+     "to_Reference": [
+      "from_Beam_splitter"
+     ],
+     "to_Beam_splitter": [
+      "from_Reference"
+     ]
+    }
+   },
+   {
+    "id": "Reference",
+    "type": "rtt.mirror",
+    "name": "Reference",
+    "params": {
+     "location": "/root/children/3/children/2",
+     "element_type": "mirror",
+     "surfaces": [
+      "REF"
+     ],
+     "paths": [
+      "reference"
+     ]
+    },
+    "position": [
+     1760.0,
+     0.0
+    ],
+    "sockets": [
+     {
+      "name": "from_Objective_B",
+      "direction": "in",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Objective_B"
+     },
+     {
+      "name": "to_Objective_B",
+      "direction": "out",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Objective_B"
+     }
+    ],
+    "through": {
+     "to_Objective_B": [
+      "from_Objective_B"
+     ]
+    }
+   },
+   {
+    "id": "Pupil_camera",
+    "type": "rtt.detector",
+    "name": "Pupil camera",
+    "params": {
+     "location": "/root/children/4/children/0",
+     "element_type": "detector",
+     "surfaces": [
+      "PUP"
+     ],
+     "paths": [
+      "measurement_pupil"
+     ]
+    },
+    "position": [
+     1980.0,
+     0.0
+    ],
+    "sockets": [
+     {
+      "name": "from_Beam_splitter",
+      "direction": "in",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Beam_splitter"
+     },
+     {
+      "name": "image",
+      "direction": "out",
+      "kind": "data",
+      "accepts": [
+       "result"
+      ],
+      "label": "image"
+     }
+    ]
+   },
+   {
+    "id": "Tube_and_camera_Tube_lens_Tube_lens",
+    "type": "rtt.section",
+    "name": "Tube and camera: Tube lens … Tube lens",
+    "params": {
+     "location": "/root/children/4/children/1",
+     "element_type": "section",
+     "surfaces": [
+      "T1.S1",
+      "T1.S2"
+     ],
+     "paths": [
+      "measurement",
+      "reference"
+     ]
+    },
+    "position": [
+     1100.0,
+     0.0
+    ],
+    "sockets": [
+     {
+      "name": "from_Beam_splitter",
+      "direction": "in",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "side": "front",
+      "label": "Beam_splitter"
+     },
+     {
+      "name": "to_Camera",
+      "direction": "out",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "side": "back",
+      "label": "Camera"
+     }
+    ],
+    "through": {
+     "to_Camera": [
+      "from_Beam_splitter"
+     ]
+    }
+   },
+   {
+    "id": "Camera",
+    "type": "rtt.detector",
+    "name": "Camera",
+    "params": {
+     "location": "/root/children/4/children/2",
+     "element_type": "detector",
+     "surfaces": [
+      "CAM"
+     ],
+     "paths": [
+      "measurement",
+      "reference"
+     ]
+    },
+    "position": [
+     1320.0,
+     0.0
+    ],
+    "sockets": [
+     {
+      "name": "from_Tube_and_camera_Tube_lens_Tube_lens",
+      "direction": "in",
+      "kind": "light",
+      "accepts": [
+       "H",
+       "R"
+      ],
+      "label": "Tube_and_camera_Tube_lens_Tube_lens"
+     },
+     {
+      "name": "image",
+      "direction": "out",
+      "kind": "data",
+      "accepts": [
+       "result"
+      ],
+      "label": "image"
+     }
+    ]
+   }
+  ],
+  "links": [
+   {
+    "from": [
+     "source",
+     "to_Illumination_stop"
+    ],
+    "to": [
+     "Illumination_stop",
+     "from_source"
+    ]
+   },
+   {
+    "from": [
+     "Illumination_stop",
+     "to_Beam_splitter"
+    ],
+    "to": [
+     "Beam_splitter",
+     "from_Illumination_stop"
+    ]
+   },
+   {
+    "from": [
+     "Beam_splitter",
+     "to_Objective_A"
+    ],
+    "to": [
+     "Objective_A",
+     "from_Beam_splitter"
+    ]
+   },
+   {
+    "from": [
+     "Objective_A",
+     "to_Sample"
+    ],
+    "to": [
+     "Sample",
+     "from_Objective_A"
+    ]
+   },
+   {
+    "from": [
+     "Sample",
+     "to_Objective_A"
+    ],
+    "to": [
+     "Objective_A",
+     "from_Sample"
+    ]
+   },
+   {
+    "from": [
+     "Objective_A",
+     "to_Beam_splitter"
+    ],
+    "to": [
+     "Beam_splitter",
+     "from_Objective_A"
+    ]
+   },
+   {
+    "from": [
+     "Beam_splitter",
+     "to_Tube_and_camera_Tube_lens_Tube_lens"
+    ],
+    "to": [
+     "Tube_and_camera_Tube_lens_Tube_lens",
+     "from_Beam_splitter"
+    ]
+   },
+   {
+    "from": [
+     "Tube_and_camera_Tube_lens_Tube_lens",
+     "to_Camera"
+    ],
+    "to": [
+     "Camera",
+     "from_Tube_and_camera_Tube_lens_Tube_lens"
+    ]
+   },
+   {
+    "from": [
+     "Beam_splitter",
+     "to_Objective_B"
+    ],
+    "to": [
+     "Objective_B",
+     "from_Beam_splitter"
+    ]
+   },
+   {
+    "from": [
+     "Objective_B",
+     "to_Reference"
+    ],
+    "to": [
+     "Reference",
+     "from_Objective_B"
+    ]
+   },
+   {
+    "from": [
+     "Reference",
+     "to_Objective_B"
+    ],
+    "to": [
+     "Objective_B",
+     "from_Reference"
+    ]
+   },
+   {
+    "from": [
+     "Objective_B",
+     "to_Beam_splitter"
+    ],
+    "to": [
+     "Beam_splitter",
+     "from_Objective_B"
+    ]
+   },
+   {
+    "from": [
+     "Beam_splitter",
+     "to_Pupil_camera"
+    ],
+    "to": [
+     "Pupil_camera",
+     "from_Beam_splitter"
+    ]
+   }
+  ]
+ },
+ "types": [
+  {
+   "type": "analysis.camera_image",
+   "category": "analysis",
+   "description": "Irradiance image of a detector with many rays",
+   "sockets": [
+    {
+     "name": "in",
+     "direction": "in",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "P",
+      "R",
+      "S"
+     ]
+    },
+    {
+     "name": "image",
+     "direction": "out",
+     "kind": "data",
+     "accepts": [
+      "result"
+     ]
+    }
+   ],
+   "params": [
+    {
+     "name": "rays",
+     "type": "integer",
+     "default": 200000,
+     "label": "rays per field and wavelength",
+     "min": 1000
+    },
+    {
+     "name": "pixels",
+     "type": "integer",
+     "default": 512,
+     "min": 16,
+     "max": 8192
+    }
+   ]
+  },
+  {
+   "type": "biooptomd.layer",
+   "category": "data",
+   "description": "Refractive-index profile n(z) and dipole ensembles from BioOptoMD",
+   "sockets": [
+    {
+     "name": "profile",
+     "direction": "out",
+     "kind": "data",
+     "accepts": [
+      "N"
+     ]
+    },
+    {
+     "name": "dipoles",
+     "direction": "out",
+     "kind": "data",
+     "accepts": [
+      "Q"
+     ]
+    }
+   ],
+   "params": [
+    {
+     "name": "directory",
+     "type": "file",
+     "default": "",
+     "label": "BioOptoMD output"
+    }
+   ]
+  },
+  {
+   "type": "fusion.convert",
+   "category": "conversion",
+   "description": "Conversion between representations (R → H, H ↔ G, G ↔ S, …)",
+   "sockets": [
+    {
+     "name": "in",
+     "direction": "in",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "P",
+      "R",
+      "S",
+      "T"
+     ]
+    },
+    {
+     "name": "out",
+     "direction": "out",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "P",
+      "R",
+      "S",
+      "T"
+     ]
+    }
+   ],
+   "params": [
+    {
+     "name": "to",
+     "type": "choice",
+     "default": "S",
+     "options": [
+      "R",
+      "H",
+      "G",
+      "S",
+      "P"
+     ]
+    }
+   ]
+  },
+  {
+   "type": "rtt.detector",
+   "category": "detector",
+   "description": "Detector / camera: amplitudes within, intensities across coherence groups",
+   "sockets": [
+    {
+     "name": "in",
+     "direction": "in",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "P",
+      "R",
+      "S"
+     ]
+    },
+    {
+     "name": "image",
+     "direction": "out",
+     "kind": "data",
+     "accepts": [
+      "result"
+     ],
+     "label": "image"
+    }
+   ],
+   "params": [
+    {
+     "name": "surface",
+     "type": "text",
+     "default": ""
+    },
+    {
+     "name": "pixels",
+     "type": "integer",
+     "default": 512,
+     "label": "pixels (long side)",
+     "min": 16,
+     "max": 8192
+    }
+   ]
+  },
+  {
+   "type": "rtt.mirror",
+   "category": "domain",
+   "description": "Mirror (one surface, reflecting)",
+   "sockets": [
+    {
+     "name": "in",
+     "direction": "in",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "R",
+      "S"
+     ]
+    },
+    {
+     "name": "out",
+     "direction": "out",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "R",
+      "S"
+     ]
+    }
+   ],
+   "params": [
+    {
+     "name": "surface",
+     "type": "text",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "type": "rtt.section",
+   "category": "domain",
+   "description": "Sequential surfaces of a Raytatouille system (e.g. an objective)",
+   "sockets": [
+    {
+     "name": "front_in",
+     "direction": "in",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "P",
+      "R",
+      "S",
+      "T"
+     ],
+     "side": "front",
+     "label": "front in"
+    },
+    {
+     "name": "back_out",
+     "direction": "out",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "P",
+      "R",
+      "S",
+      "T"
+     ],
+     "side": "back",
+     "label": "back out"
+    },
+    {
+     "name": "back_in",
+     "direction": "in",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "P",
+      "R",
+      "S",
+      "T"
+     ],
+     "side": "back",
+     "label": "back in"
+    },
+    {
+     "name": "front_out",
+     "direction": "out",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "P",
+      "R",
+      "S",
+      "T"
+     ],
+     "side": "front",
+     "label": "front out"
+    }
+   ],
+   "params": [
+    {
+     "name": "location",
+     "type": "text",
+     "default": "",
+     "description": "node of the Raytatouille model tree"
+    }
+   ]
+  },
+  {
+   "type": "rtt.source",
+   "category": "source",
+   "description": "Field points, wavelengths, polarisation of a system (coherence groups)",
+   "sockets": [
+    {
+     "name": "out",
+     "direction": "out",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "P",
+      "R",
+      "S"
+     ],
+     "label": "light"
+    }
+   ],
+   "params": [
+    {
+     "name": "system",
+     "type": "file",
+     "default": "",
+     "label": "Raytatouille system"
+    },
+    {
+     "name": "fields",
+     "type": "text",
+     "default": "",
+     "description": "field indices; empty: all"
+    },
+    {
+     "name": "wavelengths",
+     "type": "text",
+     "default": "",
+     "description": "wavelength indices; empty: all"
+    }
+   ]
+  },
+  {
+   "type": "rtt.splitter",
+   "category": "splitter",
+   "description": "Beam splitter: splits into channels, combines coherently per group",
+   "sockets": [
+    {
+     "name": "in",
+     "direction": "in",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "R",
+      "S"
+     ]
+    },
+    {
+     "name": "r",
+     "direction": "out",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "R",
+      "S"
+     ],
+     "label": "reflected"
+    },
+    {
+     "name": "t",
+     "direction": "out",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "R",
+      "S"
+     ],
+     "label": "transmitted"
+    },
+    {
+     "name": "r_in",
+     "direction": "in",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "R",
+      "S"
+     ]
+    },
+    {
+     "name": "t_in",
+     "direction": "in",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "R",
+      "S"
+     ]
+    },
+    {
+     "name": "merged",
+     "direction": "out",
+     "kind": "light",
+     "accepts": [
+      "G",
+      "H",
+      "R",
+      "S"
+     ],
+     "label": "combined"
+    }
+   ],
+   "params": [
+    {
+     "name": "surface",
+     "type": "text",
+     "default": ""
+    }
+   ]
+  }
+ ],
+ "diagnostics": []
+}

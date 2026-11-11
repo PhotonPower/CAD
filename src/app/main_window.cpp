@@ -32,6 +32,7 @@
 #include "snap/snap_engine.hpp"
 #include "support/crash_handler.hpp"
 #include "ui/image_view.hpp"
+#include "ui/node_editor.hpp"
 #include "ui/layer_panel.hpp"
 #include "ui/model_tree_panel.hpp"
 #include "ui/property_panel.hpp"
@@ -48,7 +49,7 @@ namespace nfcad::app {
 using render::DisplayMode;
 
 namespace {
-constexpr int kWindowStateVersion = 6;  // 2: model tree (P1), 3: results + plot (P2), 4: plugin log (P3), 5: plugin panel (P4), 6: image dock
+constexpr int kWindowStateVersion = 7;  // 2: model tree (P1), 3: results + plot (P2), 4: plugin log (P3), 5: plugin panel (P4), 6: image dock, 7: node workflow
 }
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -386,8 +387,30 @@ void MainWindow::createPanels() {
     }
     last_image_ = newest;
   });
+  // node workflow (RTT-Fusion): appears when the document gets a workflow
+  auto* workflow = new QDockWidget(tr("Node workflow"), this);
+  workflow->setObjectName(QStringLiteral("workflowDock"));
+  node_editor_ = new ui::NodeEditor(workflow);
+  workflow->setWidget(node_editor_);
+  addDockWidget(Qt::BottomDockWidgetArea, workflow);
+  workflow->hide();
+  auto show_workflow = [this, workflow](bool fit) {
+    if (node_editor_->workflow() == doc_->workflow()) return;  // our own edit
+    const bool first = node_editor_->workflow()["graph"].toObject().isEmpty();
+    node_editor_->setWorkflow(doc_->workflow());
+    if (doc_->workflow().isEmpty()) return;
+    if (!workflow->isVisible()) {
+      workflow->show();
+      workflow->raise();
+    }
+    if (first || fit) QTimer::singleShot(0, node_editor_, &ui::NodeEditor::fitAll);
+  };
+  connect(doc_, &document::Document::workflowChanged, this, [show_workflow] { show_workflow(false); });
+  connect(doc_, &document::Document::documentReset, this, [show_workflow] { show_workflow(true); });
+  connect(node_editor_, &ui::NodeEditor::edited, doc_, &document::Document::setWorkflow);
   view_menu_->addAction(model->toggleViewAction());
   view_menu_->addAction(results->toggleViewAction());
+  view_menu_->addAction(workflow->toggleViewAction());
   view_menu_->addAction(image->toggleViewAction());
   view_menu_->addAction(plot->toggleViewAction());
   view_menu_->addAction(props->toggleViewAction());

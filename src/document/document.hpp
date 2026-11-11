@@ -108,6 +108,12 @@ class Document : public QObject {
   void setPluginParameters(const QString& plugin, const QJsonObject& values);
   void setAllPluginParameters(const QJsonObject& all);  ///< loading
 
+  // ---- node workflow (RTT-Fusion R16): {"graph": rtt-fusion-graph, "types": [...],
+  // "diagnostics": [...]}, saved with the document; edited in the node editor and by plugins
+  [[nodiscard]] const QJsonObject& workflow() const { return workflow_; }
+  void setWorkflow(const QJsonObject& workflow);
+  void setWorkflowLoaded(const QJsonObject& workflow) { workflow_ = workflow; }  ///< loading
+
   // ---- user operations (undoable)
   /// Adds entities in one undo step; returns their ids.
   std::vector<EntityId> addEntities(std::vector<Entity> entities, const QString& text);
@@ -145,6 +151,8 @@ class Document : public QObject {
   void groupsChanged();
   /// The modified state changed without an undo step (plugin parameters, saving).
   void modificationChanged(bool modified);
+  /// The node workflow was replaced or edited.
+  void workflowChanged();
   /// Everything changed (clear / load): views rebuild from scratch.
   void documentReset();
 
@@ -156,6 +164,7 @@ class Document : public QObject {
   std::vector<Layer> layers_;
   std::vector<Group> groups_;
   QJsonObject plugin_parameters_;
+  QJsonObject workflow_;
   bool settings_dirty_ = false;
   EntityId next_id_ = 1;
   QUndoStack undo_;

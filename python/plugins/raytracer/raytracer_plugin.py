@@ -81,6 +81,11 @@ class RaytracerPlugin(Plugin):
                                      description="Many rays for a smooth image; time grows linearly"),
         "camera_pixels": Param.integer(512, min=16, max=4096, label="Pixels (long side)", group="Camera image"),
         "camera_on_surface": Param.boolean(True, label="Also on the surface in 3D", group="Camera image"),
+        "workflow_rays": Param.integer(20_000, min=7, max=500_000, label="Rays per field and wavelength",
+                                       group="Workflow",
+                                       description="For Run workflow (coherent image; every ray path is "
+                                                   "recorded, so memory grows with rays × events)"),
+        "workflow_pixels": Param.integer(512, min=16, max=4096, label="Pixels (long side)", group="Workflow"),
         "save_as": Param.file("", filter="Raytatouille system (*.rtt.json)", save=True, label="Save as",
                               group="Optimise", description="Empty: <system>.optimised.rtt.json"),
     }
@@ -558,6 +563,114 @@ class RaytracerPlugin(Plugin):
         _, rec = rt.trace.trace(compiled, rays, path=path, record_path=True, record_rays=[0])
         events = np.asarray(rec.event_surfaces)
         return int(events[-1]) if events.size else None
+
+    # ------------------------------------------------------------------ node workflow (RTT-Fusion)
+    @staticmethod
+    def _fusion():
+        try:
+            import importlib
+
+            fg = importlib.import_module("rtt_fusion.graph")
+            backend_rtt = importlib.import_module("rtt_fusion.graph.backend_rtt")
+            execute = importlib.import_module("rtt_fusion.graph.execute")
+            io = importlib.import_module("rtt_fusion.graph.io")
+            validate = importlib.import_module("rtt_fusion.graph.validate")  # the module, not the function
+        except ImportError as e:
+            raise UserError("The node workflow needs the Python package rtt_fusion (RTT-Fusion) in the plugin "
+                            "environment: pip install -e <RTT-Fusion>") from e
+        return fg, backend_rtt, execute, io, validate
+
+    @staticmethod
+    def _catalogue(registry) -> list[dict]:
+        out = []
+        for t in registry.types():
+            out.append({"type": t.type_id, "category": t.category.value, "description": t.description,
+                        "sockets": [s.to_dict() for s in t.sockets],
+                        "params": [p.to_dict() for p in t.params]})
+        return out
+
+    @action("Workflow from system", description="Node workflow of the loaded system from its paths (RTT-Fusion)")
+    def workflow_from_system(self, ctx):
+        _require_rt()
+        fg, _, _, io, validate = self._fusion()
+        system, _ = self._current(ctx)
+        graph = fg.graph_from_raytatouille(system)
+        registry = fg.builtin_registry()
+        # every node with its effective sockets, so the editor needs no type knowledge
+        for node in graph.nodes.values():
+            if not node.sockets:
+                node.sockets = validate.node_sockets(node, registry)
+        diagnostics = [d.__dict__ for d in validate.validate(graph, registry)]
+        ctx.set_workflow({"graph": io.to_dict(graph), "types": self._catalogue(registry),
+                          "diagnostics": diagnostics})
+        return f"workflow: {len(graph.nodes)} blocks, {len(graph.links)} links"
+
+    @action("Check workflow", description="Check the node workflow (RTT-Fusion) and mark problems")
+    def check_workflow(self, ctx):
+        fg, _, _, io, validate = self._fusion()
+        wf = ctx.workflow()
+        if not wf.get("graph"):
+            raise UserError("No node workflow yet – Workflow from system creates one.")
+        graph = io.from_dict(wf["graph"])
+        diagnostics = validate.validate(graph, fg.builtin_registry())
+        wf["diagnostics"] = [d.__dict__ for d in diagnostics]
+        ctx.set_workflow(wf)
+        n_err = sum(1 for d in diagnostics if d.severity == "error")
+        for d in diagnostics:
+            ctx.log(f"{d.severity}: {d.code} – {d.message} ({d.location})")
+        return f"workflow: {n_err} error(s), {len(diagnostics) - n_err} warning(s)"
+
+    @action("Run workflow", description="Compute the node workflow (RTT-Fusion R15): coherent camera images")
+    def run_workflow(self, ctx):
+        _require_rt()
+        fg, backend_rtt, execute, io, validate = self._fusion()
+        wf = ctx.workflow()
+        if not wf.get("graph"):
+            raise UserError("No node workflow yet – Workflow from system creates one.")
+        graph = io.from_dict(wf["graph"])
+        registry = fg.builtin_registry()
+        system, _ = self._current(ctx)
+        compiled = self._compile(system)
+        detectors = [n for n in graph.nodes.values() if n.type_id == "rtt.detector"]
+        if not detectors:
+            raise UserError("The workflow has no detector block.")
+        run = ctx.result_set(f"Workflow {Path(self.loaded_from or 'system').name.split('.')[0]}")
+        made = []
+        layouts = {L.id: L for L in rt.layout.surfaces(compiled)}
+        for k, node in enumerate(detectors):
+            ctx.check_cancel()
+            ctx.progress(k / len(detectors), f"workflow: {node.name or node.id}")
+            surface = (node.params.get("surfaces") or [None])[0]
+            L = layouts.get(surface)
+            hu, hv = 1.0, 1.0
+            if L is not None and L.aperture is not None:
+                kind, a = L.aperture
+                hu, hv = (a["half_width_x"], a["half_width_y"]) if kind == "rectangular" else \
+                    (a.get("radius", a.get("semi_axis_x", 1.0)), a.get("radius", a.get("semi_axis_y", 1.0)))
+            n = ctx.params["workflow_pixels"]
+            pixels = [n, max(1, round(n * hv / hu))] if hu >= hv else [max(1, round(n * hu / hv)), n]
+            ex = execute.Executor(graph, registry, backend_rtt.EVALUATORS,
+                                  {"system": system, "compiled": compiled, "materials": self.library,
+                                   "rings": rings_for(ctx.params["workflow_rays"]), "pixels": pixels})
+            try:
+                image = ex.evaluate(node.id, "image")
+            except execute.ExecutionError as e:
+                raise UserError(f"The workflow cannot be computed: {e}") from e
+            for line in ex.context.log:
+                ctx.log(line)
+            if not image.groups:
+                ctx.log(f"{node.id}: no light reaches the detector")
+                continue
+            if float(image.values.max()) <= 0.0:
+                ctx.log(f"{node.id}: the light focuses into less than a pixel (or a caustic) – the coherent "
+                        "ray image (R15) needs a field there; field tracing comes with R18")
+            ny, nx = image.values.shape
+            ctx.image(run, f"{node.name or node.id} (coherent)", image.values.reshape(-1), nx, ny,
+                      extent=image.extent, unit="W/mm² (rel.)",
+                      description=f"{node.name or node.id}: {len(image.groups)} coherence group(s), "
+                                  f"{nx}×{ny} px – amplitudes within a group, intensities across groups")
+            made.append(f"{node.name or node.id} (peak {float(image.values.max()):.3g})")
+        return "workflow: " + (", ".join(made) if made else "no detector got light")
 
     @action("Optimise", description="Raytatouille's optimiser; the surfaces update after every iteration")
     def optimise(self, ctx):
