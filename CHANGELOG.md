@@ -21,6 +21,9 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
   last interpolation point outside the parameter range); steep, nearly hemispherical lenses
   were drawn up to 0.1 mm off – rotationally symmetric surfaces are now surfaces of revolution
   (all surfaces of the tested objectives and the Linnik within 0.1 µm).
+- Raytracer: *Trace rays* traces every path of the system (or the ones listed under *Paths*),
+  one line set per path, *Colour by → path*; paths ending on the same surface add up in its
+  irradiance.
 - Raytracer: *Trace rays* works for folded / tilted paths (beam splitter, Linnik) whose stop is
   the first surface: the plugin builds the start rays itself, identical to Raytatouille's
   `make_rays` where both work.

@@ -55,12 +55,13 @@ class RaytracerPlugin(Plugin):
                                   group="System", description="Largest deviation of the drawn NURBS from the "
                                                               "optical surface (only the drawing; rays are traced "
                                                               "on the exact surfaces)"),
-        "path": Param.text("", label="Path", group="Trace", description="Name of the path; empty: the first"),
+        "path": Param.text("", label="Paths", group="Trace",
+                           description="Names of the paths, separated by commas; empty: every path"),
         "fields": Param.integer(0, min=0, label="Field", group="Trace", description="0: all fields"),
         "wavelengths": Param.choice(["all", "reference"], "all", label="Wavelengths", group="Trace"),
         "rings": Param.integer(6, min=1, max=60, label="Pupil rings (drawn)", group="Trace",
                                description="Hexapolar sampling of the rays that are drawn"),
-        "colour_by": Param.choice(["wavelength", "field"], "wavelength", label="Colour by", group="Trace"),
+        "colour_by": Param.choice(["wavelength", "field", "path"], "wavelength", label="Colour by", group="Trace"),
         "irradiance": Param.boolean(True, label="Irradiance on the image", group="Trace"),
         "irradiance_rings": Param.integer(40, min=2, max=400, label="Pupil rings (irradiance)", group="Trace"),
         "grid": Param.integer(128, min=8, max=1024, label="Irradiance grid", group="Trace"),
@@ -327,18 +328,53 @@ class RaytracerPlugin(Plugin):
         system, rev = self._current(ctx)
         compiled = self._compile(system)
         p = ctx.params
-        path = p["path"] or 0
+        names = list(compiled.path_names)
+        wanted = [n.strip() for n in p["path"].split(",") if n.strip()]
+        unknown = [n for n in wanted if n not in names]
+        if unknown:
+            raise UserError(f"Unknown path {', '.join(unknown)}. Paths of this system: {', '.join(names)}")
+        paths = wanted or names or [0]  # empty: every path
         fields = None if p["fields"] == 0 else [p["fields"] - 1]
         wls = range(len(compiled.wavelengths_um)) if p["wavelengths"] == "all" else [None]
         self._warn_inactive(ctx)
 
-        # drawn rays (recorded paths)
         run = ctx.result_set(f"Trace {Path(self.loaded_from or 'system').name.split('.')[0]}")
+        summary, failed = [], []
+        irradiance: dict[int, dict] = {}  # last surface -> accumulated grid of every path ending there
+        for k, path in enumerate(paths):
+            ctx.check_cancel()
+            label = path if isinstance(path, str) else "path"
+            try:
+                n_ok, n_total, last = self._draw_rays(ctx, system, compiled, run, path, label, k, fields, wls)
+                summary.append(f"{label}: {n_ok}/{n_total}")
+                if p["irradiance"]:
+                    self._irradiance(ctx, system, compiled, path, fields, wls, last, irradiance)
+            except UserError as e:
+                if len(paths) == 1:
+                    raise
+                failed.append(label)
+                ctx.log(f"path {label}: {e}")
+        fields_on = []
+        for acc in irradiance.values():
+            values = acc["grid"].reshape(-1)  # values[j * width + i]: i along u (x), j along v (y)
+            ctx.field(run, f"Irradiance {acc['surface']}", acc["entity"], values, acc["n"], acc["n"],
+                      unit="W/mm² (rel.)")
+            fields_on.append(f"{acc['surface']} (peak {float(values.max()) if values.size else 0.0:.3g}"
+                             f"{', ' + ' + '.join(acc['paths']) if len(acc['paths']) > 1 else ''})")
+        message = "rays reaching the end of the path – " + ", ".join(summary)
+        if fields_on:
+            message += "; irradiance on " + ", ".join(fields_on)
+        if failed:
+            message += f"; not traced: {', '.join(failed)} (see the plugin log)"
+        return message
+
+    def _draw_rays(self, ctx, system, compiled, run, path, label, index, fields, wls):
+        """The recorded rays of one path as a line set; returns (reaching the end, total, last surface)."""
+        p = ctx.params
         points, starts, values = [], [0], []
         n_ok = n_total = 0
-        last_surface = None  # the last surface of the path (where the irradiance is computed)
+        last_surface = None
         for w in wls:
-            ctx.check_cancel()
             rays = self._make_rays(system, compiled, p["rings"], path, fields, w)
             stats, rec = rt.trace.trace(compiled, rays, path=path, record_path=True,
                                         max_recorded_rays=max(rays.size, 1))
@@ -348,8 +384,12 @@ class RaytracerPlugin(Plugin):
             pos = np.asarray(rec.position, dtype=float)  # (N, slots, 3); NaN after a loss
             idx = np.asarray(rec.ray_indices)
             wl_um = compiled.wavelengths_um[compiled.reference_wavelength if w is None else w]
-            value = (np.full(len(idx), wl_um * 1000.0) if p["colour_by"] == "wavelength"
-                     else np.asarray(rays.field)[idx].astype(float) + 1)
+            if p["colour_by"] == "wavelength":
+                value = np.full(len(idx), wl_um * 1000.0)
+            elif p["colour_by"] == "path":
+                value = np.full(len(idx), float(index + 1))
+            else:
+                value = np.asarray(rays.field)[idx].astype(float) + 1
             for k in range(len(idx)):
                 points.append(pos[k])
                 starts.append(starts[-1] + pos.shape[1])
@@ -358,38 +398,43 @@ class RaytracerPlugin(Plugin):
             n_ok += counts[0]
             n_total += sum(counts)
         if points:
-            ctx.lines(run, "Rays", np.concatenate(points), np.asarray(starts), np.concatenate(values),
-                      unit="nm" if p["colour_by"] == "wavelength" else "field",
-                      colormap="viridis" if p["colour_by"] == "wavelength" else "plasma")
+            unit = {"wavelength": "nm", "path": "path"}.get(p["colour_by"], "field")
+            colormap = {"wavelength": "viridis", "path": "coolwarm"}.get(p["colour_by"], "plasma")
+            ranges = (1.0, float(max(len(compiled.path_names), 2))) if p["colour_by"] == "path" else None
+            ctx.lines(run, f"Rays {label}", np.concatenate(points), np.asarray(starts), np.concatenate(values),
+                      unit=unit, colormap=colormap, value_range=ranges)
+        return n_ok, n_total, last_surface
 
-        message = f"{n_ok} of {n_total} drawn rays reach the end of the path"
-        if p["irradiance"]:
-            message += "; " + self._irradiance(ctx, system, compiled, run, path, fields, wls, last_surface)
-        return message
-
-    def _irradiance(self, ctx, system, compiled, run, path, fields, wls, last_surface: int | None) -> str:
-        """Irradiance on the last surface of the path (Raytatouille #379, rt.analysis.irradiance_map)
-        over the parameter domain of its drawn face, so the field covers the face exactly."""
+    def _irradiance(self, ctx, system, compiled, path, fields, wls, last_surface, acc: dict) -> None:
+        """Irradiance of one path on its last surface (Raytatouille #379, rt.analysis.irradiance_map)
+        over the parameter domain of the drawn face, added to `acc` (paths ending on the same
+        surface add up – incoherently)."""
         if not hasattr(rt.analysis, "irradiance_map"):
-            raise RuntimeError("the irradiance needs a newer Raytatouille (rt.analysis.irradiance_map, #379)")
+            raise UserError("The irradiance needs a newer Raytatouille (rt.analysis.irradiance_map, #379).")
         p = ctx.params
         det = self._detector_index(compiled) if last_surface is None else last_surface
         L = rt.layout.surfaces(compiled)[det]
         entity = next((e for e in self._entities(ctx) if e["attributes"].get("rtt.surface") == L.id), None)
         if entity is None:
-            return f"{L.id} is not drawn"
+            ctx.log(f"irradiance: {L.id} is not drawn")
+            return
         knots_u = entity["geometry"]["surface"]["knots_u"]
         knots_v = entity["geometry"]["surface"]["knots_v"]
+        if entity["geometry"]["surface"].get("num_v") == 9 and entity["geometry"]["surface"].get("degree_v") == 2:
+            ctx.log(f"irradiance on {L.id}: curved surface of revolution – not mapped yet")
+            return
         extent = (knots_u[0], knots_u[-1], knots_v[0], knots_v[-1])  # local x, y = face (u, v)
         n = p["grid"]
-        grid = np.zeros((n, n))
+        entry = acc.setdefault(det, {"surface": L.id, "entity": entity["id"], "n": n, "grid": np.zeros((n, n)),
+                                     "paths": []})
+        entry["paths"].append(str(path))
         lost = {"outside the grid": 0, "vignetted": 0, "not reached": 0}
         token = rt.CancelToken()
 
         def progress(done, total, stage):
             if ctx.cancelled():
                 token.cancel()
-            ctx.progress(min(done / max(total, 1), 1.0), f"irradiance: {stage} {done}/{total}")
+            ctx.progress(min(done / max(total, 1), 1.0), f"irradiance {path}: {stage} {done}/{total}")
 
         weights = compiled.wavelength_weights
         for w in wls:
@@ -407,17 +452,13 @@ class RaytracerPlugin(Plugin):
                 im = rt.analysis.irradiance_map(compiled, rec, surface=L.id, path=path, nx=n, ny=n,
                                                 extent=extent, wavelength=w)
             wl_weight = weights[compiled.reference_wavelength if w is None else w]
-            grid += np.asarray(im.values, dtype=float) * wl_weight  # (ny, nx): row j along v
+            entry["grid"] += np.asarray(im.values, dtype=float) * wl_weight  # (ny, nx): row j along v
             for key, attr in (("outside the grid", "outside_grid"), ("vignetted", "vignetted"),
                               ("not reached", "not_reached")):
                 lost[key] += int(getattr(im, attr).count)
-        values = grid.reshape(-1)  # values[j * width + i]: i along u (x), j along v (y)
-        ctx.field(run, "Irradiance", entity["id"], values, n, n, unit="W/mm² (rel.)")
         missing = ", ".join(f"{k}: {v}" for k, v in lost.items() if v)
         if missing:
-            ctx.log(f"irradiance on {L.id}: rays not counted – {missing}")
-        peak = float(values.max()) if values.size else 0.0
-        return f"irradiance on {L.id} (peak {peak:.3g})"
+            ctx.log(f"irradiance on {L.id} ({path}): rays not counted – {missing}")
 
     def _warn_inactive(self, ctx):
         off = [e["name"] for e in self._entities(ctx) if e["attributes"].get("sim.inactive")]
