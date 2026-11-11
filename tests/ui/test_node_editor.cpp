@@ -1,11 +1,16 @@
+#include <QApplication>
 #include <QFile>
 #include <QGraphicsRectItem>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QLineF>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QWheelEvent>
+
+#include <cmath>
 
 #include "document/document.hpp"
 #include "document/nfcad_io.hpp"
@@ -91,6 +96,50 @@ class TestNodeEditor : public QObject {
     nfcad::document::Document back;
     QCOMPARE(nfcad::document::load_nfcad(back, path), QString());
     QCOMPARE(back.workflow(), linnik());
+  }
+
+  void navigation() {
+    // as in the CAD views: zoom to the cursor, pan by scroll and drag, zoom extents
+    NodeEditor e;
+    e.resize(800, 400);
+    e.setAttribute(Qt::WA_DontShowOnScreen);
+    e.setWorkflow(linnik());
+    e.show();
+    e.fitAll();
+    const QPoint cursor(200, 150);
+    const QPointF under = e.mapToScene(cursor);
+    const double z0 = e.zoom();
+    // mouse wheel one notch up: closer, the scene point under the cursor stays there
+    QWheelEvent wheel(QPointF(cursor), QPointF(e.viewport()->mapToGlobal(cursor)), QPoint(), QPoint(0, 120),
+                      Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(e.viewport(), &wheel);
+    QVERIFY(e.zoom() > z0 * 1.1);
+    QVERIFY(QLineF(e.mapToScene(cursor), under).length() < 2.0 / e.zoom());
+    // zoom is limited
+    for (int k = 0; k < 60; ++k) e.zoomAt(QPointF(cursor), 2.0);
+    QVERIFY(e.zoom() <= 8.0 + 1e-9);
+    // two-finger trackpad scroll pans (no zoom)
+    const double z1 = e.zoom();
+    const QPointF before = e.mapToScene(QPoint(400, 200));
+    QWheelEvent scroll(QPointF(cursor), QPointF(e.viewport()->mapToGlobal(cursor)), QPoint(40, 0), QPoint(0, 0),
+                       Qt::NoButton, Qt::NoModifier, Qt::ScrollUpdate, false);
+    QApplication::sendEvent(e.viewport(), &scroll);
+    QCOMPARE(e.zoom(), z1);
+    QVERIFY(std::abs((before - e.mapToScene(QPoint(400, 200))).x() - 40.0 / z1) < 2.0 / z1);
+    // a right drag pans far beyond the blocks (open canvas) and opens no menu
+    const QPointF b2 = e.mapToScene(QPoint(400, 200));
+    QTest::mousePress(e.viewport(), Qt::RightButton, {}, QPoint(400, 200));
+    for (int x = 410; x <= 700; x += 10) {
+      QMouseEvent move(QEvent::MouseMove, QPointF(x, 200), QPointF(e.viewport()->mapToGlobal(QPoint(x, 200))),
+                       Qt::NoButton, Qt::RightButton, Qt::NoModifier);
+      QApplication::sendEvent(e.viewport(), &move);
+    }
+    QTest::mouseRelease(e.viewport(), Qt::RightButton, {}, QPoint(700, 200));
+    QVERIFY(std::abs((b2 - e.mapToScene(QPoint(400, 200))).x() - 300.0 / e.zoom()) < 2.0 / e.zoom());
+    // zoom extents with Z E
+    QTest::keyClick(&e, Qt::Key_Z);
+    QTest::keyClick(&e, Qt::Key_E);
+    QVERIFY(std::abs(e.zoom() - z0) < 1e-6);
   }
 
   void snapshot() {

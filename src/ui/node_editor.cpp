@@ -1,13 +1,16 @@
 #include "ui/node_editor.hpp"
 
+#include <QApplication>
 #include <QContextMenuEvent>
 #include <QGraphicsEllipseItem>
 #include <QGraphicsPathItem>
 #include <QGraphicsScene>
 #include <QGraphicsSimpleTextItem>
 #include <QInputDialog>
+#include <QKeyEvent>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QNativeGestureEvent>
 #include <QPainter>
 #include <QScrollBar>
 #include <QSet>
@@ -185,8 +188,32 @@ NodeEditor::NodeEditor(QWidget* parent) : QGraphicsView(parent) {
   setRenderHint(QPainter::Antialiasing);
   setBackgroundBrush(QColor(30, 32, 37));
   setDragMode(QGraphicsView::RubberBandDrag);
-  setTransformationAnchor(QGraphicsView::AnchorUnderMouse);
+  // navigation as in the CAD views (docs/ui-concept.md): no scroll bars, an open canvas,
+  // zoom to the cursor, pan by middle / right / Alt + left drag and two-finger scroll
+  setTransformationAnchor(QGraphicsView::NoAnchor);
+  setResizeAnchor(QGraphicsView::AnchorViewCenter);
+  setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  scene()->setSceneRect(-1.0e6, -1.0e6, 2.0e6, 2.0e6);
   setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
+  setFocusPolicy(Qt::StrongFocus);
+}
+
+double NodeEditor::zoom() const { return transform().m11(); }
+
+void NodeEditor::zoomAt(const QPointF& view_pos, double factor) {
+  constexpr double kMin = 0.05;
+  constexpr double kMax = 8.0;
+  factor = std::clamp(zoom() * factor, kMin, kMax) / zoom();
+  if (factor == 1.0) return;
+  const QPointF anchor = mapToScene(view_pos.toPoint());
+  scale(factor, factor);
+  pan(view_pos - mapFromScene(anchor));  // the anchor goes back under the cursor
+}
+
+void NodeEditor::pan(const QPointF& delta) {
+  horizontalScrollBar()->setValue(horizontalScrollBar()->value() - qRound(delta.x()));
+  verticalScrollBar()->setValue(verticalScrollBar()->value() - qRound(delta.y()));
 }
 
 void NodeEditor::setWorkflow(const QJsonObject& workflow) {
@@ -365,12 +392,17 @@ void NodeEditor::rebuild() {
     scene()->addItem(link);
     links_.append(link);
   }
-  scene()->setSceneRect(scene()->itemsBoundingRect().adjusted(-200, -200, 200, 200));
 }
 
 void NodeEditor::fitAll() {
   if (scene()->items().isEmpty()) return;
   fitInView(scene()->itemsBoundingRect().adjusted(-30, -30, 30, 30), Qt::KeepAspectRatio);
+  if (zoom() > 1.5) {  // a single block does not fill the window
+    const QPointF c = scene()->itemsBoundingRect().center();
+    resetTransform();
+    scale(1.5, 1.5);
+    centerOn(c);
+  }
 }
 
 void NodeEditor::updateLinks() {
@@ -506,9 +538,18 @@ QString NodeEditor::addNode(const QString& type, const QPointF& position) {
 // ------------------------------------------------------------------------------ interaction
 
 void NodeEditor::mousePressEvent(QMouseEvent* event) {
-  if (event->button() == Qt::MiddleButton) {
+  const bool alt_left = event->button() == Qt::LeftButton && (event->modifiers() & Qt::AltModifier);
+  if (event->button() == Qt::MiddleButton || alt_left) {
     panning_ = true;
-    pan_from_ = event->position().toPoint();
+    pan_from_ = event->position();
+    viewport()->setCursor(Qt::ClosedHandCursor);
+    return;
+  }
+  if (event->button() == Qt::RightButton) {
+    right_down_ = true;
+    right_dragged_ = false;
+    right_from_ = event->position();
+    pan_from_ = event->position();
     return;
   }
   if (event->button() == Qt::LeftButton) {
@@ -525,11 +566,15 @@ void NodeEditor::mousePressEvent(QMouseEvent* event) {
 }
 
 void NodeEditor::mouseMoveEvent(QMouseEvent* event) {
+  if (right_down_ && !right_dragged_ &&
+      (event->position() - right_from_).manhattanLength() > QApplication::startDragDistance()) {
+    right_dragged_ = true;
+    panning_ = true;
+    viewport()->setCursor(Qt::ClosedHandCursor);
+  }
   if (panning_) {
-    const QPoint d = event->position().toPoint() - pan_from_;
-    pan_from_ = event->position().toPoint();
-    horizontalScrollBar()->setValue(horizontalScrollBar()->value() - d.x());
-    verticalScrollBar()->setValue(verticalScrollBar()->value() - d.y());
+    pan(event->position() - pan_from_);
+    pan_from_ = event->position();
     return;
   }
   if (drag_from_ != nullptr && drag_line_ != nullptr) {
@@ -544,8 +589,18 @@ void NodeEditor::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void NodeEditor::mouseReleaseEvent(QMouseEvent* event) {
+  if (event->button() == Qt::RightButton && right_down_) {
+    right_down_ = false;
+    if (!right_dragged_) showMenu(event->position().toPoint(), event->globalPosition().toPoint());
+    if (panning_) {
+      panning_ = false;
+      viewport()->unsetCursor();
+    }
+    return;
+  }
   if (panning_) {
     panning_ = false;
+    viewport()->unsetCursor();
     return;
   }
   if (drag_from_ != nullptr) {
@@ -571,17 +626,71 @@ void NodeEditor::mouseReleaseEvent(QMouseEvent* event) {
   }
 }
 
+void NodeEditor::mouseDoubleClickEvent(QMouseEvent* event) {
+  if (event->button() == Qt::MiddleButton) {
+    fitAll();
+    return;
+  }
+  QGraphicsView::mouseDoubleClickEvent(event);
+}
+
 void NodeEditor::wheelEvent(QWheelEvent* event) {
-  const double factor = std::pow(1.0015, event->angleDelta().y());
-  scale(factor, factor);
+  // as in the CAD views: two-finger trackpad scroll pans, the wheel (or Cmd/Ctrl + scroll) zooms
+  constexpr double kWheelZoomPerNotch = 0.85;  // same step as the viewports
+  const bool zoom_modifier = (event->modifiers() & Qt::ControlModifier) != 0;
+  const bool trackpad_scroll = !event->pixelDelta().isNull() && event->phase() != Qt::NoScrollPhase;
+  if (trackpad_scroll && !zoom_modifier) {
+    pan(QPointF(event->pixelDelta()));
+  } else {
+    double steps = event->angleDelta().y() / 120.0;
+    if (steps == 0.0) steps = event->pixelDelta().y() / 50.0;
+    zoomAt(event->position(), 1.0 / std::pow(kWheelZoomPerNotch, steps));
+  }
+  event->accept();
+}
+
+void NodeEditor::keyPressEvent(QKeyEvent* event) {
+  // zoom extents: Z E (as in the CAD views); Home as well
+  if (event->key() == Qt::Key_Home || (z_pressed_ && event->key() == Qt::Key_E)) {
+    z_pressed_ = false;
+    fitAll();
+    return;
+  }
+  z_pressed_ = event->key() == Qt::Key_Z && event->modifiers() == Qt::NoModifier;
+  if (z_pressed_) return;
+  QGraphicsView::keyPressEvent(event);
+}
+
+bool NodeEditor::viewportEvent(QEvent* event) {
+  if (event->type() == QEvent::NativeGesture) {
+    auto* gesture = static_cast<QNativeGestureEvent*>(event);
+    if (gesture->gestureType() == Qt::ZoomNativeGesture) {  // trackpad pinch
+      zoomAt(mapFromGlobal(gesture->globalPosition().toPoint()), std::exp(gesture->value()));
+      return true;
+    }
+    if (gesture->gestureType() == Qt::SmartZoomNativeGesture) {  // two-finger double tap
+      fitAll();
+      return true;
+    }
+  }
+  return QGraphicsView::viewportEvent(event);
 }
 
 void NodeEditor::contextMenuEvent(QContextMenuEvent* event) {
+  // mouse: opened on the release of the right button (a right drag pans); keyboard: here
+  if (event->reason() == QContextMenuEvent::Mouse) {
+    event->accept();
+    return;
+  }
+  showMenu(event->pos(), event->globalPos());
+}
+
+void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
   QMenu menu(this);
-  const QPointF at = mapToScene(event->pos());
+  const QPointF at = mapToScene(view_pos);
   NodeItem* node = nullptr;
   LinkItem* link = nullptr;
-  for (QGraphicsItem* item : items(event->pos())) {
+  for (QGraphicsItem* item : items(view_pos)) {
     for (QGraphicsItem* p = item; p != nullptr && node == nullptr; p = p->parentItem()) node = dynamic_cast<NodeItem*>(p);
     if (link == nullptr) link = dynamic_cast<LinkItem*>(item);
     if (node != nullptr) break;
@@ -618,7 +727,7 @@ void NodeEditor::contextMenuEvent(QContextMenuEvent* event) {
     menu.addAction(tr("Arrange"), this, &NodeEditor::arrange);
     menu.addAction(tr("Show all"), this, &NodeEditor::fitAll);
   }
-  menu.exec(event->globalPos());
+  menu.exec(global_pos);
 }
 
 }  // namespace nfcad::ui

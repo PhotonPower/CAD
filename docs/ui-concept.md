@@ -75,6 +75,11 @@ to a text abbreviation, so the skeleton runs before the icon set exists.
 
 `src/platform/` maps Cmd ↔ Ctrl and handles trackpad gestures.
 
+The *Node workflow* window navigates the same way: pan with middle drag, right drag (a right
+click without moving opens the context menu), Alt + left drag or two-finger scroll; zoom to the
+cursor with the wheel, pinch or Cmd + two-finger scroll; zoom extents with `Z` `E`, `Home`,
+double-click middle or two-finger double tap.
+
 ## Selection (M3)
 
 | Action | Effect |
