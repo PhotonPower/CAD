@@ -6,8 +6,11 @@
 #include <QStandardPaths>
 #include <QTest>
 #include <QTreeWidget>
+#include <memory>
 
 #include "app/main_window.hpp"
+#include "document/document.hpp"
+#include "document/entity.hpp"
 #include "plugins/plugin_manager.hpp"
 #include "ui/plugin_settings_dialog.hpp"
 #include "ui/results_panel.hpp"
@@ -16,6 +19,17 @@
 class TestMainWindowPlugins : public QObject {
   Q_OBJECT
  private slots:
+  void closingWithUndoHistory() {
+    // regression (M8): destroying the window with an undo history emitted cleanChanged into
+    // the half-destroyed window (assert in debug builds, undefined behaviour in release)
+    QStandardPaths::setTestModeEnabled(true);
+    auto w = std::make_unique<nfcad::app::MainWindow>();
+    auto* doc = w->findChild<nfcad::document::Document*>();
+    doc->addEntities({nfcad::document::make_entity(nf::Vec3{1, 2, 3}, QStringLiteral("p"))}, QStringLiteral("add"));
+    QVERIFY(doc->isModified());
+    w.reset();  // must not crash
+  }
+
   void demoPluginFromTheMenu() {
     if (QStandardPaths::findExecutable(QStringLiteral("python3")).isEmpty() &&
         QStandardPaths::findExecutable(QStringLiteral("python")).isEmpty() && qEnvironmentVariableIsEmpty("NFCAD_PYTHON")) {

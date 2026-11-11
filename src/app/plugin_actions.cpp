@@ -7,7 +7,9 @@
 #include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QStatusBar>
+#include <QTimer>
 #include <QToolButton>
+#include <utility>
 
 #include "app/command_controller.hpp"
 #include "app/main_window.hpp"
@@ -18,6 +20,8 @@
 #include "ui/plugin_panel.hpp"
 #include "ui/plugin_settings_dialog.hpp"
 #include "ui/tool_box.hpp"
+#include "viewport/viewport.hpp"
+#include "viewport/viewport_grid.hpp"
 
 namespace nfcad::app {
 
@@ -93,6 +97,10 @@ void MainWindow::createPlugins() {
   if (auto* model = findChild<QDockWidget*>(QStringLiteral("modelDock"))) model->raise();
   view_menu_->addAction(panel_dock->toggleViewAction());
 
+  // a run that fills an empty document (e.g. "Load system") shows its result in all views
+  connect(plugins_, &plugins::PluginManager::jobStarted, this,
+          [this](plugins::PluginHost*, int) { plugin_started_on_empty_ = doc_->entities().empty(); });
+
   connect(plugins_, &plugins::PluginManager::pluginsChanged, this, [this] {
     for (const auto& h : plugins_->plugins()) {
       connectPlugin(h.get());
@@ -117,6 +125,11 @@ void MainWindow::connectPlugin(plugins::PluginHost* host) {
           [this, host](int, bool ok, bool cancelled, const QString& message, bool user_error) {
             if (active_plugin_ == host) active_plugin_ = nullptr;
             plugin_panel_->setBusy(false);
+            if (std::exchange(plugin_started_on_empty_, false) && !doc_->entities().empty()) {
+              QTimer::singleShot(0, this, [this] {
+                for (viewport::Viewport* v : grid_->views()) v->zoomExtents();
+              });
+            }
             job_progress_->hide();
             job_cancel_->hide();
             const QString what = host->manifest().displayName();

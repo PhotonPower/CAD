@@ -61,6 +61,8 @@ class MainWindow : public QMainWindow {
   /// Opens a .nfcad document or imports a STEP file (by extension). Returns false on errors
   /// (a message box has been shown unless `quiet`).
   bool openFile(const QString& path, bool quiet = false);
+  /// After a crash in the last session: points to the local crash report (once).
+  void reportPreviousCrash();
   /// Benchmark: after loading and tessellation, orbits the perspective view for `frames`
   /// frames, prints timings to stdout and quits the application.
   void runBenchmarkWhenReady(int frames);
@@ -115,6 +117,7 @@ class MainWindow : public QMainWindow {
   results::ResultStore* results_ = nullptr;
   plugins::PluginManager* plugins_ = nullptr;
   plugins::PluginHost* active_plugin_ = nullptr;
+  bool plugin_started_on_empty_ = false;
   QMenu* plugins_menu_ = nullptr;
   QProgressBar* job_progress_ = nullptr;
   QToolButton* job_cancel_ = nullptr;
