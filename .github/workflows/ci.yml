@@ -26,7 +26,7 @@ jobs:
     env:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Tools
         run: brew install qt ninja
       - name: Configure & build
@@ -50,7 +50,7 @@ jobs:
                          qt6-qtshadertools-devel \
                          mesa-libGL-devel
           rpm -q qt6-qtbase
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Configure & build
         run: |
           cmake --preset ci -DNFCAD_NURBFORGE_TAG=$NURBFORGE_TAG
@@ -62,7 +62,7 @@ jobs:
     name: Windows (MSVC, Qt 6)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: jurplel/install-qt-action@v4
         with:
           version: "6.8.*"
@@ -92,6 +92,6 @@ jobs:
     name: clang-format (report only)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - run: |
           find src tests -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run || true
