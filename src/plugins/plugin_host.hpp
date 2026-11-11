@@ -5,6 +5,8 @@
 #include <QObject>
 #include <QPointer>
 #include <QProcess>
+#include <QTemporaryDir>
+#include <memory>
 #include <map>
 #include <optional>
 
@@ -93,6 +95,7 @@ class PluginHost : public QObject {
   void beginJob(int job);
   void endJob(int job, bool ok, bool cancelled, const QString& message);
   void onProcessFinished(int code, QProcess::ExitStatus status);
+  [[nodiscard]] QString arrayDir() const;
 
   Manifest manifest_;
   document::Document* doc_;
@@ -103,6 +106,7 @@ class PluginHost : public QObject {
   QPointer<QTcpSocket> socket_;
   QByteArray buffer_;
   QByteArray token_;           // shared secret of this process (NFCAD_TOKEN)
+  std::unique_ptr<QTemporaryDir> array_dir_;  // the only place array files are accepted from
   bool authenticated_ = false;
   bool ready_ = false;
   std::vector<Action> actions_;

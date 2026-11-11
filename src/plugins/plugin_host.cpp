@@ -20,20 +20,25 @@ namespace nfcad::plugins {
 
 namespace {
 
-/// Reads an array file written by nfcad.arrays.write (little endian) and deletes it.
+/// Reads an array file written by nfcad.arrays.write (little endian) and deletes it. Only files
+/// directly inside `dir` (the host's private directory, NFCAD_ARRAY_DIR) are accepted: a faulty
+/// plugin must not make CAD read or delete other files.
 template <class T>
-std::vector<T> read_array(const QJsonValue& descriptor) {
+std::vector<T> read_array(const QJsonValue& descriptor, const QString& dir) {
   const QJsonObject d = descriptor.toObject();
   const QString path = d["file"].toString();
   const auto count = static_cast<std::size_t>(d["count"].toInteger());
   std::vector<T> out;
   if (path.isEmpty()) return out;
-  // Only nfcad-*.bin files in the temporary directory (they are deleted after reading):
-  // a faulty plugin must not make CAD read or delete other files.
   const QFileInfo info(path);
-  if (!info.fileName().startsWith(QLatin1String("nfcad-")) || !info.fileName().endsWith(QLatin1String(".bin")) ||
-      info.canonicalPath() != QFileInfo(QDir::tempPath()).canonicalFilePath()) {
-    throw std::runtime_error("array file is not an nfcad temporary file");
+  // the plugin builds the path from NFCAD_ARRAY_DIR, so the cleaned directory strings agree;
+  // the canonical paths are compared as a fallback (symbolic links, 8.3 names on Windows)
+  const QString parent = QDir::cleanPath(QDir::fromNativeSeparators(info.absolutePath()));
+  const bool inside = parent == QDir::cleanPath(QDir::fromNativeSeparators(dir)) ||
+                      QFileInfo(info.absolutePath()).canonicalFilePath() == QFileInfo(dir).canonicalFilePath();
+  if (dir.isEmpty() || !info.fileName().startsWith(QLatin1String("nfcad-")) ||
+      !info.fileName().endsWith(QLatin1String(".bin")) || !inside) {
+    throw std::runtime_error("array file is not in the plugin's array directory");
   }
   QFile f(path);
   if (!f.open(QIODevice::ReadOnly)) throw std::runtime_error("cannot open array file " + path.toStdString());
@@ -102,6 +107,8 @@ PluginHost::PluginHost(Manifest manifest, document::Document* doc, document::Sel
 
 PluginHost::~PluginHost() { stop(); }
 
+QString PluginHost::arrayDir() const { return array_dir_ && array_dir_->isValid() ? array_dir_->path() : QString(); }
+
 quint16 PluginHost::channelPort() const { return server_ != nullptr ? server_->serverPort() : 0; }
 
 bool PluginHost::running() const { return process_ != nullptr && process_->state() != QProcess::NotRunning; }
@@ -128,6 +135,8 @@ void PluginHost::start(const QString& python, const QString& pythonpath) {
              pythonpath + (env.contains(QStringLiteral("PYTHONPATH")) ? sep + env.value(QStringLiteral("PYTHONPATH")) : QString()));
   env.insert(QStringLiteral("PYTHONUNBUFFERED"), QStringLiteral("1"));
   env.insert(QStringLiteral("NFCAD_TOKEN"), QString::fromLatin1(token_));  // not on the command line
+  array_dir_ = std::make_unique<QTemporaryDir>(QDir::temp().filePath(QStringLiteral("nfcad-arrays-XXXXXX")));
+  env.insert(QStringLiteral("NFCAD_ARRAY_DIR"), QDir::toNativeSeparators(array_dir_->path()));
   process_->setProcessEnvironment(env);
   process_->setWorkingDirectory(manifest_.directory);
   connect(process_, &QProcess::readyReadStandardError, this, [this] {
@@ -292,9 +301,9 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
   }
   if (method == QLatin1String("results.lines")) {
     results::LineSet l;
-    l.points = read_array<float>(args["points"]);
-    l.starts = read_array<std::uint32_t>(args["starts"]);
-    l.values = read_array<float>(args["values"]);
+    l.points = read_array<float>(args["points"], arrayDir());
+    l.starts = read_array<std::uint32_t>(args["starts"], arrayDir());
+    l.values = read_array<float>(args["values"], arrayDir());
     if (l.starts.empty() && !l.points.empty()) l.starts = {0, static_cast<std::uint32_t>(l.pointCount())};
     if (l.starts.back() > l.pointCount()) throw std::runtime_error("polyline starts beyond the points");
     l.colormap = results::colormap_from_name(args["colormap"].toString());
@@ -310,7 +319,7 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     f.face = args["face"].toInt();
     f.width = args["width"].toInt();
     f.height = args["height"].toInt();
-    f.values = read_array<float>(args["values"]);
+    f.values = read_array<float>(args["values"], arrayDir());
     if (f.width <= 0 || f.height <= 0 || f.values.size() != static_cast<std::size_t>(f.width) * static_cast<std::size_t>(f.height)) {
       throw std::runtime_error("field: values do not match width x height");
     }

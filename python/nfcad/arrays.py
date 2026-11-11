@@ -28,7 +28,8 @@ def write(values: Any, dtype: str) -> dict:
             a.byteswap()
         data = a.tobytes()
         count = len(a)
-    fd, path = tempfile.mkstemp(prefix="nfcad-", suffix=".bin")
+    # CAD gives every plugin process a private directory and accepts array files only from there
+    fd, path = tempfile.mkstemp(prefix="nfcad-", suffix=".bin", dir=os.environ.get("NFCAD_ARRAY_DIR") or None)
     with os.fdopen(fd, "wb") as f:
         f.write(data)
     return {"file": path, "dtype": dtype, "count": count}
