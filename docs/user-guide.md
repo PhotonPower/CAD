@@ -109,6 +109,10 @@ undo step**.
 
 ![Plugin settings](images/plugin-settings.png)
 
+Images (e.g. a camera image of the Raytracer) appear in the **Image** window: physical axes,
+colour bar, *log* for a logarithmic scale, the value under the cursor below the image; the
+mouse wheel zooms at the cursor, dragging pans, a double-click shows the whole image.
+
 The **Raytracer** plugin (Raytatouille) loads `.rtt.json` optical systems, traces rays, shows
 the irradiance on the image surface and optimises with live updates – see its
 [guide](../python/plugins/raytracer/README.md). Writing your own plugins:

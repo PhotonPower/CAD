@@ -31,6 +31,7 @@
 #include "ui/results_panel.hpp"
 #include "snap/snap_engine.hpp"
 #include "support/crash_handler.hpp"
+#include "ui/image_view.hpp"
 #include "ui/layer_panel.hpp"
 #include "ui/model_tree_panel.hpp"
 #include "ui/property_panel.hpp"
@@ -47,7 +48,7 @@ namespace nfcad::app {
 using render::DisplayMode;
 
 namespace {
-constexpr int kWindowStateVersion = 5;  // 2: model tree (P1), 3: results + plot (P2), 4: plugin log (P3), 5: plugin panel (P4)
+constexpr int kWindowStateVersion = 6;  // 2: model tree (P1), 3: results + plot (P2), 4: plugin log (P3), 5: plugin panel (P4), 6: image dock
 }
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -364,8 +365,30 @@ void MainWindow::createPanels() {
   connect(results_, &results::ResultStore::changed, this, [this, plot] {
     if (!results_->visibleItems(results::ResultItem::Kind::Curve).empty()) plot->show();
   });
+  // images (camera images): their own window when the first one arrives, can be docked
+  auto* image = new QDockWidget(tr("Image"), this);
+  image->setObjectName(QStringLiteral("imageDock"));
+  image_view_ = new ui::ImageView(results_, image);
+  image->setWidget(image_view_);
+  addDockWidget(Qt::RightDockWidgetArea, image);
+  image->setFloating(true);
+  image->resize(560, 480);
+  image->hide();
+  connect(results_, &results::ResultStore::changed, this, [this, image] {
+    const auto images = results_->visibleItems(results::ResultItem::Kind::Image);
+    const results::ResultId newest = images.empty() ? 0 : images.back()->id;
+    if (newest != 0 && newest != last_image_) {
+      if (image->isFloating() && !image->isVisible()) {
+        image->move(geometry().center() - QPoint(image->width() / 2, image->height() / 2));
+      }
+      image->show();
+      image->raise();
+    }
+    last_image_ = newest;
+  });
   view_menu_->addAction(model->toggleViewAction());
   view_menu_->addAction(results->toggleViewAction());
+  view_menu_->addAction(image->toggleViewAction());
   view_menu_->addAction(plot->toggleViewAction());
   view_menu_->addAction(props->toggleViewAction());
   view_menu_->addAction(layers->toggleViewAction());

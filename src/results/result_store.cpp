@@ -23,6 +23,8 @@ Range data_range(const std::vector<float>& values) {
 
 Range FaceField::effectiveRange() const { return range.value_or(data_range(values)); }
 
+Range Image::effectiveRange() const { return range.value_or(data_range(values)); }
+
 std::vector<unsigned char> FaceField::texture() const {
   const auto n = static_cast<std::size_t>(std::max(width, 0)) * static_cast<std::size_t>(std::max(height, 0));
   if (values.empty()) {
@@ -83,6 +85,14 @@ ResultId ResultStore::addField(ResultId set, const QString& name, FaceField fiel
   i.name = name;
   i.kind = ResultItem::Kind::Field;
   i.field = std::make_shared<const FaceField>(std::move(field));
+  return add(set, std::move(i));
+}
+
+ResultId ResultStore::addImage(ResultId set, const QString& name, Image image) {
+  ResultItem i;
+  i.name = name;
+  i.kind = ResultItem::Kind::Image;
+  i.image = std::make_shared<const Image>(std::move(image));
   return add(set, std::move(i));
 }
 

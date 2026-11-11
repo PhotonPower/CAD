@@ -92,6 +92,7 @@ document as modified but is not an undo step.
 | `ctx.lines(set, name, points, starts, values, colormap=, unit=, on_top=, value_range=)` | polylines; `points` (n, 3), `starts` = first point of each polyline plus the total; NaN ends a polyline |
 | `ctx.field(set, name, entity, values, width, height, face=0, colormap=, unit=, value_range=)` | field on a face over its normalised (u, v): `values[j * width + i]` |
 | `ctx.curve(set, name, x, y, x_label=, y_label=)` / `ctx.append(curve, x, y)` | curve in the *Plot* dock, extended live |
+| `ctx.image(set, name, values, width, height, extent=(x0, x1, y0, y1), x_label=, y_label=, colormap=, unit=, value_range=, description=)` | 2D image in the *Image* window (e.g. a camera image): `values[j * width + i]`, row 0 at y0, extent in physical units |
 
 Raise `nfcad.UserError("…")` for problems the user can fix (missing input, wrong file): CAD
 shows the message as it is. Any other exception is reported as a plugin error with its

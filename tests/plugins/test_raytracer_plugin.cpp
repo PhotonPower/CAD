@@ -9,6 +9,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <cmath>
 
 #include "document/document.hpp"
 #include "document/selection.hpp"
@@ -102,10 +103,44 @@ class TestRaytracerPlugin : public QObject {
   void trace() {
     run(QStringLiteral("trace"));
     QVERIFY(!results_.sets().empty());
-    const auto& items = results_.sets().back().items;
-    QCOMPARE(items.size(), std::size_t{2});
+    auto items = results_.sets().back().items;
+    QCOMPARE(items.size(), std::size_t{1});  // rays of the one path; the quick irradiance is off
     QCOMPARE(items[0].kind, results::ResultItem::Kind::Lines);
+    params_.insert(QStringLiteral("irradiance"), true);
+    run(QStringLiteral("trace"));
+    items = results_.sets().back().items;
+    QCOMPARE(items.size(), std::size_t{2});
     QCOMPARE(items[1].kind, results::ResultItem::Kind::Field);
+    params_.remove(QStringLiteral("irradiance"));
+  }
+
+  void cameraImage() {
+    params_.insert(QStringLiteral("camera_rays"), 30000);
+    params_.insert(QStringLiteral("camera_pixels"), 80);
+    run(QStringLiteral("camera_image"));
+    const auto& items = results_.sets().back().items;
+    QCOMPARE(items.size(), std::size_t{2});  // the image, and the field on the surface
+    QCOMPARE(items[0].kind, results::ResultItem::Kind::Image);
+    QCOMPARE(items[1].kind, results::ResultItem::Kind::Field);
+    const results::Image& im = *items[0].image;
+    QCOMPARE(im.width, 80);  // square image surface: 80 x 80
+    QCOMPARE(im.height, 80);
+    QVERIFY(im.x1 > im.x0);
+    // the on-axis field of the example: a symmetric spot, its centroid in the image centre
+    // (the brightest pixel may sit on a caustic ring, so not the peak)
+    double sum = 0, cx = 0, cy = 0;
+    for (int j = 0; j < im.height; ++j) {
+      for (int i = 0; i < im.width; ++i) {
+        const double v = im.value(i, j);
+        sum += v;
+        cx += v * (i + 0.5);
+        cy += v * (j + 0.5);
+      }
+    }
+    QVERIFY(sum > 0);
+    QVERIFY2(std::abs(cx / sum - im.width / 2.0) < 0.1 && std::abs(cy / sum - im.height / 2.0) < 0.1,
+             qPrintable(QStringLiteral("centroid %1 %2").arg(cx / sum).arg(cy / sum)));
+    QVERIFY(im.description.contains(QStringLiteral("rays")));
   }
 
   void optimiseAndUndo() {

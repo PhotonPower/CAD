@@ -25,6 +25,7 @@ QString kind_text(results::ResultItem::Kind k) {
     case results::ResultItem::Kind::Lines: return QObject::tr("Rays / lines");
     case results::ResultItem::Kind::Field: return QObject::tr("Field on face");
     case results::ResultItem::Kind::Curve: return QObject::tr("Curve");
+    case results::ResultItem::Kind::Image: return QObject::tr("Image");
   }
   return {};
 }

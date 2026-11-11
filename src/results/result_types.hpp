@@ -54,6 +54,24 @@ struct FaceField {
   [[nodiscard]] Range effectiveRange() const;
 };
 
+/// A 2D image with a physical extent for the image dock – e.g. a camera image (irradiance on a
+/// sensor) computed with many rays. Row-major, values[j * width + i]; row 0 at y0 (bottom).
+struct Image {
+  int width = 0;
+  int height = 0;
+  std::vector<float> values;
+  double x0 = 0.0, x1 = 1.0, y0 = 0.0, y1 = 1.0;  ///< extent of the grid (cell edges), e.g. mm
+  QString x_label;
+  QString y_label;
+  Colormap colormap = Colormap::Inferno;
+  std::optional<Range> range;
+  QString unit;
+  QString description;  ///< e.g. number of rays, surface
+
+  [[nodiscard]] Range effectiveRange() const;
+  [[nodiscard]] float value(int i, int j) const { return values[static_cast<std::size_t>(j) * width + i]; }
+};
+
 /// x / y data for the plot dock (convergence curves, profiles, spectra).
 struct Curve {
   std::vector<double> x;
@@ -64,7 +82,7 @@ struct Curve {
 
 /// One displayable result.
 struct ResultItem {
-  enum class Kind { Lines, Field, Curve };
+  enum class Kind { Lines, Field, Curve, Image };
   ResultId id = 0;
   QString name;
   Kind kind = Kind::Lines;
@@ -72,6 +90,7 @@ struct ResultItem {
   std::shared_ptr<const LineSet> lines;
   std::shared_ptr<const FaceField> field;
   std::shared_ptr<const Curve> curve;
+  std::shared_ptr<const Image> image;
 };
 
 /// The results of one run (one trace, one optimisation, …).

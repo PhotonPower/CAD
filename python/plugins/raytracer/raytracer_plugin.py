@@ -62,9 +62,16 @@ class RaytracerPlugin(Plugin):
         "rings": Param.integer(6, min=1, max=60, label="Pupil rings (drawn)", group="Trace",
                                description="Hexapolar sampling of the rays that are drawn"),
         "colour_by": Param.choice(["wavelength", "field", "path"], "wavelength", label="Colour by", group="Trace"),
-        "irradiance": Param.boolean(True, label="Irradiance on the image", group="Trace"),
-        "irradiance_rings": Param.integer(40, min=2, max=400, label="Pupil rings (irradiance)", group="Trace"),
-        "grid": Param.integer(128, min=8, max=1024, label="Irradiance grid", group="Trace"),
+        "irradiance": Param.boolean(False, label="Quick irradiance", group="Trace",
+                                    description="A coarse irradiance with the trace; for a real camera image use "
+                                                "Camera image"),
+        "irradiance_rings": Param.integer(40, min=2, max=400, label="Pupil rings (quick irradiance)", group="Trace"),
+        "grid": Param.integer(128, min=8, max=1024, label="Quick irradiance grid", group="Trace"),
+        "camera_rays": Param.integer(200_000, min=1_000, max=50_000_000, label="Rays per field and wavelength",
+                                     group="Camera image",
+                                     description="Many rays for a smooth image; time grows linearly"),
+        "camera_pixels": Param.integer(512, min=16, max=4096, label="Pixels (long side)", group="Camera image"),
+        "camera_on_surface": Param.boolean(True, label="Also on the surface in 3D", group="Camera image"),
         "save_as": Param.file("", filter="Raytatouille system (*.rtt.json)", save=True, label="Save as",
                               group="Optimise", description="Empty: <system>.optimised.rtt.json"),
     }
@@ -348,7 +355,8 @@ class RaytracerPlugin(Plugin):
                 n_ok, n_total, last = self._draw_rays(ctx, system, compiled, run, path, label, k, fields, wls)
                 summary.append(f"{label}: {n_ok}/{n_total}")
                 if p["irradiance"]:
-                    self._irradiance(ctx, system, compiled, path, fields, wls, last, irradiance)
+                    self._irradiance(ctx, system, compiled, path, fields, wls, last, irradiance,
+                                     rings=p["irradiance_rings"], pixels=p["grid"])
             except UserError as e:
                 if len(paths) == 1:
                     raise
@@ -357,7 +365,7 @@ class RaytracerPlugin(Plugin):
         fields_on = []
         for acc in irradiance.values():
             values = acc["grid"].reshape(-1)  # values[j * width + i]: i along u (x), j along v (y)
-            ctx.field(run, f"Irradiance {acc['surface']}", acc["entity"], values, acc["n"], acc["n"],
+            ctx.field(run, f"Irradiance {acc['surface']}", acc["entity"], values, acc["nx"], acc["ny"],
                       unit="W/mm² (rel.)")
             fields_on.append(f"{acc['surface']} (peak {float(values.max()) if values.size else 0.0:.3g}"
                              f"{', ' + ' + '.join(acc['paths']) if len(acc['paths']) > 1 else ''})")
@@ -405,7 +413,8 @@ class RaytracerPlugin(Plugin):
                       unit=unit, colormap=colormap, value_range=ranges)
         return n_ok, n_total, last_surface
 
-    def _irradiance(self, ctx, system, compiled, path, fields, wls, last_surface, acc: dict) -> None:
+    def _irradiance(self, ctx, system, compiled, path, fields, wls, last_surface, acc: dict, *, rings: int,
+                    pixels: int, progress_span: tuple[float, float] = (0.0, 1.0)) -> None:
         """Irradiance of one path on its last surface (Raytatouille #379, rt.analysis.irradiance_map)
         over the parameter domain of the drawn face, added to `acc` (paths ending on the same
         surface add up – incoherently)."""
@@ -424,33 +433,48 @@ class RaytracerPlugin(Plugin):
             ctx.log(f"irradiance on {L.id}: curved surface of revolution – not mapped yet")
             return
         extent = (knots_u[0], knots_u[-1], knots_v[0], knots_v[-1])  # local x, y = face (u, v)
-        n = p["grid"]
-        entry = acc.setdefault(det, {"surface": L.id, "entity": entity["id"], "n": n, "grid": np.zeros((n, n)),
-                                     "paths": []})
+        # pixels along the long side, square pixels
+        wx, wy = extent[1] - extent[0], extent[3] - extent[2]
+        nx = pixels if wx >= wy else max(1, round(pixels * wx / wy))
+        ny = pixels if wy > wx else max(1, round(pixels * wy / wx))
+        entry = acc.setdefault(det, {"surface": L.id, "entity": entity["id"], "nx": nx, "ny": ny, "extent": extent,
+                                     "grid": np.zeros((ny, nx)), "paths": [], "rays": 0})
         entry["paths"].append(str(path))
         lost = {"outside the grid": 0, "vignetted": 0, "not reached": 0}
         token = rt.CancelToken()
 
+        wls = list(wls)
+        a, b = progress_span
+        state = {"step": 0}
+
         def progress(done, total, stage):
             if ctx.cancelled():
                 token.cancel()
-            ctx.progress(min(done / max(total, 1), 1.0), f"irradiance {path}: {stage} {done}/{total}")
+            part = (state["step"] + min(done / max(total, 1), 1.0)) / len(wls)
+            ctx.progress(a + (b - a) * part, f"{path}: {stage} {done:,}/{total:,} rays")
 
         weights = compiled.wavelength_weights
         for w in wls:
-            rays = self._make_rays(system, compiled, p["irradiance_rings"], path, fields, w,
-                                   cancel=token, progress=progress)
+            ctx.check_cancel()
+            rays = self._make_rays(system, compiled, rings, path, fields, w, cancel=token, progress=progress)
             rt.trace.trace(compiled, rays, path=path, cancel=token, progress=progress)
+            entry["rays"] += rays.size
             try:
                 # batch form: any number of rays, if the last event cannot change the weight
-                im = rt.analysis.irradiance_map(compiled, rays, path=path, nx=n, ny=n, extent=extent)
+                im = rt.analysis.irradiance_map(compiled, rays, path=path, nx=nx, ny=ny, extent=extent)
             except ValueError:
-                # e.g. a reflecting or absorbing last surface: the form with recorded paths
-                rays = self._make_rays(system, compiled, p["irradiance_rings"], path, fields, w)
+                # e.g. a reflecting or absorbing last surface: the form with recorded paths, whose
+                # memory grows with the rays – at most 20 000 here
+                few = min(rings, 80)
+                if few < rings:
+                    ctx.log(f"{L.id} ({path}): the last event changes the weight – computed with recorded "
+                            f"paths and fewer rays ({few} pupil rings)")
+                rays = self._make_rays(system, compiled, few, path, fields, w)
                 _, rec = rt.trace.trace(compiled, rays, path=path, record_path=True,
                                         max_recorded_rays=max(rays.size, 1))
-                im = rt.analysis.irradiance_map(compiled, rec, surface=L.id, path=path, nx=n, ny=n,
+                im = rt.analysis.irradiance_map(compiled, rec, surface=L.id, path=path, nx=nx, ny=ny,
                                                 extent=extent, wavelength=w)
+            state["step"] += 1
             wl_weight = weights[compiled.reference_wavelength if w is None else w]
             entry["grid"] += np.asarray(im.values, dtype=float) * wl_weight  # (ny, nx): row j along v
             for key, attr in (("outside the grid", "outside_grid"), ("vignetted", "vignetted"),
@@ -465,6 +489,68 @@ class RaytracerPlugin(Plugin):
         if off:
             ctx.log("marked inactive in CAD but still traced (Raytatouille #380 is not released yet): "
                     + ", ".join(off))
+
+    @action("Camera image", description="Irradiance on the last surface of each path with many rays, as an image")
+    def camera_image(self, ctx):
+        _require_rt()
+        system, _ = self._current(ctx)
+        compiled = self._compile(system)
+        p = ctx.params
+        names = list(compiled.path_names)
+        wanted = [n.strip() for n in p["path"].split(",") if n.strip()]
+        unknown = [n for n in wanted if n not in names]
+        if unknown:
+            raise UserError(f"Unknown path {', '.join(unknown)}. Paths of this system: {', '.join(names)}")
+        paths = wanted or names or [0]
+        fields = None if p["fields"] == 0 else [p["fields"] - 1]
+        wls = range(len(compiled.wavelengths_um)) if p["wavelengths"] == "all" else [None]
+        n_fields = compiled.field_count if fields is None else 1
+        # hexapolar rings for the wanted number of rays per field and wavelength: 1 + 3 r (r + 1)
+        target = max(p["camera_rays"], 1)
+        rings = max(1, int(np.ceil((-3 + np.sqrt(9 + 12 * (target - 1))) / 6)))
+        self._warn_inactive(ctx)
+        run = ctx.result_set(f"Camera image {Path(self.loaded_from or 'system').name.split('.')[0]}")
+        acc: dict[int, dict] = {}
+        failed = []
+        for k, path in enumerate(paths):
+            ctx.check_cancel()
+            try:
+                last = self._last_surface(system, compiled, path)
+                self._irradiance(ctx, system, compiled, path, fields, wls, last, acc, rings=rings,
+                                 pixels=p["camera_pixels"], progress_span=(k / len(paths), (k + 1) / len(paths)))
+            except UserError as e:
+                if len(paths) == 1:
+                    raise
+                failed.append(str(path))
+                ctx.log(f"path {path}: {e}")
+        if not acc:
+            raise UserError("No camera image: none of the paths ends on a drawn plane surface.")
+        made = []
+        for entry in acc.values():
+            grid = entry["grid"]
+            values = grid.reshape(-1)
+            peak = float(grid.max()) if grid.size else 0.0
+            x0, x1, y0, y1 = entry["extent"]
+            description = (f"{entry['surface']}: {entry['rays']:,} rays ({', '.join(entry['paths'])}; "
+                           f"{n_fields} field(s), {len(list(wls))} wavelength(s)), {entry['nx']}×{entry['ny']} px, "
+                           f"pixel {(x1 - x0) / entry['nx'] * 1000:.3g} µm")
+            ctx.image(run, f"Camera image {entry['surface']}", values, entry["nx"], entry["ny"],
+                      extent=entry["extent"], unit="W/mm² (rel.)", description=description)
+            if p["camera_on_surface"]:
+                ctx.field(run, f"Irradiance {entry['surface']}", entry["entity"], values, entry["nx"], entry["ny"],
+                          unit="W/mm² (rel.)")
+            made.append(f"{entry['surface']} (peak {peak:.3g})")
+        message = f"camera image on {', '.join(made)} from {sum(e['rays'] for e in acc.values()):,} rays"
+        if failed:
+            message += f"; not traced: {', '.join(failed)} (see the plugin log)"
+        return message
+
+    def _last_surface(self, system, compiled, path) -> int | None:
+        """Index of the last surface of a path (one recorded ray)."""
+        rays = self._make_rays(system, compiled, 1, path, [0], None)
+        _, rec = rt.trace.trace(compiled, rays, path=path, record_path=True, record_rays=[0])
+        events = np.asarray(rec.event_surfaces)
+        return int(events[-1]) if events.size else None
 
     @action("Optimise", description="Raytatouille's optimiser; the surfaces update after every iteration")
     def optimise(self, ctx):
