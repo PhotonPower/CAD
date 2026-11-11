@@ -14,11 +14,13 @@
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <algorithm>
 #include <cmath>
 
 #include "document/document.hpp"
 #include "document/selection.hpp"
+#include "app/command_controller.hpp"
 #include "snap/snap_engine.hpp"
 #include "ui/layer_panel.hpp"
 #include "ui/property_panel.hpp"
@@ -75,15 +77,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   grid_->setSnapSettings(snapbar_->mask(), snapbar_->snappingEnabled());
   connect(snapbar_, &ui::SnapBar::maskChanged, this,
           [this](snap::SnapMask mask, bool enabled) { grid_->setSnapSettings(mask, enabled); });
-  for (viewport::Viewport* v : grid_->views()) {
-    connect(v, &viewport::Viewport::pointPicked, this,
-            [this](const snap::SnapPoint& p, bool snapped, snap::SnapType type) {
-              onPointPicked(p, snapped, static_cast<int>(type));
-            });
-    connect(v, &viewport::Viewport::pointInputFinished, this, [this] { finishCommand(); });
-  }
-  auto* enter = new QShortcut(QKeySequence(Qt::Key_Return), this);
-  connect(enter, &QShortcut::activated, this, [this] { finishCommand(); });
+  commands_ = new CommandController(doc_, grid_, command_line_, statusBar(), this);
+  connect(ortho_, &QToolButton::toggled, commands_, &CommandController::setOrtho);
+  connect(commands_, &CommandController::orthoChanged, ortho_, &QToolButton::setChecked);
 
   connect(grid_, &viewport::ViewportGrid::activeViewChanged, this,
           &MainWindow::onActiveViewChanged);
@@ -139,8 +135,8 @@ void MainWindow::createMenus() {
   del->setShortcuts({QKeySequence::Delete, QKeySequence(Qt::Key_Backspace)});
   edit->addAction(tr("Select &All"), QKeySequence::SelectAll, this, &MainWindow::selectAll);
   QAction* none = edit->addAction(tr("Select &None / Cancel"), this, [this] {
-    if (command_ != Command::None) {
-      finishCommand(tr("Cancelled"));
+    if (commands_->active()) {
+      commands_->cancel();
     } else {
       selection_->clear();
     }
@@ -229,8 +225,14 @@ void MainWindow::createStatusBar() {
   coords_->setMinimumWidth(220);
   active_view_ = new QLabel(this);
   snapbar_ = new ui::SnapBar(this);
+  ortho_ = new QToolButton(this);
+  ortho_->setText(tr("Ortho"));
+  ortho_->setCheckable(true);
+  ortho_->setShortcut(QKeySequence(Qt::Key_F8));
+  ortho_->setToolTip(tr("Ortho (F8): points along the construction-plane axes"));
   statusBar()->addWidget(coords_);
   statusBar()->addWidget(active_view_);
+  statusBar()->addPermanentWidget(ortho_);
   statusBar()->addPermanentWidget(snapbar_);
 }
 
@@ -272,66 +274,6 @@ void MainWindow::onActiveViewChanged(viewport::Viewport* view) {
   active_view_->setText(tr("Active view: %1").arg(viewport::view_title(view->kind())));
   for (QAction* action : display_modes_->actions()) {
     action->setChecked(action->data().toInt() == static_cast<int>(view->displayMode()));
-  }
-}
-
-void MainWindow::setPrompt(const QString& prompt) {
-  command_line_->setPlaceholderText(prompt.isEmpty() ? tr("Command:") : prompt);
-}
-
-void MainWindow::startCommand(Command command) {
-  if (command_ != Command::None) finishCommand();
-  command_ = command;
-  first_point_.clear();
-  grid_->setPointInput(true);
-  if (grid_->activeView() != nullptr) grid_->activeView()->setFocus();
-  setPrompt(command == Command::Point
-                ? tr("Point: click locations (snaps: F3, Tab cycles, Alt suppresses) – "
-                     "Enter / right-click / Esc to finish")
-                : tr("Distance: first point"));
-}
-
-void MainWindow::finishCommand(const QString& message) {
-  if (command_ == Command::None) return;
-  command_ = Command::None;
-  first_point_.clear();
-  grid_->setPointInput(false);
-  setPrompt({});
-  if (!message.isEmpty()) statusBar()->showMessage(message, 6000);
-}
-
-void MainWindow::onPointPicked(const snap::SnapPoint& p, bool snapped, int type) {
-  const QString how = snapped ? tr(" (%1)").arg(QString::fromLatin1(
-                                    snap::short_name(static_cast<snap::SnapType>(type))))
-                              : QString();
-  const QString coords = QStringLiteral("%1, %2, %3")
-                             .arg(p.x, 0, 'f', 4)
-                             .arg(p.y, 0, 'f', 4)
-                             .arg(p.z, 0, 'f', 4);
-  switch (command_) {
-    case Command::Point:
-      doc_->addEntities({document::make_point_entity(p.x, p.y, p.z)}, tr("Point"));
-      statusBar()->showMessage(tr("Point at %1%2").arg(coords, how), 6000);
-      break;
-    case Command::Distance:
-      if (first_point_.empty()) {
-        first_point_ = {p.x, p.y, p.z};
-        setPrompt(tr("Distance: second point (first: %1%2)").arg(coords, how));
-      } else {
-        const double dx = p.x - first_point_[0];
-        const double dy = p.y - first_point_[1];
-        const double dz = p.z - first_point_[2];
-        const QString msg = tr("Distance %1   (dx %2, dy %3, dz %4)")
-                                .arg(std::sqrt(dx * dx + dy * dy + dz * dz), 0, 'g', 10)
-                                .arg(dx, 0, 'g', 8)
-                                .arg(dy, 0, 'g', 8)
-                                .arg(dz, 0, 'g', 8);
-        finishCommand();
-        statusBar()->showMessage(msg);
-        command_line_->setPlaceholderText(msg);
-      }
-      break;
-    case Command::None: break;
   }
 }
 
@@ -396,14 +338,7 @@ void MainWindow::onToolTriggered(const QString& tool_id) {
     deleteSelection();
     return;
   }
-  if (tool_id == QLatin1String("point")) {
-    startCommand(Command::Point);
-    return;
-  }
-  if (tool_id == QLatin1String("distance")) {
-    startCommand(Command::Distance);
-    return;
-  }
+  if (commands_->start(tool_id)) return;
   statusBar()->showMessage(tr("Tool '%1' is not implemented yet (see docs/plan.md)").arg(tool_id),
                            4000);
 }

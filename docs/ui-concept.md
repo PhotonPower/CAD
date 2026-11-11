@@ -9,7 +9,7 @@
 | View toolbar (top) | `QToolBar` | display mode (wireframe / surfaces / shaded), standard views, zoom extents, grid on/off |
 | Property panel (right) | `QDockWidget` → `PropertyPanel` | properties of the selection (type, degrees, knots, length / area / volume) |
 | Layer panel (right) | `QDockWidget` → `LayerPanel` | visibility, colour, name, new layer, move selection to a layer |
-| Command line (bottom) | `CommandLine` | prompt, numeric input, history (M5) |
+| Command line (bottom) | `QLineEdit` + `CommandController` | prompt, typed commands, coordinates and numbers ([commands.md](commands.md)) |
 | Status bar | `QStatusBar` + `SnapBar` | cursor coordinates, active view, snap toggles |
 
 The window remembers its geometry and dock layout (`QSettings`).
@@ -66,7 +66,7 @@ to a text abbreviation, so the skeleton runs before the icon set exists.
 | Orbit (3D view; turntable around Z) | right drag, Alt + left drag | right drag, Alt + left drag |
 | Zoom extents | `Z` `E`, double-click middle, two-finger double tap; Shift + toolbar: all views | `Z` `E`, double-click middle |
 | Snap on/off | `F3` | `F3` |
-| Ortho | `F8` | `F8` |
+| Ortho (status bar button) | `F8` | `F8` |
 | Cycle snap candidates | `Tab` | `Tab` |
 | Cancel / confirm | `Esc` / `Enter`, right-click | same |
 

@@ -8,6 +8,7 @@ class QActionGroup;
 class QDockWidget;
 class QLabel;
 class QLineEdit;
+class QToolButton;
 class QMenu;
 
 namespace nfcad::document {
@@ -85,19 +86,13 @@ class MainWindow : public QMainWindow {
   void selectAll();
   void updateHoverInfo();
 
-  // Point-input commands (M4: Point, Distance; the command framework follows in M5)
-  enum class Command { None, Point, Distance };
-  void startCommand(Command command);
-  void finishCommand(const QString& message = {});
-  void onPointPicked(const snap::SnapPoint& p, bool snapped, int type);
-  void setPrompt(const QString& prompt);
 
   document::Document* doc_ = nullptr;
   document::Selection* selection_ = nullptr;
   snap::SnapEngine* snap_engine_ = nullptr;
-  Command command_ = Command::None;
-  std::vector<double> first_point_;  // Distance: x, y, z of the first point
+  class CommandController* commands_ = nullptr;
   QLineEdit* command_line_ = nullptr;
+  QToolButton* ortho_ = nullptr;
   tessellation::TessellationService* tessellator_ = nullptr;
   render::Scene* scene_ = nullptr;
   bool zoom_after_tessellation_ = false;

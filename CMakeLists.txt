@@ -34,6 +34,8 @@ qt_standard_project_setup(REQUIRES 6.8)
 # ---------------------------------------------------------------- core library (no widgets)
 # Layers below the widget layer; unit tested without a window (docs/architecture.md).
 add_library(nfcad_core STATIC
+  src/commands/drawing_commands.cpp
+  src/commands/input_parser.cpp
   src/document/document.cpp
   src/document/entity.cpp
   src/document/nfcad_io.cpp
@@ -60,6 +62,7 @@ nfcad_set_warnings(nfcad_core)
 
 # ---------------------------------------------------------------- GUI library
 add_library(nfcad_gui STATIC
+  src/app/command_controller.cpp
   src/app/file_actions.cpp
   src/app/main_window.cpp
   src/ui/tool_catalog.cpp

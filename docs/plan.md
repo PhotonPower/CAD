@@ -116,10 +116,13 @@ jobs build from M0 on but are allowed to fail until M7.
 - Done: all snap types tested against exact values (`tests/snap/test_snap_engine.cpp`);
   0.34 ms per query with 10 000 curves (release, Apple Silicon)
 
-### M5 – Drawing commands
+### M5 – Drawing commands ✅
 - Command framework (state machine, prompts in the command line, numeric input, Esc / Enter)
 - Point, line, polyline, circle (centre-radius, 3 points), arc, rectangle, polygon, helix
 - Construction plane (CPlane) per view; ortho mode (F8), coordinate input `x,y,z` / `@dx,dy,dz`
+- Done: [commands.md](commands.md) – 10 commands incl. Distance, typed coordinates (absolute,
+  relative, plane, polar), typed lengths, rubber-band preview, repeat with Enter; user-defined
+  construction planes moved to a later milestone
 - **Done when:** all commands work with snaps and keyboard input, with undo.
 
 ### M6 – Surfaces and solids
