@@ -3,6 +3,7 @@
 // the packages numpy and raytatouille (NFCAD_TEST_PYTHON, else the repository's .venv); skipped
 // otherwise – CI has no Raytatouille build.
 #include <QDir>
+#include <QJsonArray>
 #include <QFileInfo>
 #include <QImage>
 #include <QProcess>
@@ -52,6 +53,7 @@ class TestRaytracerPlugin : public QObject {
   results::ResultStore results_;
   std::unique_ptr<plugins::PluginHost> host_;
   QJsonObject params_;
+  QString python_;
 
   void run(const QString& action) {
     QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
@@ -65,6 +67,7 @@ class TestRaytracerPlugin : public QObject {
  private slots:
   void initTestCase() {
     const QString python = python_with_raytatouille();
+    python_ = python;
     if (python.isEmpty()) QSKIP("no Python with raytatouille (pip install <Raytatouille> into .venv)");
     selection_.attach(&doc_);
     const QString dir = QStringLiteral(NFCAD_SOURCE_DIR "/python/plugins/raytracer");
@@ -159,6 +162,29 @@ class TestRaytracerPlugin : public QObject {
     doc_.undoStack()->redo();
     QCOMPARE(by_name(doc_, QStringLiteral("STO"))->attributes.value(QStringLiteral("rtt.revision")).toInt(), optimised);
     run(QStringLiteral("trace"));  // with the optimised system
+  }
+
+  void workflow() {
+    // RTT-Fusion node workflow: graph from the system's paths, then a coherent camera image
+    QProcess probe;
+    probe.start(python_, {QStringLiteral("-c"), QStringLiteral("import rtt_fusion.graph")});
+    if (!probe.waitForFinished(30000) || probe.exitCode() != 0) QSKIP("rtt_fusion not installed in the plugin Python");
+    run(QStringLiteral("workflow_from_system"));
+    const QJsonObject wf = doc_.workflow();
+    const QJsonArray nodes = wf["graph"].toObject()["nodes"].toArray();
+    QVERIFY(nodes.size() >= 3);  // source, sections, detector
+    QVERIFY(!wf["types"].toArray().isEmpty());
+    bool detector = false;
+    for (const QJsonValue& n : nodes) detector = detector || n.toObject()["type"].toString() == QStringLiteral("rtt.detector");
+    QVERIFY(detector);
+    params_.insert(QStringLiteral("workflow_rays"), 2000);
+    params_.insert(QStringLiteral("workflow_pixels"), 64);
+    run(QStringLiteral("check_workflow"));
+    run(QStringLiteral("run_workflow"));
+    const auto& items = results_.sets().back().items;
+    QVERIFY(!items.empty());
+    QCOMPARE(items[0].kind, results::ResultItem::Kind::Image);
+    QVERIFY(items[0].image->description.contains(QStringLiteral("coherence group")));
   }
 
   void save() {

@@ -212,6 +212,7 @@ QString save_nfcad(const Document& doc, const QString& path) {
     }
     root.insert("plugins", plugins);  // v2, optional: parameter values per plugin (P4)
   }
+  if (!doc.workflow().isEmpty()) root.insert("workflow", doc.workflow());  // v2, optional: node workflow
 
   QSaveFile file(path);
   if (!file.open(QIODevice::WriteOnly)) return file.errorString();
@@ -269,6 +270,7 @@ QString load_nfcad(Document& doc, const QString& path) {
   const QJsonObject plugins = root["plugins"].toObject();
   for (auto it = plugins.begin(); it != plugins.end(); ++it) params.insert(it.key(), it.value().toObject()["params"]);
   doc.setAllPluginParameters(params);
+  doc.setWorkflowLoaded(root["workflow"].toObject());
   doc.setFilePath(path);
   return {};
 }

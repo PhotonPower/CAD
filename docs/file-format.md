@@ -20,7 +20,8 @@ Geometry is stored exactly: degrees, knot vectors, control points and weights â€
                   "group": 1,                    // v2, optional (0 / missing: top level)
                   "attributes": { "rtt.role": "mirror", "sim.inactive": true },   // v2, optional
                   "geometry": { "type": "shell", "faces": [ ... ] } } ],
-  "plugins":  { "demo": { "params": { "rays": 300, "origin": [0, 0, 0] } } }   // v2, optional
+  "plugins":  { "demo": { "params": { "rays": 300, "origin": [0, 0, 0] } } },  // v2, optional
+  "workflow": { "graph": { "format": "rtt-fusion-graph", ... }, "types": [], "diagnostics": [] }  // v2, optional
 }
 ```
 

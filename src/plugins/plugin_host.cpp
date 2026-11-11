@@ -355,6 +355,11 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     doc_->setEntityAttributes(id, a);
     return QJsonValue::Null;
   }
+  if (method == QLatin1String("workflow.get")) return doc_->workflow();
+  if (method == QLatin1String("workflow.set")) {
+    doc_->setWorkflow(args["workflow"].toObject());  // not an undo step (like plugin parameters)
+    return QJsonValue::Null;
+  }
   if (method == QLatin1String("results.create_set")) {
     return static_cast<qint64>(results_->createSet(args["name"].toString(), manifest_.id));
   }

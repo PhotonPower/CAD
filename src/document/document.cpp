@@ -457,6 +457,16 @@ void Document::setPluginParameters(const QString& plugin, const QJsonObject& val
 
 void Document::setAllPluginParameters(const QJsonObject& all) { plugin_parameters_ = all; }
 
+void Document::setWorkflow(const QJsonObject& workflow) {
+  if (workflow_ == workflow) return;
+  workflow_ = workflow;
+  if (!settings_dirty_) {
+    settings_dirty_ = true;
+    emit modificationChanged(true);
+  }
+  emit workflowChanged();
+}
+
 void Document::recordApplied(const QString& text, const LiveChanges& changes) {
   std::vector<Entity> add;
   for (EntityId id : changes.added) {
@@ -558,6 +568,7 @@ void Document::reset(std::vector<Layer> layers, std::vector<Entity> entities,
   undo_.clear();
   entities_.clear();
   plugin_parameters_ = {};
+  workflow_ = {};
   settings_dirty_ = false;
   groups_ = std::move(groups);
   layers_ = std::move(layers);

@@ -77,6 +77,16 @@ class Context:
     def set_attribute(self, entity: int, key: str, value: Any) -> None:
         self._host.request("model.set_attribute", {"id": int(entity), "key": key, "value": value})
 
+    # ---- node workflow (RTT-Fusion R16): the graph shown in the node editor
+    def workflow(self) -> dict:
+        """{"graph": rtt-fusion-graph, "types": [...], "diagnostics": [...]} of the document (may
+        be empty); the node editor writes the user's edits into "graph"."""
+        return self._host.request("workflow.get", {}) or {}
+
+    def set_workflow(self, workflow: dict) -> None:
+        """Replaces the document's node workflow (shown in the node editor)."""
+        self._host.request("workflow.set", {"workflow": workflow})
+
     # ---- results (docs/plugins.md, section 3a)
     def result_set(self, name: str) -> int:
         return self._host.request("results.create_set", {"name": name})
