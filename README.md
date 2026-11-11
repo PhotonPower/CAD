@@ -1,6 +1,6 @@
 # Raytatouille Fusion
 
-[![CI](https://github.com/PhotonPower/CAD/actions/workflows/ci.yml/badge.svg)](https://github.com/PhotonPower/CAD/actions/workflows/ci.yml)
+[![CI](https://github.com/PhotonPower/Raytatouille-Fusion/actions/workflows/ci.yml/badge.svg)](https://github.com/PhotonPower/Raytatouille-Fusion/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Desktop CAD front end for the [Nurbforge](https://github.com/PhotonPower/Nurbforge) NURBS kernel
@@ -38,7 +38,7 @@ signed Python plugins ([plugin plan](docs/plugins.md)). C++20, Qt 6, native rend
 
 ```bash
 brew install qt cmake ninja
-git clone https://github.com/PhotonPower/CAD.git
+git clone https://github.com/PhotonPower/Raytatouille-Fusion.git
 cmake --preset debug && cmake --build --preset debug
 open build/debug/RaytatouilleFusion.app
 ```

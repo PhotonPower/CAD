@@ -11,6 +11,8 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
   `nurbforge-cad`), desktop entry and bundle id. Settings of the old name are taken over on the
   first start; the Windows installer keeps its AppId (updates the old installation). Unchanged:
   namespace and Python package `nfcad`, format `.nfcad`, `NFCAD_*` variables.
+- GitHub repository renamed from `PhotonPower/CAD` to `PhotonPower/Raytatouille-Fusion`
+  (GitHub redirects the old URLs).
 
 ### Added
 - P3 – plugin host (docs/plugin-api.md): plugins in their own Python process
