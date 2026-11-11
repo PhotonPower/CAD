@@ -6,6 +6,13 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- P3 – plugin host (docs/plugin-api.md): plugins in their own Python process
+  (`python -m nfcad.host`), TCP channel on 127.0.0.1 with a token, JSON lines, arrays as mapped
+  temporary files; Python package `nfcad` (actions, context with progress / log / cancel, model
+  access, results API, geometry helpers incl. `nurbforge` conversion); Plugins menu and a
+  tool-column group per plugin, settings (Python interpreter, plugin folders), progress bar with
+  Cancel, plugin log dock; one undo step per run (`Document::recordApplied`); demo plugin;
+  tests with a real Python process (model, results, cancel, errors, crash, foreign connection)
 - P2 – result display (docs/plugins.md): `ResultStore` with runs of line sets (rays, coloured
   by a value), face fields / images (textures on faces via the mesh (u, v)) and curves; colour
   maps (viridis, inferno, plasma, coolwarm, grey) with a colour bar per view; Results dock;

@@ -1,0 +1,39 @@
+import os
+import time
+
+from nfcad import Plugin, action
+from nfcad import geometry as g
+
+
+class TestPlugin(Plugin):
+    @action("Model and results")
+    def model(self, ctx):
+        sel = ctx.entities(selection=True)
+        assert len(sel) == 1, sel
+        target = sel[0]
+        assert target["geometry"]["type"] == "curve"
+        ctx.replace(target["id"], g.line((0, 0, 0), (0, 0, 7)))
+        ctx.set_attribute(target["id"], "rtt.role", "mirror")
+        new = ctx.add(g.line((1, 1, 1), (2, 2, 2)), name="from plugin", attributes={"x": 1})
+        run = ctx.result_set("test run")
+        ctx.lines(run, "rays", [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 1, 1)], [0, 2, 4], [1, 2, 3, 4], unit="nm")
+        ctx.field(run, "field", target["id"], [0.0, 1.0, 2.0, 3.0, 4.0, 5.0], 3, 2)
+        c = ctx.curve(run, "merit", [0], [1.0])
+        ctx.append(c, 1, 0.5)
+        ctx.progress(1.0, "done")
+        ctx.log("hello from the plugin")
+        return f"new {new}"
+
+    @action("Loop until cancelled")
+    def loop(self, ctx):
+        while True:
+            ctx.check_cancel()
+            time.sleep(0.01)
+
+    @action("Raise")
+    def fail(self, ctx):
+        raise ValueError("deliberate")
+
+    @action("Crash")
+    def crash(self, ctx):
+        os._exit(3)

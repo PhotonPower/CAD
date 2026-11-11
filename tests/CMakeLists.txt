@@ -29,3 +29,7 @@ nfcad_add_test(test_surface_commands commands/test_surface_commands.cpp nfcad_co
 nfcad_add_test(test_edit_commands commands/test_edit_commands.cpp nfcad_core)
 nfcad_add_test(test_model_tree document/test_model_tree.cpp nfcad_gui)
 nfcad_add_test(test_results results/test_results.cpp nfcad_gui)
+nfcad_add_test(test_plugin_host plugins/test_plugin_host.cpp nfcad_core)
+target_compile_definitions(test_plugin_host PRIVATE NFCAD_TEST_PLUGIN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/plugins/test_plugin")
+nfcad_add_test(test_main_window_plugins app/test_main_window_plugins.cpp nfcad_gui)
+target_compile_definitions(test_main_window_plugins PRIVATE NFCAD_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/python/examples")

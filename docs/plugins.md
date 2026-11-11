@@ -57,10 +57,10 @@ Hierarchy applied:
 | Feature | Goes to |
 |---|---|
 | rtt surface → exact NURBS (conic, asphere, Zernike, XY, grid), apertures, lens bodies as solids | **library level**, because it is useful without a GUI too (STEP export of optical systems for the mechanics) – as an optional bridge module (`raytatouille.nurbs`, depends on `nurbforge`) or first in the plugin and moved later (❓ D10) |
-| Iteration callback with the current system in `rt.optim.optimize` | **Raytatouille** |
-| Binning hits on a surface into an irradiance grid | **Raytatouille** (`rt.analysis`), generally useful |
+| Iteration callback with the current system in `rt.optim.optimize` | **Raytatouille** – [#378](https://github.com/PhotonPower/Raytatouille/issues/378) |
+| Binning hits on a surface into an irradiance grid | **Raytatouille** (`rt.analysis`), generally useful – [#379](https://github.com/PhotonPower/Raytatouille/issues/379) |
 | Ray layer, face fields, colour maps, plot dock, model tree, job runner, parameter panel | **CAD core** |
-| Excluding elements from a trace without deleting them ("inactive") | **Raytatouille** (e.g. a flag per element or via configurations) |
+| Excluding elements from a trace without deleting them ("inactive") | **Raytatouille** (e.g. a flag per element or via configurations) – [#380](https://github.com/PhotonPower/Raytatouille/issues/380) |
 | Mapping CAD entities ↔ rtt JSON pointers, scene building, actions Trace / Optimise | **plugin** |
 
 ## 3. Architecture
@@ -83,9 +83,10 @@ Hierarchy applied:
   the CAD down, Cancel can always stop it, every plugin can use its own Python environment
   (numpy, its kernel's wheels), and the UI never waits for the Python GIL. Started and
   controlled by CAD; for the user it runs "inside" the application.
-- **Data exchange:** commands and small data as JSON over a local socket (`QLocalSocket`);
-  large arrays (rays, fields, meshes) in shared memory as typed buffers that map directly to
-  numpy arrays – no copies through JSON.
+- **Data exchange:** commands and small data as JSON lines over TCP on 127.0.0.1, authenticated
+  with a per-process token (a Windows named pipe cannot be read and written from two threads at
+  the same time); large arrays (rays, fields) as temporary files that CAD memory-maps and
+  deletes – no copies through JSON.
 - **Geometry exchange:** NURBS data (degrees, knots, control points, weights, trim loops) –
   the `.nfcad` JSON schema in binary form. The client package turns it into `nurbforge` Python
   objects and back, so CAD and plugins do not have to share a compiled module (no ABI
@@ -155,8 +156,7 @@ interface the plugin host (P3) fills:
 | `Curve` | x / y with labels; `appendToCurve` for live updates | Plot dock (appears with the first curve) |
 
 Results are listed in the *Results* dock (visibility per run and item, delete a run, *Convert to
-CAD curves* for rays). Colour maps: viridis, inferno, plasma, coolwarm, grey. Not yet: saving
-results with the document (P3, together with the plugin runs), 2D image plots.
+CAD curves* for rays). Colour maps: viridis, inferno, plasma, coolwarm, grey. Not yet: saving results with the document (later, with the reference plugin P6), 2D image plots.
 
 ## 4. Milestones
 
@@ -164,7 +164,7 @@ results with the document (P3, together with the plugin runs), 2D image plots.
 |---|---|---|
 | **P1** ✅ | CAD core, part 1: model tree (groups, visibility, isolate), entity attributes (saved in `.nfcad`, edited in the property panel), (u, v) in display meshes | yes |
 | **P2** ✅ | CAD core, part 2: result sets and layers – line sets with per-vertex colour, face fields / images with colour maps and legend, plot dock (curves), promote rays to CAD curves; *Help → Demo results* | yes, with generated demo data |
-| **P3** | Plugin host: process start / stop, `nfcad` client package, socket + shared memory, model access, geometry exchange, results API, job runner (progress, cancel, log) | yes, with a test plugin |
+| **P3** ✅ | Plugin host: process start / stop, `nfcad` client package, channel (TCP on 127.0.0.1 with a token; arrays as mapped temporary files), model access, geometry exchange, results API, job runner (progress, cancel, log), one undo step per run – see [plugin-api.md](plugin-api.md) | yes, with a test plugin |
 | **P4** | Parameter panel from the schema (numbers + units, enums, lists, files, entity pick, point pick with snaps), parameter sets saved in the document | yes |
 | **P5** | Signing: manifest, `nfcad-plugin sign / verify`, trusted keys, developer mode, CI check | yes |
 | **P6** | Reference plugin *Raytracer*: load / edit `.rtt.json`, bridge to Nurbforge geometry, model tree from the rtt node tree, trace with rays, image-surface irradiance as face field, optimise (final result; live once rtt has the iteration callback), convergence plot, undo via inverse patches | needs Raytatouille + the library items of section 2a |

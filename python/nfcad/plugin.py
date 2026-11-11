@@ -1,0 +1,33 @@
+"""Plugin base class and the @action decorator."""
+
+from __future__ import annotations
+
+from typing import Callable
+
+API_VERSION = 1
+
+
+def action(label: str, *, description: str = "") -> Callable:
+    """Marks a method ``f(self, ctx)`` as an action shown in CAD (menu / tool column)."""
+
+    def mark(f: Callable) -> Callable:
+        f._nfcad_action = {"label": label, "description": description}
+        return f
+
+    return mark
+
+
+class Plugin:
+    """Base class. Subclasses define actions with :func:`action`; ``params`` (P4) describes the
+    parameters CAD shows in the plugin panel."""
+
+    params: dict = {}
+
+    def actions(self) -> dict[str, dict]:
+        out = {}
+        for name in dir(type(self)):
+            f = getattr(type(self), name, None)
+            meta = getattr(f, "_nfcad_action", None)
+            if meta is not None:
+                out[name] = meta
+        return out

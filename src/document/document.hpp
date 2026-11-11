@@ -72,6 +72,12 @@ class Document : public QObject {
   // ---- attributes (undoable)
   void setAttribute(EntityId id, const QString& key, const QVariant& value);  ///< null: remove
 
+  /// Records changes that were already applied without undo (live updates of a plugin run) as
+  /// one undo step: the added entities, the previous geometry and attributes of changed ones.
+  void recordApplied(const QString& text, const std::vector<EntityId>& added,
+                     const std::vector<std::pair<EntityId, GeometryPtr>>& old_geometry,
+                     const std::vector<std::pair<EntityId, QVariantMap>>& old_attributes);
+
   // ---- low level (undo commands, loading)
   GroupId insertGroup(Group g);  ///< keeps g.id if free, else assigns one
   void eraseGroup(GroupId id);

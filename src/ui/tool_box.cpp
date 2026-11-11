@@ -103,6 +103,7 @@ ToolBox::ToolBox(QWidget* parent) : QScrollArea(parent) {
 
   auto* content = new QWidget(this);
   auto* layout = new QVBoxLayout(content);
+  layout_ = layout;
   layout->setContentsMargins(0, 0, 0, 0);
   layout->setSpacing(1);
 
@@ -118,6 +119,19 @@ ToolBox::ToolBox(QWidget* parent) : QScrollArea(parent) {
   }
   layout->addStretch(1);
   setWidget(content);
+}
+
+void ToolBox::setExtraGroups(const std::vector<ToolGroupDef>& groups) {
+  for (ToolGroup* g : extra_) g->deleteLater();
+  extra_.clear();
+  const int stretch = layout_->count() - 1;  // keep the stretch last
+  int at = stretch;
+  for (const ToolGroupDef& def : groups) {
+    auto* group = new ToolGroup(def, widget());
+    connect(group, &ToolGroup::toolTriggered, this, &ToolBox::toolTriggered);
+    layout_->insertWidget(at++, group);
+    extra_.push_back(group);
+  }
 }
 
 }  // namespace nfcad::ui

@@ -22,3 +22,8 @@ Thumbs.db
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Python development environment (plugins)
+.venv/
+__pycache__/
+*.pyc

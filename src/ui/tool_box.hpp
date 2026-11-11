@@ -7,6 +7,7 @@
 #include "ui/tool_catalog.hpp"
 
 class QToolButton;
+class QVBoxLayout;
 
 namespace nfcad::ui {
 
@@ -44,9 +45,15 @@ class ToolBox : public QScrollArea {
   Q_OBJECT
  public:
   explicit ToolBox(QWidget* parent = nullptr);
+  /// Replaces the groups contributed by plugins (shown after the built-in groups).
+  void setExtraGroups(const std::vector<ToolGroupDef>& groups);
 
  signals:
   void toolTriggered(const QString& toolId);
+
+ private:
+  QVBoxLayout* layout_ = nullptr;
+  std::vector<ToolGroup*> extra_;
 };
 
 }  // namespace nfcad::ui

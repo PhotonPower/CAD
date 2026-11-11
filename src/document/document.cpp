@@ -3,6 +3,7 @@
 #include <QUndoCommand>
 #include <algorithm>
 #include <set>
+#include <tuple>
 
 namespace nfcad::document {
 
@@ -157,6 +158,36 @@ class AttributeCommand : public QUndoCommand {
   Document* doc_;
   EntityId id_;
   QVariantMap before_, after_;
+};
+
+class AppliedCommand : public QUndoCommand {
+ public:
+  AppliedCommand(Document* doc, const QString& text, std::vector<Entity> added,
+                 std::vector<std::tuple<EntityId, GeometryPtr, GeometryPtr>> geometry,
+                 std::vector<std::tuple<EntityId, QVariantMap, QVariantMap>> attributes)
+      : QUndoCommand(text), doc_(doc), added_(std::move(added)), geometry_(std::move(geometry)),
+        attributes_(std::move(attributes)) {}
+  void redo() override {
+    if (first_) {  // already applied live
+      first_ = false;
+      return;
+    }
+    for (const Entity& e : added_) doc_->insert(e);
+    for (const auto& [id, before, after] : geometry_) doc_->setGeometry(id, after);
+    for (const auto& [id, before, after] : attributes_) doc_->setEntityAttributes(id, after);
+  }
+  void undo() override {
+    for (const auto& [id, before, after] : attributes_) doc_->setEntityAttributes(id, before);
+    for (const auto& [id, before, after] : geometry_) doc_->setGeometry(id, before);
+    for (auto it = added_.rbegin(); it != added_.rend(); ++it) doc_->erase(it->id);
+  }
+
+ private:
+  Document* doc_;
+  bool first_ = true;
+  std::vector<Entity> added_;
+  std::vector<std::tuple<EntityId, GeometryPtr, GeometryPtr>> geometry_;
+  std::vector<std::tuple<EntityId, QVariantMap, QVariantMap>> attributes_;
 };
 
 class AssignLayerCommand : public QUndoCommand {
@@ -394,6 +425,25 @@ std::vector<EntityId> Document::apply(Edit edit, const QString& text) {
   auto* cmd = new EditCommand(this, std::move(edit), text);
   undo_.push(cmd);
   return cmd->added();
+}
+
+void Document::recordApplied(const QString& text, const std::vector<EntityId>& added,
+                             const std::vector<std::pair<EntityId, GeometryPtr>>& old_geometry,
+                             const std::vector<std::pair<EntityId, QVariantMap>>& old_attributes) {
+  std::vector<Entity> add;
+  for (EntityId id : added) {
+    if (const Entity* e = entity(id)) add.push_back(*e);
+  }
+  std::vector<std::tuple<EntityId, GeometryPtr, GeometryPtr>> geometry;
+  for (const auto& [id, before] : old_geometry) {
+    if (const Entity* e = entity(id)) geometry.emplace_back(id, before, e->geometry);
+  }
+  std::vector<std::tuple<EntityId, QVariantMap, QVariantMap>> attributes;
+  for (const auto& [id, before] : old_attributes) {
+    if (const Entity* e = entity(id)) attributes.emplace_back(id, before, e->attributes);
+  }
+  if (add.empty() && geometry.empty() && attributes.empty()) return;
+  undo_.push(new AppliedCommand(this, text, std::move(add), std::move(geometry), std::move(attributes)));
 }
 
 GeometryPtr Document::setGeometry(EntityId id, GeometryPtr geometry) {
