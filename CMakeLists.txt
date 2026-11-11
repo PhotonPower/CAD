@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(RaytatouilleFusion
-  VERSION 0.0.1
+  VERSION 1.0.0
   DESCRIPTION "Desktop CAD front end for the Nurbforge NURBS kernel"
   HOMEPAGE_URL "https://github.com/PhotonPower/Raytatouille-Fusion"
   LANGUAGES C CXX)
@@ -61,6 +61,8 @@ add_library(nfcad_core STATIC
   src/results/result_store.cpp
   src/snap/snap_engine.cpp
   src/snap/snap_types.cpp
+  src/support/crash_handler.cpp
+  src/support/settings_migration.cpp
   src/tessellation/bvh.cpp
   src/tessellation/display_mesh.cpp
   src/tessellation/stl_export.cpp

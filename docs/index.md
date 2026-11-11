@@ -1,5 +1,6 @@
 # Raytatouille Fusion – documentation
 
+- **[User guide](user-guide.md)** – installing, working with the views, snaps, files, plugins, shortcuts
 - [Project plan](plan.md) – goals, milestones, risks
 - [UI concept](ui-concept.md) – main window, tool column, viewports, mouse and keyboard
 - [Object snaps](snapping.md) – snap types, priorities, algorithm
