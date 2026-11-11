@@ -10,7 +10,7 @@
     NURBS geometry (Nurbforge kernel), STEP import and export.</p>
   </description>
   <launchable type="desktop-id">io.github.photonpower.RaytatouilleFusion.desktop</launchable>
-  <url type="homepage">https://github.com/PhotonPower/CAD</url>
+  <url type="homepage">https://github.com/PhotonPower/Raytatouille-Fusion</url>
   <provides>
     <binary>RaytatouilleFusion</binary>
   </provides>

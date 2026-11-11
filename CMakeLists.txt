@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.24)
 project(RaytatouilleFusion
   VERSION 0.0.1
   DESCRIPTION "Desktop CAD front end for the Nurbforge NURBS kernel"
-  HOMEPAGE_URL "https://github.com/PhotonPower/CAD"
+  HOMEPAGE_URL "https://github.com/PhotonPower/Raytatouille-Fusion"
   LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)

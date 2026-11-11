@@ -8,7 +8,7 @@ Version:        0.0.1
 Release:        1%{?dist}
 Summary:        Desktop CAD front end for the Nurbforge NURBS kernel
 License:        MIT AND MPL-2.0
-URL:            https://github.com/PhotonPower/CAD
+URL:            https://github.com/PhotonPower/Raytatouille-Fusion
 
 BuildRequires:  gcc-c++ cmake ninja-build git
 BuildRequires:  qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtsvg-devel qt6-qtshadertools-devel
