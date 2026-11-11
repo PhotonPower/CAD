@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QSpinBox>
@@ -100,6 +101,23 @@ class TestPluginForm : public QObject {
     if (const QByteArray dir = qgetenv("NFCAD_SNAPSHOT_DIR"); !dir.isEmpty()) {
       QVERIFY(img.save(QString::fromLocal8Bit(dir) + QStringLiteral("/plugin_form.png")));
     }
+  }
+
+  void fileList() {
+    // several files (e.g. glass catalogues); a ';'-separated text of older documents is read too
+    const QJsonArray s{QJsonObject{{"name", "cat"}, {"type", "files"}, {"default", QJsonArray{}}}};
+    PluginForm stored(s, QJsonObject{{"cat", QJsonArray{"/a/schott.agf", "/b/ohara.agf"}}}, {});
+    auto* list = stored.findChild<QListWidget*>();
+    QVERIFY(list != nullptr);
+    QCOMPARE(list->count(), 2);
+    QCOMPARE(list->item(0)->text(), QStringLiteral("schott.agf"));
+    list->item(0)->setSelected(true);
+    for (auto* b : stored.findChildren<QPushButton*>()) {
+      if (b->text() == QStringLiteral("Remove")) b->click();
+    }
+    QCOMPARE(stored.values()["cat"].toArray(), (QJsonArray{"/b/ohara.agf"}));
+    PluginForm legacy(s, QJsonObject{{"cat", "/a/schott.agf; /b/ohara.agf"}}, {});
+    QCOMPARE(legacy.findChild<QListWidget*>()->count(), 2);
   }
 
   void narrowPanel() {

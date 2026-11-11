@@ -47,9 +47,10 @@ class RaytracerPlugin(Plugin):
     params = {
         "system": Param.file("", filter="Raytatouille system (*.rtt.json *.json)", label="System file",
                              group="System"),
-        "catalogs": Param.text("", label="Glass catalogues", group="System",
-                               description="AGF files separated by ';'. Always used as well: *.agf next to the "
-                                           "system file and in its sub-folder 'catalogs'."),
+        "catalogs": Param.files([], filter="Glass catalogues (*.agf *.AGF);;All files (*)", label="Glass catalogues",
+                                group="System",
+                                description="AGF catalogues (Add…). Always used as well: *.agf next to the system "
+                                            "file and in its sub-folder 'catalogs'."),
         "tolerance": Param.number(1e-4, min=1e-7, max=1.0, decimals=7, unit="mm", label="Drawing tolerance",
                                   group="System", description="Largest deviation of the drawn NURBS from the "
                                                               "optical surface (only the drawing; rays are traced "
@@ -78,7 +79,7 @@ class RaytracerPlugin(Plugin):
     # ------------------------------------------------------------------ helpers
     def _library(self, ctx, system_path: str):
         lib = rt.MaterialLibrary()
-        files = [f.strip() for f in ctx.params["catalogs"].split(";") if f.strip()]
+        files = list(ctx.params["catalogs"])
         folder = Path(system_path).parent
         files += sorted(glob.glob(str(folder / "*.agf"))) + sorted(glob.glob(str(folder / "catalogs" / "*.agf")))
         loaded = []

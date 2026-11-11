@@ -64,6 +64,7 @@ class Raytracer(Plugin):
 | `Param.choice(options, default)` | combo box | `str` |
 | `Param.text(default)` | line edit | `str` |
 | `Param.file(default, filter=, save=)` | path + file dialog | `str` |
+| `Param.files(default, filter=)` | list of files with *Add…* (several at once) / *Remove* | `list[str]` |
 | `Param.numbers(default, unit=)` | comma-separated list (decimal point); invalid input is marked red and blocks the actions | `list[float]` |
 | `Param.point(default)` | x, y, z + **Pick** (click in a view, with object snaps; Esc cancels) | `(x, y, z)` |
 | `Param.entity(kinds=, multiple=)` | **Use selection** takes the selected objects of the given kinds (`point`, `curve`, `surface`, `trimmed_surface`, `shell`) | id, or a list with `multiple=True`; `None` if empty |
