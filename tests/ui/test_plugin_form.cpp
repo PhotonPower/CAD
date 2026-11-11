@@ -113,11 +113,14 @@ class TestPluginForm : public QObject {
     f.show();
     QVERIFY(QTest::qWaitForWindowExposed(&f) || true);
     auto* edit = f.findChild<QLineEdit*>();
-    QVERIFY(edit->width() >= 150);
     QPushButton* browse = nullptr;
     for (auto* b : f.findChildren<QPushButton*>()) browse = b->text() == QStringLiteral("…") ? b : browse;
     QVERIFY(browse != nullptr);
-    QVERIFY(browse->geometry().right() <= browse->parentWidget()->width());  // not cut off
+    const QString sizes = QStringLiteral("form %1, field %2, button %3..%4 in %5")
+                              .arg(f.width()).arg(edit->width()).arg(browse->geometry().left())
+                              .arg(browse->geometry().right()).arg(browse->parentWidget()->width());
+    QVERIFY2(edit->width() >= f.width() / 3, qPrintable(sizes));  // a usable field
+    QVERIFY2(browse->geometry().right() < browse->parentWidget()->width(), qPrintable(sizes));  // not cut off
     if (const QByteArray dir = qgetenv("NFCAD_SNAPSHOT_DIR"); !dir.isEmpty()) {
       f.grab().save(QString::fromLocal8Bit(dir) + QStringLiteral("/plugin_form_narrow.png"));
     }
