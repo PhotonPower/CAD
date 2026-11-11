@@ -5,6 +5,14 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 
 ## [Unreleased]
 
+### Added
+- **Plugin parameter panel (P4):** plugins describe their parameters with `nfcad.Param`
+  (number with unit and limits, integer, boolean, choice, text, file, number list, point,
+  model object); CAD builds a form in the new *Plugin* dock with the plugin's action buttons.
+  Points are picked in the views with object snaps, objects taken from the selection. The
+  values are saved per plugin in the `.nfcad` document and arrive in `ctx.params` as Python
+  types.
+
 ### Changed
 - Renamed to **Raytatouille Fusion** (was *Nurbforge CAD*): window and menu texts, executable
   and bundle (`RaytatouilleFusion`), installer, RPM `raytatouille-fusion` (replaces

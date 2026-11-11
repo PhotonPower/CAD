@@ -6,8 +6,12 @@
 #include <QStatusBar>
 #include <QToolButton>
 
+#include "app/command_controller.hpp"
 #include "app/main_window.hpp"
+#include "document/document.hpp"
+#include "document/selection.hpp"
 #include "plugins/plugin_manager.hpp"
+#include "ui/plugin_panel.hpp"
 #include "ui/plugin_settings_dialog.hpp"
 #include "ui/tool_box.hpp"
 
@@ -47,6 +51,44 @@ void MainWindow::createPlugins() {
     if (active_plugin_ != nullptr) active_plugin_->cancel();
   });
 
+  // parameter panel (right dock, tab next to the results)
+  ui::PluginForm::Callbacks callbacks;
+  callbacks.selection = [this](const QStringList& kinds) {
+    static const QStringList names = {QStringLiteral("point"), QStringLiteral("curve"), QStringLiteral("surface"),
+                                      QStringLiteral("trimmed_surface"), QStringLiteral("shell")};
+    std::vector<std::pair<qint64, QString>> out;
+    for (const document::SelectionItem& i : selection_->ordered()) {
+      if (i.sub.kind != document::SubElement::Kind::None) continue;
+      const document::Entity* e = doc_->entity(i.entity);
+      if (e == nullptr) continue;
+      const QString kind = names[static_cast<int>(document::kind_of(*e->geometry))];
+      if (!kinds.isEmpty() && !kinds.contains(kind)) continue;
+      out.emplace_back(static_cast<qint64>(e->id), e->name.isEmpty() ? QStringLiteral("#%1").arg(e->id) : e->name);
+    }
+    if (out.empty()) statusBar()->showMessage(tr("Select suitable objects first (%1)").arg(kinds.join(QStringLiteral(", "))), 5000);
+    return out;
+  };
+  callbacks.entity_name = [this](qint64 id) {
+    const document::Entity* e = doc_->entity(static_cast<document::EntityId>(id));
+    if (e == nullptr) return QString();
+    return e->name.isEmpty() ? QStringLiteral("#%1").arg(id) : e->name;
+  };
+  callbacks.pick_point = [this](std::function<void(double, double, double)> done) {
+    commands_->pickPoint(tr("Pick a point for the plugin parameter (snaps active, Esc cancels)"),
+                         [done](const commands::Point3& p) { done(p.x, p.y, p.z); });
+  };
+  plugin_panel_ = new ui::PluginPanel(plugins_, doc_, callbacks,
+                                      [this](plugins::PluginHost* host, const QString& action) {
+                                        runPluginAction(host, action);
+                                      });
+  auto* panel_dock = new QDockWidget(tr("Plugin"), this);
+  panel_dock->setObjectName(QStringLiteral("pluginDock"));
+  panel_dock->setWidget(plugin_panel_);
+  addDockWidget(Qt::RightDockWidgetArea, panel_dock);
+  if (auto* results = findChild<QDockWidget*>(QStringLiteral("resultsDock"))) tabifyDockWidget(results, panel_dock);
+  if (auto* model = findChild<QDockWidget*>(QStringLiteral("modelDock"))) model->raise();
+  view_menu_->addAction(panel_dock->toggleViewAction());
+
   connect(plugins_, &plugins::PluginManager::pluginsChanged, this, [this] {
     for (const auto& h : plugins_->plugins()) {
       connectPlugin(h.get());
@@ -70,6 +112,7 @@ void MainWindow::connectPlugin(plugins::PluginHost* host) {
   connect(host, &plugins::PluginHost::finished, this,
           [this, host](int, bool ok, bool cancelled, const QString& message) {
             if (active_plugin_ == host) active_plugin_ = nullptr;
+            plugin_panel_->setBusy(false);
             job_progress_->hide();
             job_cancel_->hide();
             const QString what = host->manifest().name;
@@ -128,8 +171,9 @@ void MainWindow::runPluginAction(plugins::PluginHost* host, const QString& actio
     statusBar()->showMessage(tr("A plugin job is still running"), 4000);
     return;
   }
-  if (plugins_->run(host, action) == 0) return;
+  if (plugins_->run(host, action, doc_->pluginParameters(host->manifest().id)) == 0) return;
   active_plugin_ = host;
+  plugin_panel_->setBusy(true);
   job_progress_->setValue(0);
   job_progress_->show();
   job_cancel_->show();

@@ -42,7 +42,7 @@ namespace nfcad::app {
 using render::DisplayMode;
 
 namespace {
-constexpr int kWindowStateVersion = 4;  // 2: model tree (P1), 3: results + plot (P2), 4: plugin log (P3)
+constexpr int kWindowStateVersion = 5;  // 2: model tree (P1), 3: results + plot (P2), 4: plugin log (P3), 5: plugin panel (P4)
 }
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -65,6 +65,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   setCentralWidget(grid_);
 
   connect(doc_->undoStack(), &QUndoStack::cleanChanged, this, &MainWindow::updateTitle);
+  connect(doc_, &document::Document::modificationChanged, this, &MainWindow::updateTitle);
   connect(tessellator_, &tessellation::TessellationService::idle, this, [this] {
     if (zoom_after_tessellation_) {
       zoom_after_tessellation_ = false;

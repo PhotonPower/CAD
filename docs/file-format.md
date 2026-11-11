@@ -15,7 +15,8 @@ Geometry is stored exactly: degrees, knot vectors, control points and weights â€
                   "color": "#ff0000",            // optional, default: layer colour
                   "group": 1,                    // v2, optional (0 / missing: top level)
                   "attributes": { "rtt.role": "mirror", "sim.inactive": true },   // v2, optional
-                  "geometry": { "type": "shell", "faces": [ ... ] } } ]
+                  "geometry": { "type": "shell", "faces": [ ... ] } } ],
+  "plugins":  { "demo": { "params": { "rays": 300, "origin": [0, 0, 0] } } }   // v2, optional
 }
 ```
 
@@ -30,6 +31,9 @@ Geometry is stored exactly: degrees, knot vectors, control points and weights â€
 Groups form the model tree (`parent` 0 = top level). Attributes are free key / value data
 (strings, numbers, booleans); plugins use namespaced keys (`rtt.*`), `sim.inactive = true`
 excludes an object from computations ([plugins.md](plugins.md), D11).
+
+`plugins` holds the values of each plugin's parameter panel by plugin id (P4,
+[plugin-api.md](plugin-api.md)); readers that do not know a plugin keep its entry unchanged.
 
 Entity ids are strings (64-bit). Readers reject newer versions and invalid geometry with a
 message; the document is unchanged in that case.

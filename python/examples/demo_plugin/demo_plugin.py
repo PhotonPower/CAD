@@ -4,32 +4,49 @@ import math
 import random
 import time
 
-from nfcad import Plugin, action
+from nfcad import Param, Plugin, action
 from nfcad import geometry as g
 
 
 class DemoPlugin(Plugin):
+    params = {
+        "rays": Param.integer(300, min=1, max=100_000, label="Number of rays", group="Rays"),
+        "length": Param.number(20.0, min=0.1, unit="mm", label="Length", group="Rays"),
+        "origin": Param.point((0, 0, 0), label="Origin", group="Rays",
+                              description="Start point of the fan (Pick: click in a view)"),
+        "colormap": Param.choice(["viridis", "inferno", "plasma", "coolwarm", "grey"], "viridis",
+                                 label="Colour map", group="Rays"),
+        "wavelengths": Param.numbers([400, 700], unit="nm", label="Wavelength range", group="Rays"),
+        "target": Param.entity(kinds=["surface", "trimmed_surface", "shell"], label="Field on",
+                               group="Field", description="Surfaces that get the demo field"),
+    }
+
     @action("Ray fan from the origin")
     def rays(self, ctx):
-        n = 300
+        p = ctx.params
+        n = p["rays"]
+        ox, oy, oz = p["origin"]
+        lo, hi = (p["wavelengths"] + [400, 700])[:2]
         points, starts, values = [], [], []
         for k in range(n):
             starts.append(len(points))
             a = 2 * math.pi * k / n
-            for t in (0.0, 10.0, 20.0):
-                points.append((t * math.cos(a), t * math.sin(a), 5.0 * math.sin(3 * a) * t / 20))
-                values.append(400 + 300 * k / n)
+            for t in (0.0, p["length"] / 2, p["length"]):
+                points.append((ox + t * math.cos(a), oy + t * math.sin(a),
+                               oz + 0.25 * p["length"] * math.sin(3 * a) * t / p["length"]))
+                values.append(lo + (hi - lo) * k / n)
             ctx.progress(k / n, "tracing")
             ctx.check_cancel()
         starts.append(len(points))
         run = ctx.result_set("Demo rays")
-        ctx.lines(run, "Rays", points, starts, values, unit="nm")
+        ctx.lines(run, "Rays", points, starts, values, unit="nm", colormap=p["colormap"])
         return f"{n} rays"
 
     @action("Field on the selected surfaces")
     def field(self, ctx):
         run = ctx.result_set("Demo field")
-        for e in ctx.entities(selection=True):
+        target = ctx.params["target"]
+        for e in ctx.entities(ids=[target]) if target is not None else ctx.entities(selection=True):
             w = h = 64
             values = [math.sin(6 * i / w) * math.cos(6 * j / h) for j in range(h) for i in range(w)]
             ctx.field(run, f"Pattern on {e['name'] or e['id']}", e["id"], values, w, h, colormap="coolwarm")
