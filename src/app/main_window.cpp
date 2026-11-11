@@ -77,7 +77,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   grid_->setSnapSettings(snapbar_->mask(), snapbar_->snappingEnabled());
   connect(snapbar_, &ui::SnapBar::maskChanged, this,
           [this](snap::SnapMask mask, bool enabled) { grid_->setSnapSettings(mask, enabled); });
-  commands_ = new CommandController(doc_, grid_, command_line_, statusBar(), this);
+  commands_ = new CommandController(doc_, selection_, grid_, command_line_, statusBar(), this);
   connect(ortho_, &QToolButton::toggled, commands_, &CommandController::setOrtho);
   connect(commands_, &CommandController::orthoChanged, ortho_, &QToolButton::setChecked);
 
@@ -118,6 +118,9 @@ void MainWindow::createMenus() {
   file->addSeparator();
   file->addAction(tr("&Save"), QKeySequence::Save, this, &MainWindow::save);
   file->addAction(tr("Save &As…"), QKeySequence::SaveAs, this, &MainWindow::saveAs);
+  file->addSeparator();
+  file->addAction(tr("Export S&TEP…"), this, [this] { exportDialog(false); });
+  file->addAction(tr("Export ST&L…"), this, [this] { exportDialog(true); });
   file->addSeparator();
   QAction* quit = file->addAction(tr("&Quit"), this, &QWidget::close);
   quit->setShortcut(QKeySequence::Quit);

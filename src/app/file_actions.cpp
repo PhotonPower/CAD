@@ -12,7 +12,10 @@
 #include "app/main_window.hpp"
 #include "document/document.hpp"
 #include "document/nfcad_io.hpp"
+#include "kernel/geometry_ops.hpp"
 #include "kernel/step_import.hpp"
+#include "document/selection.hpp"
+#include "tessellation/stl_export.hpp"
 #include "render/scene.hpp"
 #include "tessellation/tessellation_service.hpp"
 #include "viewport/viewport.hpp"
@@ -168,6 +171,57 @@ bool MainWindow::saveTo(const QString& path) {
   updateTitle();
   statusBar()->showMessage(tr("Saved %1").arg(QFileInfo(path).fileName()), 4000);
   return true;
+}
+
+// ------------------------------------------------------------------------------- export
+
+std::vector<const document::Entity*> MainWindow::exportEntities() const {
+  std::vector<const document::Entity*> out;
+  for (const document::SelectionItem& i : selection_->ordered()) {
+    if (i.sub.kind != document::SubElement::Kind::None) continue;
+    if (const document::Entity* e = doc_->entity(i.entity)) out.push_back(e);
+  }
+  if (out.empty()) {
+    for (const auto& [id, e] : doc_->entities()) {
+      if (doc_->isDisplayed(e)) out.push_back(&e);
+    }
+  }
+  return out;
+}
+
+void MainWindow::exportDialog(bool stl) {
+  const auto entities = exportEntities();
+  const QString filter = stl ? tr("STL files (*.stl)") : kStepFilter;
+  QString path = QFileDialog::getSaveFileName(this, stl ? tr("Export STL") : tr("Export STEP"),
+                                              {}, filter);
+  if (path.isEmpty()) return;
+  if (QFileInfo(path).suffix().isEmpty()) path += stl ? QStringLiteral(".stl") : QStringLiteral(".step");
+  QString error;
+  std::size_t written = 0;
+  if (stl) {
+    std::vector<const tessellation::DisplayMesh*> meshes;
+    for (const document::Entity* e : entities) {
+      const auto it = scene_->items().find(e->id);
+      if (it != scene_->items().end() && it->second.mesh && !it->second.mesh->indices.empty()) {
+        meshes.push_back(it->second.mesh.get());
+      }
+    }
+    written = meshes.size();
+    error = tessellation::write_stl(path, meshes);
+  } else {
+    try {
+      written = kernel::export_step(path, entities);
+    } catch (const std::exception& e) {
+      error = QString::fromUtf8(e.what());
+    }
+  }
+  if (!error.isEmpty()) {
+    QMessageBox::critical(this, tr("Export"), tr("Cannot export %1:\n%2").arg(path, error));
+  } else if (written == 0) {
+    statusBar()->showMessage(tr("Nothing to export (STEP: solids and surfaces, STL: objects with faces)"), 6000);
+  } else {
+    statusBar()->showMessage(tr("Exported %1 object(s) to %2").arg(written).arg(QFileInfo(path).fileName()), 6000);
+  }
 }
 
 // ------------------------------------------------------------------------------- benchmark

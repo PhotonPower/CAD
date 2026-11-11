@@ -14,6 +14,7 @@ class QMenu;
 namespace nfcad::document {
 class Document;
 class Selection;
+struct Entity;
 }
 namespace nfcad::render {
 class Scene;
@@ -68,6 +69,9 @@ class MainWindow : public QMainWindow {
   bool save();
   bool saveAs();
   bool saveTo(const QString& path);
+  void exportDialog(bool stl);
+  /// Selected whole entities, or all displayed entities if nothing is selected.
+  [[nodiscard]] std::vector<const document::Entity*> exportEntities() const;
   bool maybeSave();
   void updateTitle();
   void zoomExtentsWhenTessellated();

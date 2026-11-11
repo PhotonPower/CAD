@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include "document/document.hpp"
 #include "document/entity.hpp"
 #include "snap/snap_types.hpp"
 
@@ -55,13 +56,27 @@ class Command {
   /// Reference for relative input (@dx,dy,dz), ortho and typed distances.
   [[nodiscard]] virtual std::optional<Point3> basePoint() const { return std::nullopt; }
 
-  /// Entities created since the last call (the controller adds them as one undo step).
+  /// Commands on the selection (transforms, Booleans): called once at the start with the
+  /// selected entities in selection order. Return false (and set message_) if unsuitable.
+  [[nodiscard]] virtual bool usesSelection() const { return false; }
+  virtual bool begin(const std::vector<document::Entity>& /*selection*/) { return true; }
+  /// True if the command is complete right after begin() (e.g. Booleans).
+  [[nodiscard]] virtual bool immediate() const { return false; }
+
+  /// Entities created since the last call.
   [[nodiscard]] std::vector<document::Entity> takeEntities() { return std::exchange(entities_, {}); }
+  /// All changes since the last call: created entities, removed ids, replaced geometry
+  /// (the controller applies them as one undo step).
+  [[nodiscard]] document::Edit takeEdit() {
+    return {std::exchange(entities_, {}), std::exchange(remove_, {}), std::exchange(replace_, {})};
+  }
   /// Result text (e.g. a measured distance).
   [[nodiscard]] QString message() const { return message_; }
 
  protected:
   std::vector<document::Entity> entities_;
+  std::vector<document::EntityId> remove_;
+  std::vector<std::pair<document::EntityId, document::GeometryPtr>> replace_;
   QString message_;
 };
 
@@ -71,5 +86,14 @@ class Command {
 [[nodiscard]] std::unique_ptr<Command> create_command(const QString& name);
 /// Ids of all commands.
 [[nodiscard]] QStringList command_ids();
+
+namespace detail {
+// Factories of the command groups (drawing_commands.cpp, solid_commands.cpp,
+// transform_commands.cpp); create_command searches them in this order.
+std::unique_ptr<Command> create_solid_command(const QString& name);
+std::unique_ptr<Command> create_transform_command(const QString& name);
+QStringList solid_command_ids();
+QStringList transform_command_ids();
+}  // namespace detail
 
 }  // namespace nfcad::commands

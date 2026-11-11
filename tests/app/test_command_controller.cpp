@@ -6,6 +6,7 @@
 
 #include "app/command_controller.hpp"
 #include "document/document.hpp"
+#include "document/selection.hpp"
 #include "render/scene.hpp"
 #include "tessellation/tessellation_service.hpp"
 #include "viewport/viewport.hpp"
@@ -33,7 +34,7 @@ class TestCommandController : public QObject {
     grid.resize(1000, 800);
     QLineEdit line;
     QStatusBar status;
-    CommandController c(&doc, &grid, &line, &status);
+    CommandController c(&doc, nullptr, &grid, &line, &status);
 
     // type a command name, then absolute and relative coordinates
     c.submit(QStringLiteral("line"));
@@ -81,7 +82,7 @@ class TestCommandController : public QObject {
     grid.resize(1000, 800);
     QLineEdit line;
     QStatusBar status;
-    CommandController c(&doc, &grid, &line, &status);
+    CommandController c(&doc, nullptr, &grid, &line, &status);
     nfcad::viewport::Viewport* top = grid.views()[1];  // Top (XY)
     QCOMPARE(top->kind(), nfcad::viewport::ViewKind::Top);
     top->resize(500, 400);
@@ -100,12 +101,47 @@ class TestCommandController : public QObject {
              qPrintable(QStringLiteral("%1 %2 %3").arg(end.x).arg(end.y).arg(end.z)));
   }
 
+  void selectionCommands() {
+    nfcad::document::Document doc;
+    nfcad::document::Selection selection;
+    selection.attach(&doc);
+    nfcad::viewport::ViewportGrid grid;
+    QLineEdit line;
+    QStatusBar status;
+    CommandController c(&doc, &selection, &grid, &line, &status);
+
+    c.start(QStringLiteral("move"));  // nothing selected
+    QVERIFY(!c.active());
+    QVERIFY(status.currentMessage().contains(QStringLiteral("select")));
+
+    const auto ids = doc.addEntities(
+        {nfcad::document::make_entity(nf::make_box({-5, -5, 0}, {10, 10, 4})),
+         nfcad::document::make_entity(nf::make_cylinder({0, 0, -1}, {0, 0, 1}, 2.0, 6.0))},
+        QStringLiteral("add"));
+    // order matters: box first, then the cylinder that is subtracted
+    selection.apply({{ids[0], {}}}, nfcad::document::Selection::Mode::Replace);
+    selection.apply({{ids[1], {}}}, nfcad::document::Selection::Mode::Add);
+    c.submit(QStringLiteral("bd"));
+    QVERIFY(!c.active());
+    QCOMPARE(doc.entities().size(), std::size_t{1});
+    const auto result = doc.entities().begin()->first;
+    QVERIFY(selection.empty());  // the inputs left the selection
+
+    selection.apply({{result, {}}}, nfcad::document::Selection::Mode::Replace);
+    c.submit(QStringLiteral("move"));
+    c.submit(QStringLiteral("0,0,0"));
+    c.submit(QStringLiteral("@0,0,10"));
+    QVERIFY(!c.active());
+    const auto& shell = std::get<nf::Shell>(*doc.entity(result)->geometry);
+    QVERIFY(std::abs(shell.mass_properties().centroid.z - 12.0) < 1e-6);
+  }
+
   void distanceMessageInStatusBar() {
     nfcad::document::Document doc;
     nfcad::viewport::ViewportGrid grid;
     QLineEdit line;
     QStatusBar status;
-    CommandController c(&doc, &grid, &line, &status);
+    CommandController c(&doc, nullptr, &grid, &line, &status);
     c.start(QStringLiteral("dist"));
     c.submit(QStringLiteral("0,0,0"));
     c.submit(QStringLiteral("0,3,4"));

@@ -479,13 +479,14 @@ std::unique_ptr<Command> create_command(const QString& name) {
       if (n == QLatin1String(a)) return e.make();
     }
   }
-  return nullptr;
+  if (auto c = detail::create_solid_command(n)) return c;
+  return detail::create_transform_command(n);
 }
 
 QStringList command_ids() {
   QStringList out;
   for (const Entry& e : registry()) out << QString::fromLatin1(e.id);
-  return out;
+  return out + detail::solid_command_ids() + detail::transform_command_ids();
 }
 
 }  // namespace nfcad::commands

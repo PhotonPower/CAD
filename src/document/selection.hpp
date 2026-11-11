@@ -38,6 +38,8 @@ class Selection : public QObject {
   void attach(class Document* doc);
 
   [[nodiscard]] const std::set<SelectionItem>& items() const { return items_; }
+  /// Items in the order they were selected (Boolean difference: first minus the others).
+  [[nodiscard]] const std::vector<SelectionItem>& ordered() const { return order_; }
   [[nodiscard]] bool empty() const { return items_.empty(); }
   [[nodiscard]] bool isSelected(EntityId id) const;  ///< whole entity selected
   /// Selected sub-elements of an entity.
@@ -60,7 +62,9 @@ class Selection : public QObject {
 
  private:
   void dropEntity(EntityId id);
+  void syncOrder();
   std::set<SelectionItem> items_;
+  std::vector<SelectionItem> order_;
   std::optional<SelectionItem> hovered_;
   std::uint64_t version_ = 0;
 };
