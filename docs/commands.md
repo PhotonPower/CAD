@@ -48,6 +48,17 @@ the command expects; the rubber band (orange) previews the result. Every result 
 | Offset surface | `offsetsrf` | selected (untrimmed) surfaces; signed distance along the normal |
 | Fillet surfaces | `filletsrf` | two selected surfaces; radius (the ball side is found automatically) |
 
+| **Editing and analysis** (M6c) | | |
+| Join | `j` | selected curves (chained in any order / direction) or surfaces / faces (sewn into one shell) |
+| Explode | `x` | shells into faces, curves at their kinks |
+| Cap | `cap` | closes planar open loops of the selected surfaces with trimmed planes (extrusion → solid) |
+| Split | `split` | one curve: click the split point; a surface and a cutting surface: immediately |
+| Trim | `tr` | first selected curve / surface, then the cutting objects; click the part to remove |
+| Intersect | `intersect` | intersection points / curves of the selected curves and surfaces |
+| Area | `area` | total area and length of the selection |
+| Volume | `volume` | volume and centroid of the selected closed solids |
+| Curvature | `curv` | one selected curve (curvature, radius) or surface (k1, k2, Gaussian, mean); click a point |
+
 Selection-based commands use the whole selected objects in selection order; each result –
 including a Boolean that removes its inputs – is one undo step.
 

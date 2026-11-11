@@ -6,13 +6,14 @@
 **Desktop CAD front end for the [Nurbforge](https://github.com/PhotonPower/Nurbforge) NURBS kernel** –
 C++20, Qt 6, native rendering (Metal / Direct3D / OpenGL·Vulkan via Qt RHI).
 
-> **Status: 0.0 – milestone M6b.** STEP files and `.nfcad` documents open and display in four
+> **Status: 0.0 – milestone M6 (a–c).** STEP files and `.nfcad` documents open and display in four
 > navigable views (wireframe / surfaces / shaded); objects, faces, edges and vertices can be
 > selected, with property and layer panels; the magnetic cursor snaps to points, ends, mids,
 > centres, axis cut points, intersections, face corners and edges; curves are drawn with
 > commands, snaps and typed coordinates ([commands](docs/commands.md)); solids, Booleans,
 > transforms, arrays, surfaces from curves (extrude, revolve, loft, sweep, Coons, Gordon,
-> offsets, fillets) and STEP / STL export work ([project plan](docs/plan.md)).
+> offsets, fillets), editing (join, explode, cap, split, trim, intersect), analysis and STEP /
+> STL export work. Next: Windows 11 and RHEL 10 packages ([project plan](docs/plan.md)).
 
 ## Features (planned)
 

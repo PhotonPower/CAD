@@ -2,7 +2,11 @@
 
 #include <QObject>
 #include <exception>
+#include <algorithm>
+#include <cmath>
+#include <nurbforge/geometry/primitives.hpp>
 #include <nurbforge/io/step.hpp>
+#include <nurbforge/nurbs/join.hpp>
 #include <nurbforge/topology/boolean.hpp>
 #include <stdexcept>
 
@@ -87,6 +91,134 @@ nf::Shell boolean(const std::vector<nf::Shell>& shells, BooleanOp op) {
     throw std::runtime_error(QObject::tr("the result is empty").toStdString());
   }
   return result;
+}
+
+std::vector<nf::TrimmedSurface> faces_of(const document::Geometry& g) {
+  if (const auto* s = std::get_if<nf::NurbsSurface>(&g)) return {nf::TrimmedSurface(*s)};
+  if (const auto* f = std::get_if<nf::TrimmedSurface>(&g)) return {*f};
+  if (const auto* sh = std::get_if<nf::Shell>(&g)) return sh->faces();
+  return {};
+}
+
+nf::NurbsCurve join_chain(std::vector<nf::NurbsCurve> curves, double tolerance) {
+  if (curves.empty()) throw std::runtime_error("no curves");
+  auto start = [](const nf::NurbsCurve& c) { return c.evaluate(c.domain_start()); };
+  auto end = [](const nf::NurbsCurve& c) { return c.evaluate(c.domain_end()); };
+  nf::NurbsCurve chain = curves.front();
+  curves.erase(curves.begin());
+  while (!curves.empty()) {
+    bool found = false;
+    for (std::size_t i = 0; i < curves.size() && !found; ++i) {
+      const nf::NurbsCurve& c = curves[i];
+      if (nf::distance(end(chain), start(c)) <= tolerance) {
+        chain = nf::join(chain, c, tolerance);
+      } else if (nf::distance(end(chain), end(c)) <= tolerance) {
+        chain = nf::join(chain, c.reversed(), tolerance);
+      } else if (nf::distance(start(chain), end(c)) <= tolerance) {
+        chain = nf::join(c, chain, tolerance);
+      } else if (nf::distance(start(chain), start(c)) <= tolerance) {
+        chain = nf::join(c.reversed(), chain, tolerance);
+      } else {
+        continue;
+      }
+      curves.erase(curves.begin() + static_cast<std::ptrdiff_t>(i));
+      found = true;
+    }
+    if (!found) throw std::runtime_error(QObject::tr("the curves do not form one chain").toStdString());
+  }
+  return chain;
+}
+
+nf::Shell cap_planar_holes(const std::vector<nf::TrimmedSurface>& faces, double tolerance) {
+  const nf::Shell open = nf::Shell::sew(faces, tolerance);
+  const auto free = open.free_edges();
+  if (free.empty()) throw std::runtime_error(QObject::tr("there are no open edges").toStdString());
+
+  // chain the free edges into loops via their vertices
+  std::vector<bool> used(free.size(), false);
+  std::vector<std::vector<nf::NurbsCurve>> loops;
+  for (std::size_t s = 0; s < free.size(); ++s) {
+    if (used[s]) continue;
+    used[s] = true;
+    const nf::ShellEdge& first = open.edges()[free[s]];
+    std::vector<nf::NurbsCurve> loop{first.curve};
+    const std::size_t start_v = first.v0;
+    std::size_t v = first.v1;
+    while (v != start_v) {
+      bool advanced = false;
+      for (std::size_t k = 0; k < free.size() && !advanced; ++k) {
+        if (used[k]) continue;
+        const nf::ShellEdge& e = open.edges()[free[k]];
+        if (e.v0 == v) {
+          loop.push_back(e.curve);
+          v = e.v1;
+        } else if (e.v1 == v) {
+          loop.push_back(e.curve.reversed());
+          v = e.v0;
+        } else {
+          continue;
+        }
+        used[k] = true;
+        advanced = true;
+      }
+      if (!advanced) break;  // not closed
+    }
+    if (v == start_v) loops.push_back(std::move(loop));
+  }
+
+  std::vector<nf::TrimmedSurface> all = faces;
+  std::size_t caps = 0;
+  for (const auto& loop : loops) {
+    // plane of the loop (Newell normal of samples), planarity check
+    std::vector<nf::Vec3> pts;
+    for (const auto& c : loop) {
+      for (const nf::Vec3& p : c.sample(32)) pts.push_back(p);
+    }
+    nf::Vec3 n{0, 0, 0};
+    nf::Vec3 centre{0, 0, 0};
+    for (std::size_t i = 0; i < pts.size(); ++i) {
+      n += nf::cross(pts[i], pts[(i + 1) % pts.size()]);
+      centre += pts[i];
+    }
+    centre = centre / static_cast<double>(pts.size());
+    if (nf::norm(n) < 1e-14) continue;
+    n = n / nf::norm(n);
+    double size = 0.0;
+    for (const nf::Vec3& p : pts) size = std::max(size, nf::distance(p, centre));
+    bool planar = true;
+    for (const nf::Vec3& p : pts) planar = planar && std::abs(nf::dot(p - centre, n)) <= 1e-7 * std::max(size, 1.0);
+    if (!planar) continue;
+
+    // planar rectangle covering the loop; the loop curves mapped affinely into its (u, v)
+    const nf::Vec3 ux = nf::any_perpendicular(n);
+    const nf::Vec3 vy = nf::cross(n, ux);
+    double u0 = 1e300, u1 = -1e300, v0 = 1e300, v1 = -1e300;
+    for (const nf::Vec3& p : pts) {
+      u0 = std::min(u0, nf::dot(p - centre, ux));
+      u1 = std::max(u1, nf::dot(p - centre, ux));
+      v0 = std::min(v0, nf::dot(p - centre, vy));
+      v1 = std::max(v1, nf::dot(p - centre, vy));
+    }
+    const double margin = 0.05 * std::max(u1 - u0, v1 - v0);
+    u0 -= margin;
+    u1 += margin;
+    v0 -= margin;
+    v1 += margin;
+    const nf::Vec3 origin = centre + ux * u0 + vy * v0;
+    const nf::NurbsSurface plane = nf::make_rectangle(origin, ux * (u1 - u0), vy * (v1 - v0));
+    nf::TrimLoop trim;
+    for (const nf::NurbsCurve& c : loop) {
+      std::vector<nf::Vec3> uv;
+      for (const nf::Vec3& p : c.control_points()) {
+        uv.emplace_back(nf::dot(p - origin, ux) / (u1 - u0), nf::dot(p - origin, vy) / (v1 - v0), 0.0);
+      }
+      trim.curves.emplace_back(c.degree(), c.knots(), uv, c.weights());
+    }
+    all.emplace_back(plane, trim);
+    ++caps;
+  }
+  if (caps == 0) throw std::runtime_error(QObject::tr("no planar open loop to cap").toStdString());
+  return nf::Shell::sew(all, tolerance).oriented();
 }
 
 std::size_t export_step(const QString& path, const std::vector<const document::Entity*>& entities) {
