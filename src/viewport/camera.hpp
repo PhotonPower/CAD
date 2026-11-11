@@ -71,6 +71,9 @@ class Camera {
   void orbit(const QPointF& delta_px);
   /// Shows a sphere completely (zoom extents).
   void fitSphere(const QVector3D& center, float radius);
+  /// Shows an axis-aligned box completely. Orthographic: tight fit of the projected box;
+  /// perspective: fit of the enclosing sphere.
+  void fitBox(const QVector3D& min, const QVector3D& max);
 
  private:
   QVector3D forward_{0.0F, 0.0F, -1.0F};

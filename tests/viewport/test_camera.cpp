@@ -141,6 +141,16 @@ class TestCamera : public QObject {
     }
   }
 
+  void fitBoxIsTightInOrtho() {
+    Camera c = preset_camera(ViewKind::Front);  // ortho, 800x600
+    c.fitBox({0, 0, 0}, {100, 10, 5});          // wide and flat
+    const auto left = c.project({0, 5, 2.5F});
+    const auto right = c.project({100, 5, 2.5F});
+    QVERIFY(left && right);
+    const double width = right->x() - left->x();
+    QVERIFY2(width > 0.85 * 800 && width <= 800, qPrintable(QString::number(width)));
+  }
+
  private:
   static void projections() {
     QTest::addColumn<int>("projection");

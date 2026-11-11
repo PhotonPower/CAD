@@ -5,6 +5,10 @@
 
 #include "render/display_mode.hpp"
 
+namespace nfcad::render {
+class Scene;
+}
+
 class QFrame;
 class QSplitter;
 
@@ -21,6 +25,9 @@ class ViewportGrid : public QWidget {
 
   [[nodiscard]] Viewport* activeView() const { return active_; }
   [[nodiscard]] const std::array<Viewport*, 4>& views() const { return views_; }
+
+  void setScene(const render::Scene* scene);
+  void zoomExtentsAll();
 
   /// Sets the display mode of the active view, or of all views if `all` is true.
   void setDisplayMode(render::DisplayMode mode, bool all);

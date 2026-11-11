@@ -26,17 +26,25 @@ The kernel delivers exact NURBS; the GUI tessellates for display only
 |---|---|---|
 | Curve | polyline, adaptive refinement on chord height and angle | chordal 0.1 % of the model size, angle 5° (setting) |
 | Surface (untrimmed) | regular grid in (u, v), adaptively refined per Bézier patch | same |
-| Trimmed face | grid clipped by the trim loops in parameter space, then constrained triangulation of the cut cells | same |
-| Face edges | tessellated once per B-rep edge and shared by both faces → no cracks | same |
+| Trimmed face | constrained Delaunay triangulation ([CDT](adr/0006-cdt-for-trimmed-faces.md)) of the adaptive boundary polylines plus the interior grid points | same |
+| Shell edges | tessellated once per B-rep edge (drawn once, not per face) | same |
 | Iso-curves | polylines at fixed u / v values, clipped by the trims | – |
 
-Tessellation runs in a worker pool (`QtConcurrent`); a view shows bounding boxes until the data
-is ready. Results are cached per entity and rebuilt only when the entity or the tolerance changes.
+Tessellation runs in a worker pool (`TessellationService`; the faces of a shell additionally in
+parallel); an entity appears as soon as its mesh is ready. Results are cached per entity and
+rebuilt only when its geometry changes. Chord tolerance: 2·10⁻³ of the radius of the entity's
+control-point box, angle 12°.
+
+Known limitation (M2): neighbouring faces are tessellated independently, so tiny cracks can show
+between them at close zoom. Planned fix: tessellate shared B-rep edges once and use those points
+as the boundary of both faces.
 
 ## Passes per frame
 
-1. Faces (Surfaces / Shaded mode), depth write, polygon offset so that edges stay visible
-2. Edges and curves (wide lines as screen-aligned quads, since line width > 1 is not portable)
+1. Faces (Surfaces / Shaded mode), depth write, small depth bias
+2. Edges and curves with depth test; their clip-space z is pulled towards the camera
+   (`z − 5·10⁻⁵·w`) so that edges win against the faces they bound on every backend
+   (wide lines as screen-aligned quads later, since line width > 1 is not portable)
 3. Points and control points (instanced quads)
 4. Grid and axes
 5. Overlay: hover / selection highlight, snap glyph, rubber band, view title (QPainter over the RHI
@@ -58,3 +66,5 @@ back a small window around the cursor.
 - `QMainWindow::setUnifiedTitleAndToolBarOnMac(true)` stops `QRhiWidget` from getting a QRhi
   (Qt 6.12, macOS: the views stay empty and log "QRhiWidget: No QRhi"). Do not enable it.
 - `QRhiWidget` does not choose the native backend by itself; `platform::preferred_rhi_api()` sets it.
+- A depth bias on the faces alone does not keep edges visible on faces seen head-on (Metal, float
+  depth); edges are therefore offset in clip space instead.

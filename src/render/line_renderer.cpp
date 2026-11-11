@@ -59,7 +59,8 @@ void LineRenderer::initialize(QRhi* rhi, QRhiRenderTarget* target, int sample_co
   blend.srcAlpha = QRhiGraphicsPipeline::One;
   blend.dstAlpha = QRhiGraphicsPipeline::OneMinusSrcAlpha;
   pipeline_->setTargetBlends({blend});
-  pipeline_->setDepthTest(false);
+  pipeline_->setDepthTest(depth_test_);
+  pipeline_->setDepthOp(QRhiGraphicsPipeline::LessOrEqual);
   pipeline_->setDepthWrite(false);
   pipeline_->setSampleCount(sample_count);
   pipeline_->setShaderResourceBindings(layout_srb_.get());

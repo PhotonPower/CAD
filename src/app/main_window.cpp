@@ -3,6 +3,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QApplication>
+#include <QCloseEvent>
 #include <QDockWidget>
 #include <QLabel>
 #include <QLineEdit>
@@ -11,10 +12,14 @@
 #include <QSettings>
 #include <QShortcut>
 #include <QStatusBar>
+#include <QTimer>
 #include <QToolBar>
 #include <algorithm>
 
+#include "document/document.hpp"
 #include "kernel/kernel_info.hpp"
+#include "render/scene.hpp"
+#include "tessellation/tessellation_service.hpp"
 #include "ui/snap_bar.hpp"
 #include "ui/tool_box.hpp"
 #include "viewport/viewport.hpp"
@@ -25,11 +30,29 @@ namespace nfcad::app {
 using render::DisplayMode;
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
-  setWindowTitle(tr("Nurbforge CAD"));
   // No setUnifiedTitleAndToolBarOnMac(true): with it QRhiWidget gets no QRhi (Qt 6.12, macOS).
+  doc_ = new document::Document(this);
+  tessellator_ = new tessellation::TessellationService(this);
+  scene_ = new render::Scene(doc_, tessellator_, this);
 
   grid_ = new viewport::ViewportGrid(this);
+  grid_->setScene(scene_);
   setCentralWidget(grid_);
+
+  connect(doc_->undoStack(), &QUndoStack::cleanChanged, this, &MainWindow::updateTitle);
+  connect(tessellator_, &tessellation::TessellationService::idle, this, [this] {
+    if (zoom_after_tessellation_) {
+      zoom_after_tessellation_ = false;
+      grid_->zoomExtentsAll();
+      statusBar()->showMessage(tr("%1 entities, %2 triangles – %3 s")
+                                   .arg(doc_->entities().size())
+                                   .arg(scene_->triangleCount())
+                                   .arg(load_timer_.elapsed() / 1000.0, 0, 'f', 2),
+                               8000);
+      if (benchmark_frames_ > 0) QTimer::singleShot(500, this, &MainWindow::startBenchmark);
+    }
+  });
+  updateTitle();
 
   createMenus();
   createViewToolBar();
@@ -63,17 +86,31 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   restoreState(settings.value(QStringLiteral("window/state")).toByteArray());
 }
 
+MainWindow::~MainWindow() = default;
+
 void MainWindow::createMenus() {
   QMenu* file = menuBar()->addMenu(tr("&File"));
-  QAction* open = file->addAction(tr("&Open…"));
-  open->setShortcut(QKeySequence::Open);
-  open->setEnabled(false);  // M2: STEP import, .nfcad documents
+  file->addAction(tr("&New"), QKeySequence::New, this, &MainWindow::newDocument);
+  file->addAction(tr("&Open…"), QKeySequence::Open, this, &MainWindow::openDialog);
+  file->addAction(tr("&Import STEP…"), QKeySequence(Qt::CTRL | Qt::Key_I), this,
+                  &MainWindow::importStepDialog);
+  file->addSeparator();
+  file->addAction(tr("&Save"), QKeySequence::Save, this, &MainWindow::save);
+  file->addAction(tr("Save &As…"), QKeySequence::SaveAs, this, &MainWindow::saveAs);
   file->addSeparator();
   QAction* quit = file->addAction(tr("&Quit"), this, &QWidget::close);
   quit->setShortcut(QKeySequence::Quit);
   quit->setMenuRole(QAction::QuitRole);
 
-  menuBar()->addMenu(tr("&View"));  // filled in createViewToolBar / createToolDock
+  QMenu* edit = menuBar()->addMenu(tr("&Edit"));
+  QAction* undo = doc_->undoStack()->createUndoAction(this, tr("&Undo"));
+  undo->setShortcut(QKeySequence::Undo);
+  QAction* redo = doc_->undoStack()->createRedoAction(this, tr("&Redo"));
+  redo->setShortcut(QKeySequence::Redo);
+  edit->addAction(undo);
+  edit->addAction(redo);
+
+  view_menu_ = menuBar()->addMenu(tr("&View"));  // filled in createViewToolBar / createToolDock
 
   QMenu* help = menuBar()->addMenu(tr("&Help"));
   QAction* about = help->addAction(tr("About Nurbforge CAD"), this, &MainWindow::showAbout);
@@ -97,7 +134,7 @@ void MainWindow::createViewToolBar() {
       {DisplayMode::Surfaces, tr("Surfaces"), tr("Surfaces: flat faces with edges")},
       {DisplayMode::Shaded, tr("Shaded"), tr("Shaded: lit faces with edges")},
   };
-  QMenu* view_menu = menuBar()->actions().at(1)->menu();
+  QMenu* view_menu = view_menu_;
   for (const Mode& m : modes) {
     QAction* action = bar->addAction(m.text);
     action->setCheckable(true);
@@ -133,7 +170,7 @@ void MainWindow::createToolDock() {
   tool_dock_->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
   tool_dock_->setMinimumWidth(96);
   addDockWidget(Qt::LeftDockWidgetArea, tool_dock_);
-  menuBar()->actions().at(1)->menu()->addAction(tool_dock_->toggleViewAction());
+  view_menu_->addAction(tool_dock_->toggleViewAction());
   connect(toolbox_, &ui::ToolBox::toolTriggered, this, &MainWindow::onToolTriggered);
 }
 
@@ -170,10 +207,23 @@ void MainWindow::showEvent(QShowEvent* event) {
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+  if (!maybeSave()) {
+    event->ignore();
+    return;
+  }
   QSettings settings;
   settings.setValue(QStringLiteral("window/geometry"), saveGeometry());
   settings.setValue(QStringLiteral("window/state"), saveState());
   QMainWindow::closeEvent(event);
+}
+
+void MainWindow::setDisplayModeAll(const QString& name) {
+  const QString n = name.toLower();
+  const DisplayMode mode = n == QLatin1String("wireframe") ? DisplayMode::Wireframe
+                           : n == QLatin1String("surfaces") ? DisplayMode::Surfaces
+                                                            : DisplayMode::Shaded;
+  grid_->setDisplayMode(mode, true);
+  onActiveViewChanged(grid_->activeView());
 }
 
 void MainWindow::onActiveViewChanged(viewport::Viewport* view) {

@@ -17,8 +17,8 @@
  ├─────────────────────────────────────────────────────────────────┤
  │ document/   Document, Entity, Layer, Selection, undo/redo, I/O   │
  │ tessellation/ curve / surface / trimmed-face display meshes      │
- │ kernel/     adapter to Nurbforge (the only place that includes   │
- │             <nurbforge/...>)                                     │
+ │ kernel/     adapter to Nurbforge algorithms (I/O, modelling,     │
+ │             later: snapping refinement)                          │
  ├─────────────────────────────────────────────────────────────────┤
  │ platform/   macOS / Windows / Linux specifics                    │
  └─────────────────────────────────────────────────────────────────┘
@@ -30,7 +30,11 @@ Dependencies point downwards only. Rules:
 
 - `document/`, `tessellation/`, `snap/` and `kernel/` do **not** use Qt Widgets (Qt Core/Gui value
   types are allowed). They are unit tested without a window.
-- Only `kernel/` includes Nurbforge headers. When the Nurbforge API changes, only this layer changes.
+- Nurbforge headers are used only below the widget layer: `document/` and `tessellation/` use the
+  immutable value types (`nf::Vec3`, `nf::NurbsCurve`, `nf::TrimmedSurface`, `nf::Shell`, …) and
+  their evaluation; algorithms that build or read geometry (STEP import, modelling commands,
+  later snap refinement) are wrapped in `kernel/`. `ui/`, `viewport/` and `render/` never see
+  Nurbforge types – they get display meshes.
 - Only `render/` and `viewport/` use the RHI.
 - Only `platform/` contains `#ifdef Q_OS_*` code (plus Objective-C++ `.mm` files on macOS).
 
@@ -52,8 +56,10 @@ user input ─► Viewport ─► (active) Command ─► kernel/ (Nurbforge) �
 |---|---|---|
 | `Document` | document | owns entities and layers, emits change signals, `QUndoStack` |
 | `Entity` | document | id, layer, colour, visibility; geometry variant (`Point`, `NurbsCurve`, `NurbsSurface`, `TrimmedSurface`, `Shell`) |
-| `DisplayMesh` | tessellation | vertices, triangles, edge polylines, iso-curves of one entity |
-| `Scene` | render | GPU resources per entity, shared by all viewports |
+| `DisplayMesh` | tessellation | vertices + normals, triangles, edge polylines, iso-curves, points, bounds of one entity |
+| `TessellationService` | tessellation | worker-thread tessellation, drops outdated results |
+| `Scene` | render | display model shared by all viewports: mesh, colour, visibility per entity (CPU only) |
+| `SceneRenderer` | render | per-viewport GPU copy of the scene, face and line pipelines |
 | `Camera` | viewport | target, view direction, up, scale (`halfHeight`), projection; project, pick ray, pan / zoom / orbit (no widgets, in `nfcad_core`) |
 | `CPlane`, `build_grid` | viewport | construction plane per view and its adaptive grid (no widgets, in `nfcad_core`) |
 | `LineRenderer`, `LineLayer` | render | RHI pipeline and buffers for coloured lines (grid, axes, triad) |

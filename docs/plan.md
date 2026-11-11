@@ -51,7 +51,7 @@ Details: [UI concept](ui-concept.md), [object snaps](snapping.md), [rendering](r
 | Language / GUI | C++20, Qt 6 Widgets (≥ 6.8) | [0001](adr/0001-qt6-cpp-widgets.md) |
 | 3D rendering | Qt RHI (`QRhiWidget`): Metal on macOS, D3D11/12 on Windows, OpenGL/Vulkan on Linux | [0002](adr/0002-qrhi-rendering.md) |
 | Kernel link | Nurbforge C++ API (`Nurbforge::core`), via `find_package` or FetchContent | [0003](adr/0003-nurbforge-integration.md) |
-| Tessellation | In the app (adaptive, chordal and angular tolerance), cached per entity | [0004](adr/0004-display-tessellation.md) |
+| Tessellation | In the app (adaptive, chordal and angular tolerance), cached per entity; CDT for trimmed faces | [0004](adr/0004-display-tessellation.md), [0006](adr/0006-cdt-for-trimmed-faces.md) |
 | Snapping | Separate snap engine, screen-space tolerance, priority list, spatial index | [0005](adr/0005-snap-engine.md) |
 | Build | CMake ≥ 3.24 + Ninja, presets per platform | – |
 
@@ -77,7 +77,7 @@ jobs build from M0 on but are allowed to fail until M7.
 - Unit tests: projection / unprojection round trip, zoom to cursor keeps the point under the cursor
 - **Done when:** all four views navigate independently and stay consistent at any window size, Retina included.
 
-### M2 – Document model and display
+### M2 – Document model and display ✅
 - `Document` holding entities (point, `NurbsCurve`, `NurbsSurface`, `TrimmedSurface`, `Shell`),
   layers, colours, visibility; undo/redo via `QUndoStack`
 - Display tessellation (curves: adaptive polyline; surfaces: adaptive grid clipped by trim loops)
@@ -86,7 +86,11 @@ jobs build from M0 on but are allowed to fail until M7.
   - **Wireframe** – curves, face boundaries and iso-curves
   - **Surfaces** – flat-coloured faces with boundary edges (hidden-line look)
   - **Shaded** – Phong/Blinn shading with edges
-- Import: STEP (Nurbforge reader); native document format `.nfcad` (JSON + binary NURBS blocks)
+- Import: STEP (Nurbforge reader); native document format `.nfcad` ([JSON, version 1](file-format.md))
+- Done: 1200-face demo model, 2.9 s read + tessellate, 60 fps orbit ([benchmarks](benchmarks.md))
+- Moved to later milestones: layer panel UI (M3, together with the property panel), binary
+  blocks in `.nfcad`, crack-free display mesh between neighbouring faces (shared edge
+  tessellation), wide lines
 - **Done when:** a STEP file with ~1 000 faces loads, displays in all three modes and navigates at ≥ 60 fps on an M1 Mac.
 
 ### M3 – Picking and selection

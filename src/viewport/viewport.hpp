@@ -6,6 +6,7 @@
 
 #include "render/display_mode.hpp"
 #include "render/line_renderer.hpp"
+#include "render/scene_renderer.hpp"
 #include "viewport/camera.hpp"
 #include "viewport/grid.hpp"
 #include "viewport/view_kind.hpp"
@@ -33,7 +34,13 @@ class Viewport : public QRhiWidget {
   [[nodiscard]] const CPlane& cplane() const { return cplane_; }
   void setProjection(Camera::Projection projection);
 
-  /// Shows the whole model (M1: no document yet – a default region around the origin).
+  /// The shared display model (owned by the main window); may be null.
+  void setScene(const render::Scene* scene);
+
+  /// Orbits like a mouse drag by `delta_px` (benchmark, scripted views).
+  void orbitBy(const QPointF& delta_px);
+
+  /// Shows all visible geometry (a default region around the origin if there is none).
   void zoomExtents();
 
  signals:
@@ -42,6 +49,8 @@ class Viewport : public QRhiWidget {
   /// Cursor position in the construction plane (world coordinates); valid = false when the
   /// cursor left the view or the plane is seen edge-on.
   void cursorMoved(const QVector3D& world, bool valid);
+  /// Emitted after each rendered frame (benchmark).
+  void frameRendered();
 
  protected:
   void initialize(QRhiCommandBuffer* cb) override;
@@ -74,6 +83,8 @@ class Viewport : public QRhiWidget {
   Drag drag_ = Drag::None;
   QPointF last_pos_;
 
+  const render::Scene* scene_ = nullptr;
+  render::SceneRenderer scene_renderer_;
   render::LineRenderer lines_;
   render::LineLayer grid_layer_;
   render::LineLayer triad_layer_;

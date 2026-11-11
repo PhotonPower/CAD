@@ -30,10 +30,12 @@ class LineLayer {
   quint32 capacity_ = 0;  // vertices
 };
 
-/// Pipeline for unlit coloured lines (resources/shaders/line.*), alpha blended, no depth test.
-/// Used for grid, axes and the axis triad (M1); M2 adds face and wide-line pipelines.
+/// Pipeline for unlit coloured lines (resources/shaders/line.*), alpha blended.
+/// Without depth test for grid and axis triad, with depth test (no depth write) for model edges.
 class LineRenderer {
  public:
+  explicit LineRenderer(bool depth_test = false) : depth_test_(depth_test) {}
+
   /// (Re)creates GPU resources when the QRhi or the render pass changes.
   void initialize(QRhi* rhi, QRhiRenderTarget* target, int sample_count);
   void release();
@@ -46,6 +48,7 @@ class LineRenderer {
  private:
   void ensureBindings(LineLayer& layer);
 
+  bool depth_test_;
   QRhi* rhi_ = nullptr;
   QRhiRenderPassDescriptor* rp_ = nullptr;
   std::unique_ptr<QRhiGraphicsPipeline> pipeline_;

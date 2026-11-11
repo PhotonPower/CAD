@@ -5,5 +5,7 @@
 - [Object snaps](snapping.md) – snap types, priorities, algorithm
 - [Rendering](rendering.md) – Qt RHI, display modes, tessellation, picking
 - [Architecture](architecture.md) – layers, main types, data flow
+- [Document format `.nfcad`](file-format.md)
+- [Benchmarks](benchmarks.md)
 - [Architecture decisions](adr/README.md)
 - Build guides: [macOS](build/macos.md) · [Windows 11](build/windows11.md) · [AlmaLinux / RHEL 10](build/almalinux10.md)

@@ -44,6 +44,7 @@ constexpr std::array<AxisStyle, 3> kAxes = {{
 
 Viewport::Viewport(ViewKind kind, QWidget* parent) : QRhiWidget(parent), kind_(kind) {
   setApi(platform::preferred_rhi_api());
+  setSampleCount(4);  // MSAA: smoother edges and grid
   setMinimumSize(120, 90);
   setMouseTracking(true);
 
@@ -101,9 +102,28 @@ void Viewport::setProjection(Camera::Projection projection) {
   cameraChanged();
 }
 
+void Viewport::setScene(const render::Scene* scene) {
+  if (scene_ != nullptr) disconnect(scene_, nullptr, this, nullptr);
+  scene_ = scene;
+  if (scene_ != nullptr) {
+    connect(scene_, &render::Scene::changed, this, [this] { update(); });
+  }
+  update();
+}
+
+void Viewport::orbitBy(const QPointF& delta_px) {
+  camera_.orbit(delta_px);
+  cameraChanged();
+}
+
 void Viewport::zoomExtents() {
   camera_.setViewportSize(size());  // resize events of hidden widgets arrive late
-  camera_.fitSphere({}, kDefaultExtentRadius);  // M2: bounding sphere of the document
+  const tessellation::Box3 box = scene_ != nullptr ? scene_->bounds() : tessellation::Box3{};
+  if (box.valid() && box.radius() > 0.0F) {
+    camera_.fitBox(box.min, box.max);
+  } else {
+    camera_.fitSphere({}, kDefaultExtentRadius);
+  }
   cameraChanged();
 }
 
@@ -141,17 +161,27 @@ void Viewport::updateTriadLabels() {
 
 void Viewport::initialize(QRhiCommandBuffer* /*cb*/) {
   lines_.initialize(rhi(), renderTarget(), sampleCount());
+  scene_renderer_.initialize(rhi(), renderTarget(), sampleCount());
 }
 
 void Viewport::releaseResources() {
   grid_layer_.releaseGpu();
   triad_layer_.releaseGpu();
   lines_.release();
+  scene_renderer_.release();
 }
 
 void Viewport::render(QRhiCommandBuffer* cb) {
   QRhi* r = rhi();
   camera_.setViewportSize(size());
+  if (scene_ != nullptr) {
+    // Keep the whole model inside the depth range.
+    const tessellation::Box3 box = scene_->bounds();
+    if (box.valid()) {
+      camera_.setSceneRadius(std::max(box.radius() + (box.center() - camera_.target()).length(),
+                                      1.0F));
+    }
+  }
   const QMatrix4x4 clip = r->clipSpaceCorrMatrix();
 
   if (grid_dirty_) {
@@ -178,19 +208,33 @@ void Viewport::render(QRhiCommandBuffer* cb) {
   QRhiResourceUpdateBatch* updates = r->nextResourceUpdateBatch();
   lines_.prepare(grid_layer_, updates);
   lines_.prepare(triad_layer_, updates);
+  if (scene_ != nullptr) {
+    render::SceneRenderer::FrameParams frame;
+    frame.clip_view_projection = clip * camera_.viewProjection();
+    frame.view = camera_.viewMatrix();
+    frame.perspective = camera_.projection() == Camera::Projection::Perspective;
+    frame.world_per_pixel = camera_.worldPerPixel();
+    frame.mode = mode_;
+    scene_renderer_.prepare(*scene_, frame, updates);
+  }
 
   const QSize px = renderTarget()->pixelSize();
   const float dpr = static_cast<float>(px.width()) / static_cast<float>(std::max(width(), 1));
   const QColor background = kind_ == ViewKind::Perspective ? QColor(0x3a, 0x40, 0x4a)
                                                            : QColor(0x30, 0x34, 0x3b);
   cb->beginPass(renderTarget(), background, {1.0F, 0}, updates);
-  lines_.draw(cb, grid_layer_,
-              QRhiViewport(0, 0, static_cast<float>(px.width()), static_cast<float>(px.height())));
+  const QRhiViewport full(0, 0, static_cast<float>(px.width()), static_cast<float>(px.height()));
+  lines_.draw(cb, grid_layer_, full);
+  if (scene_ != nullptr) {
+    scene_renderer_.drawFaces(cb, full);
+    scene_renderer_.drawLines(cb, full);
+  }
   // QRhiViewport origin is bottom left.
   lines_.draw(cb, triad_layer_,
               QRhiViewport(kTriadMargin * dpr, kTriadMargin * dpr, kTriadSize * dpr,
                            kTriadSize * dpr));
   cb->endPass();
+  emit frameRendered();
 }
 
 // ------------------------------------------------------------------------------- input

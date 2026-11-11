@@ -63,7 +63,9 @@ QMatrix4x4 Camera::projectionMatrix() const {
     m.ortho(-hw, hw, -hh, hh, 1.0F - extent, 1.0F + extent);
   } else {
     const float d = distance();
-    const float near_plane = std::max(d * 1e-3F, d - extent);
+    // The model lies within scene_radius_ of the target: a near plane close to it keeps the
+    // depth buffer precise (the grid may be clipped near the eye, which is harmless).
+    const float near_plane = std::max(d * 5e-3F, d - 2.0F * scene_radius_);
     m.perspective(fieldOfView(), aspect(), near_plane, d + extent);
   }
   return m;
@@ -138,6 +140,26 @@ void Camera::fitSphere(const QVector3D& center, float radius) {
   target_ = center;
   const float r = std::max(radius, kMinHalfHeight) * 1.1F;
   setHalfHeight(aspect() < 1.0F ? r / aspect() : r);
+  setSceneRadius(std::max(radius, 1.0F));
+}
+
+void Camera::fitBox(const QVector3D& min, const QVector3D& max) {
+  const QVector3D c = (min + max) * 0.5F;
+  const float radius = (max - min).length() * 0.5F;
+  if (projection_ == Projection::Perspective) {
+    fitSphere(c, radius);
+    return;
+  }
+  float half_w = 0.0F;
+  float half_h = 0.0F;
+  for (int i = 0; i < 8; ++i) {
+    const QVector3D corner((i & 1) != 0 ? max.x() : min.x(), (i & 2) != 0 ? max.y() : min.y(),
+                           (i & 4) != 0 ? max.z() : min.z());
+    half_w = std::max(half_w, std::abs(QVector3D::dotProduct(corner - c, right())));
+    half_h = std::max(half_h, std::abs(QVector3D::dotProduct(corner - c, up_)));
+  }
+  target_ = c;
+  setHalfHeight(std::max({half_h, half_w / aspect(), radius * 1e-3F, kMinHalfHeight}) * 1.1F);
   setSceneRadius(std::max(radius, 1.0F));
 }
 

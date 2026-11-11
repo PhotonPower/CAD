@@ -59,6 +59,14 @@ void ViewportGrid::setActive(Viewport* view) {
   emit activeViewChanged(view);
 }
 
+void ViewportGrid::setScene(const render::Scene* scene) {
+  for (Viewport* v : views_) v->setScene(scene);
+}
+
+void ViewportGrid::zoomExtentsAll() {
+  for (Viewport* v : views_) v->zoomExtents();
+}
+
 void ViewportGrid::setDisplayMode(render::DisplayMode mode, bool all) {
   for (Viewport* v : views_) {
     if (all || v == active_) v->setDisplayMode(mode);

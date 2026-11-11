@@ -6,6 +6,15 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- M2 – document model and display: `Document` with entities (point, curve, surface, trimmed
+  surface, shell), layers, undo/redo; STEP import (Nurbforge reader, in the background); native
+  format `.nfcad` (JSON, docs/file-format.md); adaptive display tessellation in worker threads
+  (CDT for trimmed faces, ADR 0006); shared `Scene` and per-view `SceneRenderer` with the display
+  modes wireframe (edges + iso-curves), surfaces (flat) and shaded (Blinn–Phong, two headlights);
+  MSAA; zoom extents fits the model (tight box fit in parallel views); File menu (New, Open,
+  Import STEP, Save, Save As), Edit menu (Undo, Redo); command line options `file`,
+  `--display-mode`, `--benchmark`; `tools/make_demo_model`; tests for tessellation, document,
+  file format and STEP import
 - M1 – viewports and camera: `Camera` (orthographic / perspective with the same scale,
   project / pick ray, pan, zoom to cursor, turntable orbit, zoom extents), standard views
   Front / Left / Top / Perspective, adaptive grid in the construction plane with world-coloured

@@ -20,8 +20,9 @@
   types `PascalCase`, functions/variables `snake_case`, members end in `_`.
   Qt overrides (`paintEvent`, …) and signals/slots keep Qt's camelCase.
 - One class per file pair, file names `snake_case.hpp/.cpp`.
-- Respect the layer rules in [docs/architecture.md](docs/architecture.md): only `kernel/` includes
-  Nurbforge, only `render/` and `viewport/` use the RHI, only `platform/` has `#ifdef Q_OS_*`.
+- Respect the layer rules in [docs/architecture.md](docs/architecture.md): Nurbforge types stay
+  below the widget layer (algorithms in `kernel/`), only `render/` and `viewport/` use the RHI,
+  only `platform/` has `#ifdef Q_OS_*`.
 - User-visible strings go through `tr()`; English source strings, German translation in
   `resources/i18n/` (later).
 
