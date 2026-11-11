@@ -62,7 +62,7 @@ QString PluginManager::nfcadPythonPath() {
   const QDir app(QCoreApplication::applicationDirPath());
   const QStringList candidates = {
       app.filePath(QStringLiteral("../Resources/python")),           // macOS bundle
-      app.filePath(QStringLiteral("../share/nurbforge-cad/python")),  // Linux
+      app.filePath(QStringLiteral("../share/raytatouille-fusion/python")),  // Linux
       app.filePath(QStringLiteral("../python")),                      // Windows (<prefix>/bin/..)
 #ifdef NFCAD_PYTHON_SOURCE_DIR
       QStringLiteral(NFCAD_PYTHON_SOURCE_DIR),                        // development build

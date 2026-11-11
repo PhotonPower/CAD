@@ -221,7 +221,7 @@ QString load_nfcad(Document& doc, const QString& path) {
   if (json.isNull()) return parse_error.errorString();
   const QJsonObject root = json.object();
   if (root["format"].toString() != QLatin1String("nfcad")) {
-    return QObject::tr("not a Nurbforge CAD document");
+    return QObject::tr("not a Raytatouille Fusion document");
   }
   if (root["version"].toInt() > kNfcadFormatVersion) {
     return QObject::tr("document version %1 is newer than this program supports (%2)")

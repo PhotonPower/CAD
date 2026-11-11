@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(NurbforgeCAD
+project(RaytatouilleFusion
   VERSION 0.0.1
   DESCRIPTION "Desktop CAD front end for the Nurbforge NURBS kernel"
   HOMEPAGE_URL "https://github.com/PhotonPower/CAD"
@@ -115,12 +115,12 @@ qt_add_shaders(nfcad_gui "nfcad_shaders"
     resources/shaders/meshtex.frag)
 
 # ---------------------------------------------------------------- application
-qt_add_executable(NurbforgeCAD MACOSX_BUNDLE WIN32 src/app/main.cpp)
-target_link_libraries(NurbforgeCAD PRIVATE nfcad_gui)
-nfcad_set_warnings(NurbforgeCAD)
-set_target_properties(NurbforgeCAD PROPERTIES
-  MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.photonpower.nurbforgecad"
-  MACOSX_BUNDLE_BUNDLE_NAME "Nurbforge CAD"
+qt_add_executable(RaytatouilleFusion MACOSX_BUNDLE WIN32 src/app/main.cpp)
+target_link_libraries(RaytatouilleFusion PRIVATE nfcad_gui)
+nfcad_set_warnings(RaytatouilleFusion)
+set_target_properties(RaytatouilleFusion PROPERTIES
+  MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.photonpower.raytatouillefusion"
+  MACOSX_BUNDLE_BUNDLE_NAME "Raytatouille Fusion"
   MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
   MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
 target_compile_definitions(nfcad_core PUBLIC NFCAD_VERSION="${PROJECT_VERSION}"
@@ -143,21 +143,21 @@ endif()
 #   cmake --install <build> --component app [--prefix <dir>]
 # (the Nurbforge subproject's static library and headers are not part of it).
 include(GNUInstallDirs)
-install(TARGETS NurbforgeCAD
+install(TARGETS RaytatouilleFusion
   BUNDLE DESTINATION . COMPONENT app
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT app)
 # Python package for plugins (src/plugins/plugin_manager.cpp, nfcadPythonPath)
 if(APPLE)
-  set(_nfcad_py_dest NurbforgeCAD.app/Contents/Resources/python)
+  set(_nfcad_py_dest RaytatouilleFusion.app/Contents/Resources/python)
 elseif(WIN32)
   set(_nfcad_py_dest python)
 else()
-  set(_nfcad_py_dest ${CMAKE_INSTALL_DATADIR}/nurbforge-cad/python)
+  set(_nfcad_py_dest ${CMAKE_INSTALL_DATADIR}/raytatouille-fusion/python)
 endif()
 install(DIRECTORY python/nfcad DESTINATION ${_nfcad_py_dest} COMPONENT app
         PATTERN "__pycache__" EXCLUDE)
 if(UNIX AND NOT APPLE)
-  set(_nfcad_id io.github.photonpower.NurbforgeCAD)
+  set(_nfcad_id io.github.photonpower.RaytatouilleFusion)
   install(FILES resources/linux/${_nfcad_id}.desktop
           DESTINATION ${CMAKE_INSTALL_DATADIR}/applications COMPONENT app)
   install(FILES resources/linux/${_nfcad_id}.svg
@@ -166,7 +166,7 @@ if(UNIX AND NOT APPLE)
           DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo COMPONENT app)
 else()
   # Windows: windeployqt, macOS: macdeployqt into the installed application
-  qt_generate_deploy_app_script(TARGET NurbforgeCAD OUTPUT_SCRIPT _nfcad_deploy
+  qt_generate_deploy_app_script(TARGET RaytatouilleFusion OUTPUT_SCRIPT _nfcad_deploy
                                 NO_UNSUPPORTED_PLATFORM_ERROR)
   install(SCRIPT ${_nfcad_deploy} COMPONENT app)
   if(WIN32)

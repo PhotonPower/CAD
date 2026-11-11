@@ -11,7 +11,7 @@ QString write_stl(const QString& path, const std::vector<const DisplayMesh*>& me
   QSaveFile f(path);
   if (!f.open(QIODevice::WriteOnly)) return f.errorString();
   char header[80] = {};
-  std::strncpy(header, "Nurbforge CAD binary STL", sizeof(header) - 1);
+  std::strncpy(header, "Raytatouille Fusion binary STL", sizeof(header) - 1);
   f.write(header, 80);
   f.write(reinterpret_cast<const char*>(&count), 4);  // little endian on all supported targets
   for (const DisplayMesh* m : meshes) {

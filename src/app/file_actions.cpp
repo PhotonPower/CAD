@@ -24,7 +24,7 @@
 namespace nfcad::app {
 
 namespace {
-const QString kNfcadFilter = QObject::tr("Nurbforge CAD documents (*.nfcad)");
+const QString kNfcadFilter = QObject::tr("Raytatouille Fusion documents (*.nfcad)");
 const QString kStepFilter = QObject::tr("STEP files (*.step *.stp *.STEP *.STP)");
 
 bool is_step(const QString& path) {
@@ -36,7 +36,7 @@ bool is_step(const QString& path) {
 void MainWindow::updateTitle() {
   const QString path = doc_->filePath();
   const QString name = path.isEmpty() ? tr("Untitled") : QFileInfo(path).fileName();
-  setWindowTitle(name + QStringLiteral("[*] – ") + tr("Nurbforge CAD"));
+  setWindowTitle(name + QStringLiteral("[*] – ") + tr("Raytatouille Fusion"));
   setWindowFilePath(path);
   setWindowModified(doc_->isModified());
 }
@@ -44,7 +44,7 @@ void MainWindow::updateTitle() {
 bool MainWindow::maybeSave() {
   if (!doc_->isModified() || benchmark_frames_ > 0) return true;
   const auto answer = QMessageBox::warning(
-      this, tr("Nurbforge CAD"), tr("The document has been modified. Save the changes?"),
+      this, tr("Raytatouille Fusion"), tr("The document has been modified. Save the changes?"),
       QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
   if (answer == QMessageBox::Save) return save();
   return answer == QMessageBox::Discard;

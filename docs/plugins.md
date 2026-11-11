@@ -1,9 +1,9 @@
-# Plugin plan: computation kernels in Nurbforge CAD
+# Plugin plan: computation kernels in Raytatouille Fusion
 
 Status: **accepted** (decisions of 2026-11-11 in section 5).
 
 Several computation kernels build on Nurbforge – a ray tracer (Raytatouille), field solvers
-(BEM / FEM / FMM), grating and writing-path tools. Nurbforge CAD becomes their common
+(BEM / FEM / FMM), grating and writing-path tools. Raytatouille Fusion becomes their common
 front end: show and edit the model, set parameters, start computations, look at results on the
 model, optimise and see the optimised geometry right away.
 
@@ -66,7 +66,7 @@ Hierarchy applied:
 ## 3. Architecture
 
 ```
-┌─────────────────────────── Nurbforge CAD (C++) ───────────────────────────┐
+┌─────────────────────────── Raytatouille Fusion (C++) ───────────────────────────┐
 │  model tree · attributes · parameter panel · plot dock · result layers   │
 │  ray layer · face fields · colour maps · job runner · undo               │
 │            ▲ plugin API (versioned, docs/plugin-api.md)                   │

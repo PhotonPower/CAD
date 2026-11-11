@@ -1,6 +1,6 @@
 # Project plan
 
-Nurbforge CAD is a desktop CAD front end for the [Nurbforge](https://github.com/PhotonPower/Nurbforge)
+Raytatouille Fusion is a desktop CAD front end for the [Nurbforge](https://github.com/PhotonPower/Nurbforge)
 kernel, built to look and work like an established CAD program. This page holds the plan: goals,
 scope, milestones and acceptance criteria. Progress is tracked as GitHub issues and milestones that
 use the same numbers (M0, M1, ...).

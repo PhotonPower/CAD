@@ -1,6 +1,6 @@
 # Writing plugins (API version 1)
 
-A plugin connects a computation kernel to Nurbforge CAD ([plugins.md](plugins.md)). It is a
+A plugin connects a computation kernel to Raytatouille Fusion ([plugins.md](plugins.md)). It is a
 folder with a manifest and Python code; CAD runs it in its own Python process.
 
 ```

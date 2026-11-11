@@ -89,7 +89,7 @@ class Host:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Nurbforge CAD plugin host")
+    parser = argparse.ArgumentParser(description="Raytatouille Fusion plugin host")
     parser.add_argument("--server", required=True)
     parser.add_argument("--plugin", required=True, type=Path)
     args = parser.parse_args()

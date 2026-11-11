@@ -1,4 +1,4 @@
-# Contributing to Nurbforge CAD
+# Contributing to Raytatouille Fusion
 
 ## Workflow
 

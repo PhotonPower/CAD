@@ -42,14 +42,14 @@ jobs:
       - name: Check the staged files
         shell: bash
         run: |
-          test -f stage/bin/NurbforgeCAD.exe
+          test -f stage/bin/RaytatouilleFusion.exe
           ls stage/bin | grep -i Qt6Core
           find stage -iname 'qwindows.dll' | grep -q .
           test -f stage/LICENSE.txt
       - name: Installer (Inno Setup)
         run: |
           choco install innosetup -y --no-progress
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DSourceDir=$PWD\stage" "/DOutputDir=$PWD\dist" packaging\windows\nurbforge-cad.iss
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DSourceDir=$PWD\stage" "/DOutputDir=$PWD\dist" packaging\windows\raytatouille-fusion.iss
       - uses: actions/upload-artifact@v4
         with:
           name: windows-installer
@@ -70,14 +70,14 @@ jobs:
       - uses: actions/checkout@v5
       - name: rpmbuild
         run: |
-          rpmbuild -bb packaging/linux/nurbforge-cad.spec \
+          rpmbuild -bb packaging/linux/raytatouille-fusion.spec \
             --define "_srcdir $PWD" --define "_topdir $PWD/rpmbuild" \
             --define "nurbforge_tag $NURBFORGE_TAG"
       - name: Install and smoke test
         run: |
-          dnf install -y ./rpmbuild/RPMS/*/nurbforge-cad-*.rpm
-          rpm -ql nurbforge-cad
-          QT_QPA_PLATFORM=offscreen NurbforgeCAD --version
+          dnf install -y ./rpmbuild/RPMS/*/raytatouille-fusion-*.rpm
+          rpm -ql raytatouille-fusion
+          QT_QPA_PLATFORM=offscreen RaytatouilleFusion --version
       - uses: actions/upload-artifact@v4
         with:
           name: almalinux10-rpm
@@ -99,11 +99,11 @@ jobs:
           cmake --install build --component app --prefix stage
       - name: Smoke test (no Homebrew paths left)
         run: |
-          ! otool -L stage/NurbforgeCAD.app/Contents/MacOS/NurbforgeCAD | grep -q /opt/homebrew
-          stage/NurbforgeCAD.app/Contents/MacOS/NurbforgeCAD --version
+          ! otool -L stage/RaytatouilleFusion.app/Contents/MacOS/RaytatouilleFusion | grep -q /opt/homebrew
+          stage/RaytatouilleFusion.app/Contents/MacOS/RaytatouilleFusion --version
       - name: DMG
-        run: packaging/macos/make_dmg.sh stage/NurbforgeCAD.app NurbforgeCAD-macos.dmg
+        run: packaging/macos/make_dmg.sh stage/RaytatouilleFusion.app RaytatouilleFusion-macos.dmg
       - uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
-          path: NurbforgeCAD-macos.dmg
+          path: RaytatouilleFusion-macos.dmg

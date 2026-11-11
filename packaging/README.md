@@ -2,8 +2,8 @@
 
 | Platform | Files | Built by |
 |---|---|---|
-| Windows 11 | `windows/nurbforge-cad.iss` (Inno Setup) | `.github/workflows/package.yml`, job `windows` |
-| AlmaLinux / RHEL 10 | `linux/nurbforge-cad.spec` (RPM) | job `almalinux10` |
+| Windows 11 | `windows/raytatouille-fusion.iss` (Inno Setup) | `.github/workflows/package.yml`, job `windows` |
+| AlmaLinux / RHEL 10 | `linux/raytatouille-fusion.spec` (RPM) | job `almalinux10` |
 | macOS | `macos/make_dmg.sh` (unsigned DMG; signing in M8) | job `macos` |
 
 All start from `cmake --install <build> --component app`, which installs only the application

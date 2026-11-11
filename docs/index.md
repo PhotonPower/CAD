@@ -1,4 +1,4 @@
-# Nurbforge CAD – documentation
+# Raytatouille Fusion – documentation
 
 - [Project plan](plan.md) – goals, milestones, risks
 - [UI concept](ui-concept.md) – main window, tool column, viewports, mouse and keyboard
