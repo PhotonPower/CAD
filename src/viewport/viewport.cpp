@@ -13,6 +13,7 @@
 #include "pick/picking.hpp"
 #include "platform/rhi_backend.hpp"
 #include "viewport/selection_rect.hpp"
+#include "viewport/field_legend.hpp"
 #include "viewport/snap_marker.hpp"
 
 namespace nfcad::viewport {
@@ -76,6 +77,7 @@ Viewport::Viewport(ViewKind kind, QWidget* parent) : QRhiWidget(parent), kind_(k
   title_->move(8, 6);
   rubber_ = new SelectionRect(this);
   marker_ = new SnapMarker(this);
+  legend_ = new FieldLegend(this);
 
   for (std::size_t i = 0; i < kAxes.size(); ++i) {
     auto* label = new QLabel(QString::fromLatin1(kAxes[i].name), this);
@@ -142,6 +144,37 @@ void Viewport::setSelection(document::Selection* selection) {
     connect(selection_, &document::Selection::hoverChanged, this, [this] { update(); });
   }
   update();
+}
+
+void Viewport::setResults(const results::ResultStore* results) {
+  if (results_ != nullptr) disconnect(results_, nullptr, this, nullptr);
+  results_ = results;
+  if (results_ != nullptr) {
+    connect(results_, &results::ResultStore::changed, this, [this] {
+      updateLegend();
+      update();
+    });
+  }
+  updateLegend();
+  update();
+}
+
+void Viewport::updateLegend() {
+  if (results_ != nullptr) {
+    for (const results::ResultItem* i : results_->visibleItems(results::ResultItem::Kind::Field)) {
+      if (i->field->values.empty()) continue;  // images have no scale
+      const results::Range r = i->field->effectiveRange();
+      legend_->setLegend(i->name, i->field->colormap, r.min, r.max, i->field->unit);
+      return;
+    }
+    for (const results::ResultItem* i : results_->visibleItems(results::ResultItem::Kind::Lines)) {
+      if (i->lines->values.empty()) continue;
+      const results::Range r = i->lines->range.value_or(results::data_range(i->lines->values));
+      legend_->setLegend(i->name, i->lines->colormap, r.min, r.max, i->lines->unit);
+      return;
+    }
+  }
+  legend_->clear();
 }
 
 void Viewport::setSnapSettings(snap::SnapMask mask, bool enabled) {
@@ -315,6 +348,7 @@ void Viewport::updateTriadLabels() {
 void Viewport::initialize(QRhiCommandBuffer* /*cb*/) {
   lines_.initialize(rhi(), renderTarget(), sampleCount());
   scene_renderer_.initialize(rhi(), renderTarget(), sampleCount());
+  result_renderer_.initialize(rhi(), renderTarget(), sampleCount());
 }
 
 void Viewport::releaseResources() {
@@ -323,6 +357,7 @@ void Viewport::releaseResources() {
   preview_layer_.releaseGpu();
   lines_.release();
   scene_renderer_.release();
+  result_renderer_.release();
 }
 
 void Viewport::render(QRhiCommandBuffer* cb) {
@@ -373,6 +408,14 @@ void Viewport::render(QRhiCommandBuffer* cb) {
     frame.mode = mode_;
     frame.selection = selection_;
     scene_renderer_.prepare(*scene_, frame, updates);
+    if (results_ != nullptr) {
+      render::ResultRenderer::FrameParams rf;
+      rf.clip_view_projection = frame.clip_view_projection;
+      rf.view = frame.view;
+      rf.perspective = frame.perspective;
+      rf.mode = mode_;
+      result_renderer_.prepare(*results_, *scene_, rf, updates);
+    }
   }
 
   const QSize px = renderTarget()->pixelSize();
@@ -384,7 +427,9 @@ void Viewport::render(QRhiCommandBuffer* cb) {
   lines_.draw(cb, grid_layer_, full);
   if (scene_ != nullptr) {
     scene_renderer_.drawFaces(cb, full);
+    if (results_ != nullptr) result_renderer_.drawInScene(cb, full);  // fields over their faces
     scene_renderer_.drawLines(cb, full);
+    if (results_ != nullptr) result_renderer_.drawOnTop(cb, full);   // rays
   }
   lines_.draw(cb, preview_layer_, full);  // rubber band on top (no depth test)
   // QRhiViewport origin is bottom left.
@@ -575,6 +620,7 @@ void Viewport::leaveEvent(QEvent* event) {
 
 void Viewport::resizeEvent(QResizeEvent* event) {
   QRhiWidget::resizeEvent(event);
+  legend_->place();
   camera_.setViewportSize(size());
   cameraChanged();
 }

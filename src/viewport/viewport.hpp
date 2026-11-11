@@ -6,6 +6,7 @@
 
 #include "render/display_mode.hpp"
 #include "render/line_renderer.hpp"
+#include "render/result_renderer.hpp"
 #include "render/scene_renderer.hpp"
 #include "snap/snap_engine.hpp"
 #include "viewport/camera.hpp"
@@ -41,6 +42,9 @@ class Viewport : public QRhiWidget {
 
   /// The shared display model (owned by the main window); may be null.
   void setScene(const render::Scene* scene);
+  /// Results to show (rays, fields on faces); may be null.
+  void setResults(const results::ResultStore* results);
+
   /// Selection to show and to change by clicking / dragging; may be null.
   void setSelection(document::Selection* selection);
 
@@ -136,6 +140,10 @@ class Viewport : public QRhiWidget {
   QPointF press_pos_;
   class SelectionRect* rubber_ = nullptr;
   render::SceneRenderer scene_renderer_;
+  render::ResultRenderer result_renderer_;
+  const results::ResultStore* results_ = nullptr;
+  class FieldLegend* legend_ = nullptr;
+  void updateLegend();
   render::LineRenderer lines_;
   render::LineLayer grid_layer_;
   render::LineLayer triad_layer_;

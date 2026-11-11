@@ -15,6 +15,9 @@ class Selection;
 namespace nfcad::snap {
 class SnapEngine;
 }
+namespace nfcad::results {
+class ResultStore;
+}
 
 class QFrame;
 class QSplitter;
@@ -35,6 +38,7 @@ class ViewportGrid : public QWidget {
 
   void setScene(const render::Scene* scene);
   void setSelection(document::Selection* selection);
+  void setResults(const results::ResultStore* results);
   void setSnapEngine(snap::SnapEngine* engine);
   void setSnapSettings(snap::SnapMask mask, bool enabled);
   void setPointInput(bool on);

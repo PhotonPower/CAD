@@ -22,6 +22,9 @@ class Scene;
 namespace nfcad::tessellation {
 class TessellationService;
 }
+namespace nfcad::results {
+class ResultStore;
+}
 namespace nfcad::snap {
 class SnapEngine;
 struct SnapPoint;
@@ -94,6 +97,7 @@ class MainWindow : public QMainWindow {
 
   document::Document* doc_ = nullptr;
   document::Selection* selection_ = nullptr;
+  results::ResultStore* results_ = nullptr;
   snap::SnapEngine* snap_engine_ = nullptr;
   class CommandController* commands_ = nullptr;
   QLineEdit* command_line_ = nullptr;

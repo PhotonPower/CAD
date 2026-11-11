@@ -50,6 +50,8 @@ add_library(nfcad_core STATIC
   src/kernel/properties.cpp
   src/kernel/step_import.cpp
   src/pick/picking.cpp
+  src/results/colormap.cpp
+  src/results/result_store.cpp
   src/snap/snap_engine.cpp
   src/snap/snap_types.cpp
   src/tessellation/bvh.cpp
@@ -69,6 +71,7 @@ nfcad_set_warnings(nfcad_core)
 # ---------------------------------------------------------------- GUI library
 add_library(nfcad_gui STATIC
   src/app/command_controller.cpp
+  src/app/demo_results.cpp
   src/app/file_actions.cpp
   src/app/main_window.cpp
   src/ui/tool_catalog.cpp
@@ -76,10 +79,13 @@ add_library(nfcad_gui STATIC
   src/ui/layer_panel.cpp
   src/ui/model_tree_panel.cpp
   src/ui/property_panel.cpp
+  src/ui/results_panel.cpp
   src/ui/snap_bar.cpp
   src/render/line_renderer.cpp
+  src/render/result_renderer.cpp
   src/render/scene.cpp
   src/render/scene_renderer.cpp
+  src/viewport/field_legend.cpp
   src/viewport/selection_rect.cpp
   src/viewport/snap_marker.cpp
   src/viewport/viewport.cpp
@@ -100,7 +106,9 @@ qt_add_shaders(nfcad_gui "nfcad_shaders"
     resources/shaders/line.vert
     resources/shaders/line.frag
     resources/shaders/mesh.vert
-    resources/shaders/mesh.frag)
+    resources/shaders/mesh.frag
+    resources/shaders/meshtex.vert
+    resources/shaders/meshtex.frag)
 
 # ---------------------------------------------------------------- application
 qt_add_executable(NurbforgeCAD MACOSX_BUNDLE WIN32 src/app/main.cpp)
