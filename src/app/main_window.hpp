@@ -92,6 +92,8 @@ class MainWindow : public QMainWindow {
   void createPlugins();
   void rebuildPluginUi();
   void runPluginAction(plugins::PluginHost* host, const QString& action);
+  void installPlugin(const QString& package = {});
+  void checkForUpdates();
   void connectPlugin(plugins::PluginHost* host);
 
   void createMenus();

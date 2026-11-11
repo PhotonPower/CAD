@@ -32,6 +32,8 @@ struct Manifest {
   int api = 0;
   QString entry;        ///< "module:Class"
   QString description;
+  QStringList requirements;  ///< Python packages, "name" or "name>=version" (import name = distribution name)
+  QString update_url;    ///< optional: JSON {"version": …, "url": …} with the newest release (P7)
   QString directory;    ///< directory the plugin runs from (for signed plugins a private, checked copy)
   QString source_directory;  ///< the plugin's folder as installed
   bool trusted = false;      ///< signature valid with a built-in publisher key (P5)

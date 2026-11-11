@@ -4,6 +4,7 @@
 
 class QCheckBox;
 class QLineEdit;
+class QPlainTextEdit;
 class QListWidget;
 class QLabel;
 
@@ -22,11 +23,14 @@ class PluginSettingsDialog : public QDialog {
 
  private:
   void apply();
+  void checkEnvironment();
+  void createEnvironment();
 
   plugins::PluginManager* manager_;
   QLineEdit* python_ = nullptr;
   QListWidget* folders_ = nullptr;
   QCheckBox* developer_ = nullptr;
+  QPlainTextEdit* report_ = nullptr;
 };
 
 }  // namespace nfcad::ui

@@ -7,6 +7,7 @@
 #include <optional>
 #include <vector>
 
+#include "plugins/distribution.hpp"
 #include "plugins/plugin_host.hpp"
 
 namespace nfcad::plugins {
@@ -32,7 +33,17 @@ class PluginManager : public QObject {
 
   [[nodiscard]] QString python() const;
   void setPython(const QString& path);
+  /// Configured folders plus the folder of installed plugins (always searched, first).
   [[nodiscard]] QStringList folders() const;
+  /// Where "Install plugin…" puts plugins: <app data>/plugins (or $NFCAD_PLUGIN_INSTALL_DIR).
+  [[nodiscard]] static QString installFolder();
+  /// Installs a .nfplugin package (signed; unsigned only in developer mode) and reloads.
+  Installation install(const QString& package);
+  /// Removes an installed plugin (only from installFolder()) and reloads; error or empty.
+  QString uninstall(const QString& id);
+  [[nodiscard]] bool isInstalled(const PluginHost* host) const;
+  /// Checks the Python interpreter against the requirements of all plugins (blocking).
+  [[nodiscard]] EnvironmentReport checkEnvironment() const;
   void setFolders(const QStringList& folders);
   [[nodiscard]] static QString nfcadPythonPath();
 

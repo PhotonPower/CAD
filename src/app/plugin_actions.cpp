@@ -1,5 +1,7 @@
 // Plugins in the main window (docs/plugin-api.md): menu, tool-column groups, job progress, log.
 #include <QDockWidget>
+#include <QFileDialog>
+#include <QMessageBox>
 #include <QLabel>
 #include <QMenuBar>
 #include <QPlainTextEdit>
@@ -12,6 +14,7 @@
 #include "document/document.hpp"
 #include "document/selection.hpp"
 #include "plugins/plugin_manager.hpp"
+#include "plugins/update_check.hpp"
 #include "ui/plugin_panel.hpp"
 #include "ui/plugin_settings_dialog.hpp"
 #include "ui/tool_box.hpp"
@@ -141,6 +144,21 @@ void MainWindow::rebuildPluginUi() {
     ui::PluginSettingsDialog dialog(plugins_, this);
     dialog.exec();
   });
+  plugins_menu_->addAction(tr("Install plugin…"), this, [this] { installPlugin(); });
+  QMenu* uninstall = plugins_menu_->addMenu(tr("Uninstall plugin"));
+  for (const auto& h : plugins_->plugins()) {
+    if (!plugins_->isInstalled(h.get())) continue;
+    const QString id = h->manifest().id;
+    const QString name = h->manifest().displayName();
+    uninstall->addAction(QStringLiteral("%1 %2").arg(name, h->manifest().version), this, [this, id, name] {
+      if (QMessageBox::question(this, tr("Uninstall plugin"), tr("Remove the plugin %1?").arg(name)) != QMessageBox::Yes) {
+        return;
+      }
+      const QString error = plugins_->uninstall(id);
+      statusBar()->showMessage(error.isEmpty() ? tr("%1 removed").arg(name) : error, 8000);
+    });
+  }
+  uninstall->setEnabled(!uninstall->isEmpty());
   plugins_menu_->addAction(tr("Reload plugins"), this, [this] { plugins_->reload(); });
   plugins_menu_->addSeparator();
   std::vector<ui::ToolGroupDef> groups;
@@ -173,6 +191,68 @@ void MainWindow::rebuildPluginUi() {
   }
   developer_banner_->setVisible(plugins_->developerMode());
   toolbox_->setExtraGroups(groups);
+}
+
+void MainWindow::installPlugin(const QString& package) {
+  QString file = package;
+  if (file.isEmpty()) {
+    file = QFileDialog::getOpenFileName(this, tr("Install plugin"), {},
+                                        tr("Plugin packages (*%1)").arg(QLatin1String(plugins::kPackageSuffix)));
+  }
+  if (file.isEmpty()) return;
+  if (active_plugin_ != nullptr) {
+    statusBar()->showMessage(tr("A plugin job is still running"), 4000);
+    return;
+  }
+  const plugins::Installation r = plugins_->install(file);
+  if (!r.error.isEmpty()) {
+    QMessageBox::warning(this, tr("Install plugin"), r.error);
+    return;
+  }
+  QString text = r.replaced.isEmpty()
+                     ? tr("%1 %2 installed.").arg(r.manifest.name, r.manifest.version)
+                     : tr("%1 updated from %2 to %3.").arg(r.manifest.name, r.replaced, r.manifest.version);
+  if (!r.signature.ok()) text += QLatin1Char('\n') + tr("Not signed (%1) – it only loads in developer mode.").arg(r.signature.message);
+  // the Python packages the plugin needs
+  const plugins::EnvironmentReport env = plugins::check_environment(plugins_->python(), r.manifest.requirements);
+  if (!env.ok()) {
+    text += QStringLiteral("\n\n") + (env.error.isEmpty() ? tr("Missing Python packages – install them with:\n%1").arg(env.pipCommand())
+                                                          : env.error);
+  }
+  QMessageBox::information(this, tr("Install plugin"), text);
+}
+
+void MainWindow::checkForUpdates() {
+  using plugins::UpdateChecker;
+  std::vector<UpdateChecker::Target> targets;
+  targets.push_back({tr("Raytatouille Fusion"), QStringLiteral(NFCAD_VERSION), QUrl(QString::fromLatin1(plugins::kReleasesApi)), true});
+  for (const auto& h : plugins_->plugins()) {
+    if (!h->manifest().update_url.isEmpty()) {
+      targets.push_back({h->manifest().name, h->manifest().version, QUrl(h->manifest().update_url), false});
+    }
+  }
+  statusBar()->showMessage(tr("Checking for updates …"));
+  auto* checker = new UpdateChecker(this);
+  connect(checker, &UpdateChecker::finished, this, [this, checker](const std::vector<plugins::UpdateInfo>& results) {
+    checker->deleteLater();
+    statusBar()->clearMessage();
+    QStringList lines;
+    for (const plugins::UpdateInfo& u : results) {
+      if (!u.error.isEmpty()) {
+        lines << tr("%1 %2: check failed (%3)").arg(u.what, u.installed, u.error.toHtmlEscaped());
+      } else if (u.newer()) {
+        lines << tr("<b>%1</b>: %2 available (installed %3) – <a href=\"%4\">download</a>")
+                     .arg(u.what, u.available, u.installed, u.url.toString(QUrl::FullyEncoded).toHtmlEscaped());
+      } else {
+        lines << tr("%1 %2 is up to date").arg(u.what, u.installed);
+      }
+    }
+    QMessageBox box(QMessageBox::Information, tr("Updates"), lines.join(QStringLiteral("<br>")), QMessageBox::Ok, this);
+    box.setTextFormat(Qt::RichText);
+    box.setTextInteractionFlags(Qt::TextBrowserInteraction);
+    box.exec();
+  });
+  checker->check(targets);
 }
 
 void MainWindow::runPluginAction(plugins::PluginHost* host, const QString& action) {

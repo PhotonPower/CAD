@@ -190,6 +190,7 @@ void MainWindow::createMenus() {
     const QString error = make_demo_results(*results_, *scene_, ids.empty() ? 0 : ids.front());
     if (!error.isEmpty()) statusBar()->showMessage(error, 5000);
   });
+  help->addAction(tr("Check for updates…"), this, &MainWindow::checkForUpdates);
   QAction* about = help->addAction(tr("About Raytatouille Fusion"), this, &MainWindow::showAbout);
   about->setMenuRole(QAction::AboutRole);
 }

@@ -24,7 +24,7 @@ set(QT_NO_PRIVATE_MODULE_WARNING ON)
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Svg ShaderTools Concurrent Network)
 if(Qt6_VERSION VERSION_GREATER_EQUAL 6.9)
   # Since Qt 6.9 private modules are separate packages; before, Qt6::GuiPrivate comes with Gui.
-  find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
+  find_package(Qt6 REQUIRED COMPONENTS GuiPrivate CorePrivate)
 endif()
 include(FindOrFetchNurbforge)   # -> Nurbforge::core (before AUTOMOC is switched on)
 include(FetchCDT)               # -> CDT::headers
@@ -51,9 +51,11 @@ add_library(nfcad_core STATIC
   src/kernel/properties.cpp
   src/kernel/step_import.cpp
   src/pick/picking.cpp
+  src/plugins/distribution.cpp
   src/plugins/plugin_host.cpp
   src/plugins/plugin_manager.cpp
   src/plugins/signature.cpp
+  src/plugins/update_check.cpp
   ${CMAKE_CURRENT_BINARY_DIR}/generated/trusted_keys.cpp
   src/results/colormap.cpp
   src/results/result_store.cpp
@@ -71,6 +73,11 @@ target_include_directories(nfcad_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(nfcad_core
   PUBLIC Qt6::Core Qt6::Gui Qt6::Concurrent Qt6::Network Nurbforge::core
   PRIVATE CDT::headers nfcad_monocypher)
+# QZipReader / QZipWriter (plugin packages): QtCore private since Qt 6.9-ish, QtGui private before
+target_link_libraries(nfcad_core PRIVATE Qt6::GuiPrivate)
+if(TARGET Qt6::CorePrivate)
+  target_link_libraries(nfcad_core PRIVATE Qt6::CorePrivate)
+endif()
 nfcad_set_warnings(nfcad_core)
 
 # ---------------------------------------------------------------- GUI library

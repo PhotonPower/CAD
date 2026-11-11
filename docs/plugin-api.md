@@ -122,6 +122,37 @@ large arrays travel as temporary files that CAD maps and deletes. Actions run in
 thread of the plugin process, so Cancel is always received; a plugin that does not stop within
 5 s is terminated. A crash of the plugin process ends only that action.
 
+## Distribution
+
+**Requirements.** `plugin.json` lists the Python packages a plugin needs:
+`"requires": ["numpy", "raytatouille>=0.9"]` (import name, optionally `>=` or `==` a version).
+*Plugins → Settings… → Check environment* runs the chosen interpreter and shows what is
+missing, with the `pip install` command; *Create environment…* makes a new venv (with numpy)
+from the interpreter in the field. Installing a plugin checks its requirements too. CAD does
+not ship a Python (decision D5): plugins use the environment with your kernel libraries.
+
+**Packages.** A plugin is distributed as a `.nfplugin` file – a zip archive of the plugin
+folder with its `SIGNATURE`:
+
+```bash
+T=build/release/tools/nfcad-plugin
+$T sign my_plugin ~/.raytatouille-fusion/publisher.key
+$T pack my_plugin                       # -> <id>-<version>.nfplugin
+```
+
+*Plugins → Install plugin…* (or opening / passing the file to the application) checks the
+signature – unsigned packages only in developer mode – and installs into the folder for
+installed plugins (`<app data>/plugins/<id>`, shown in the settings; `NFCAD_PLUGIN_INSTALL_DIR`
+overrides it). A newer version replaces the installed one; installed plugins take precedence
+over plugins with the same id in other folders. *Plugins → Uninstall plugin* removes them.
+Archive paths must stay inside the plugin folder; packages are limited to 256 MB unpacked.
+
+**Updates.** *Help → Check for updates…* asks, only when chosen, the GitHub releases of
+Raytatouille Fusion and every plugin with an `update_url` in its `plugin.json` – a URL of a
+JSON document `{"version": "1.2.0", "url": "<download page or .nfplugin>"}` – and lists newer
+versions with their links. Requests send no personal data (user agent
+`RaytatouilleFusion/<version>`); downloaded packages are installed with *Install plugin…*.
+
 ## Signing
 
 CAD loads only plugins **signed by the publisher** whose public key is built into the

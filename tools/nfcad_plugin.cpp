@@ -4,9 +4,11 @@
 //   nfcad-plugin pubkey <secret-key-file>       prints the public key line
 //   nfcad-plugin sign   <plugin-dir> <secret-key-file>
 //   nfcad-plugin verify <plugin-dir> [ed25519:<key> …]   default: the built-in publisher keys
+//   nfcad-plugin pack   <plugin-dir> [<file>.nfplugin]   package for Plugins → Install plugin…
 #include <QCoreApplication>
 #include <QTextStream>
 
+#include "plugins/distribution.hpp"
 #include "plugins/signature.hpp"
 
 using namespace nfcad::plugins;
@@ -62,7 +64,24 @@ int main(int argc, char* argv[]) {
     out << a[1] << ": valid (" << v.files.size() << " files, " << v.key << ")\n";
     return 0;
   }
+  if (cmd == QLatin1String("pack") && (a.size() == 2 || a.size() == 3)) {
+    const auto m = read_manifest(a[1], &error);
+    if (!m) {
+      err << error << '\n';
+      return 1;
+    }
+    const QString file = a.size() == 3 ? a[2] : QStringLiteral("%1-%2%3").arg(m->id, m->version, QLatin1String(kPackageSuffix));
+    const Verification v = verify_plugin(a[1], built_in_publisher_keys());
+    if (!v.ok()) err << "note: " << v.message << " – installs only in developer mode\n";
+    error = pack_plugin(a[1], file);
+    if (!error.isEmpty()) {
+      err << error << '\n';
+      return 1;
+    }
+    out << "wrote " << file << '\n';
+    return 0;
+  }
   err << "usage: nfcad-plugin keygen <key-file> | pubkey <key-file> | sign <plugin-dir> <key-file> | "
-         "verify <plugin-dir> [ed25519:<key> …]\n";
+         "verify <plugin-dir> [ed25519:<key> …] | pack <plugin-dir> [<file>.nfplugin]\n";
   return 2;
 }
