@@ -1125,5 +1125,95 @@
    ]
   }
  ],
- "diagnostics": []
+ "diagnostics": [],
+ "plan": {
+  "links": {
+   "source.to_Illumination_stop -> Illumination_stop.from_source": {
+    "representation": "R",
+    "reason": "only R admissible"
+   },
+   "Illumination_stop.to_Beam_splitter -> Beam_splitter.from_Illumination_stop": {
+    "representation": "R",
+    "reason": "only R admissible"
+   },
+   "Beam_splitter.to_Objective_A -> Objective_A.from_Beam_splitter": {
+    "representation": "R",
+    "reason": "only R admissible"
+   },
+   "Objective_A.to_Sample -> Sample.from_Objective_A": {
+    "representation": "R",
+    "reason": "only R admissible"
+   },
+   "Sample.to_Objective_A -> Objective_A.from_Sample": {
+    "representation": "R",
+    "reason": "only R admissible"
+   },
+   "Objective_A.to_Beam_splitter -> Beam_splitter.from_Objective_A": {
+    "representation": "R",
+    "reason": "only R admissible"
+   },
+   "Beam_splitter.to_Tube_and_camera_Tube_lens_Tube_lens -> Tube_and_camera_Tube_lens_Tube_lens.from_Beam_splitter": {
+    "representation": "R",
+    "reason": "only R admissible"
+   },
+   "Tube_and_camera_Tube_lens_Tube_lens.to_Camera -> Camera.from_Tube_and_camera_Tube_lens_Tube_lens": {
+    "representation": "R",
+    "reason": "only R admissible"
+   },
+   "Beam_splitter.to_Objective_B -> Objective_B.from_Beam_splitter": {
+    "representation": "R",
+    "reason": "only R admissible"
+   },
+   "Objective_B.to_Reference -> Reference.from_Objective_B": {
+    "representation": "R",
+    "reason": "only R admissible"
+   },
+   "Reference.to_Objective_B -> Objective_B.from_Reference": {
+    "representation": "R",
+    "reason": "only R admissible"
+   },
+   "Objective_B.to_Beam_splitter -> Beam_splitter.from_Objective_B": {
+    "representation": "R",
+    "reason": "only R admissible"
+   },
+   "Beam_splitter.to_Pupil_camera -> Pupil_camera.from_Beam_splitter": {
+    "representation": "R",
+    "reason": "only R admissible"
+   }
+  },
+  "conversions": [],
+  "paths": [
+   [
+    "source.to_Illumination_stop -> Illumination_stop.from_source",
+    "Illumination_stop.to_Beam_splitter -> Beam_splitter.from_Illumination_stop",
+    "Beam_splitter.to_Objective_A -> Objective_A.from_Beam_splitter",
+    "Objective_A.to_Sample -> Sample.from_Objective_A",
+    "Sample.to_Objective_A -> Objective_A.from_Sample",
+    "Objective_A.to_Beam_splitter -> Beam_splitter.from_Objective_A",
+    "Beam_splitter.to_Pupil_camera -> Pupil_camera.from_Beam_splitter"
+   ],
+   [
+    "source.to_Illumination_stop -> Illumination_stop.from_source",
+    "Illumination_stop.to_Beam_splitter -> Beam_splitter.from_Illumination_stop",
+    "Beam_splitter.to_Objective_A -> Objective_A.from_Beam_splitter",
+    "Objective_A.to_Sample -> Sample.from_Objective_A",
+    "Sample.to_Objective_A -> Objective_A.from_Sample",
+    "Objective_A.to_Beam_splitter -> Beam_splitter.from_Objective_A",
+    "Beam_splitter.to_Tube_and_camera_Tube_lens_Tube_lens -> Tube_and_camera_Tube_lens_Tube_lens.from_Beam_splitter",
+    "Tube_and_camera_Tube_lens_Tube_lens.to_Camera -> Camera.from_Tube_and_camera_Tube_lens_Tube_lens"
+   ],
+   [
+    "source.to_Illumination_stop -> Illumination_stop.from_source",
+    "Illumination_stop.to_Beam_splitter -> Beam_splitter.from_Illumination_stop",
+    "Beam_splitter.to_Objective_B -> Objective_B.from_Beam_splitter",
+    "Objective_B.to_Reference -> Reference.from_Objective_B",
+    "Reference.to_Objective_B -> Objective_B.from_Reference",
+    "Objective_B.to_Beam_splitter -> Beam_splitter.from_Objective_B",
+    "Beam_splitter.to_Tube_and_camera_Tube_lens_Tube_lens -> Tube_and_camera_Tube_lens_Tube_lens.from_Beam_splitter",
+    "Tube_and_camera_Tube_lens_Tube_lens.to_Camera -> Camera.from_Tube_and_camera_Tube_lens_Tube_lens"
+   ]
+  ],
+  "diagnostics": [],
+  "cost": 13.0
+ }
 }

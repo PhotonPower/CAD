@@ -93,7 +93,7 @@ document as modified but is not an undo step.
 | `ctx.field(set, name, entity, values, width, height, face=0, colormap=, unit=, value_range=)` | field on a face over its normalised (u, v): `values[j * width + i]` |
 | `ctx.curve(set, name, x, y, x_label=, y_label=)` / `ctx.append(curve, x, y)` | curve in the *Plot* dock, extended live |
 | `ctx.image(set, name, values, width, height, extent=(x0, x1, y0, y1), x_label=, y_label=, colormap=, unit=, value_range=, description=)` | 2D image in the *Image* window (e.g. a camera image): `values[j * width + i]`, row 0 at y0, extent in physical units |
-| `ctx.workflow()` / `ctx.set_workflow(wf)` | Node workflow of the document (RTT-Fusion): `{"graph": rtt-fusion-graph, "types": [...], "diagnostics": [...]}`; shown and edited in the *Node workflow* window, saved in the `.rttf` file |
+| `ctx.workflow()` / `ctx.set_workflow(wf)` | Node workflow of the document (RTT-Fusion): `{"graph": rtt-fusion-graph, "types": [...], "diagnostics": [...], "plan": planner result}`; the editor shows the planned representation per link and the conversions per block; shown and edited in the *Node workflow* window, saved in the `.rttf` file |
 
 Raise `nfcad.UserError("…")` for problems the user can fix (missing input, wrong file): CAD
 shows the message as it is. Any other exception is reported as a plugin error with its

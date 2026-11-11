@@ -86,6 +86,35 @@ class TestNodeEditor : public QObject {
     QVERIFY(!e.workflow().contains("diagnostics"));
   }
 
+  void planIsShown() {
+    // the planner's result (RTT-Fusion R17): representation per link, conversions per block
+    QJsonObject wf = linnik();
+    const QJsonObject l0 = wf["graph"].toObject()["links"].toArray()[0].toObject();
+    const QString key = QStringLiteral("%1.%2 -> %3.%4")
+                            .arg(l0["from"].toArray()[0].toString(), l0["from"].toArray()[1].toString(),
+                                 l0["to"].toArray()[0].toString(), l0["to"].toArray()[1].toString());
+    const QString node = l0["to"].toArray()[0].toString();
+    wf["plan"] = QJsonObject{
+        {"links", QJsonObject{{key, QJsonObject{{"representation", "H"}, {"reason", "only H admissible"}}}}},
+        {"conversions", QJsonArray{QJsonObject{{"node", node}, {"from", "a"}, {"to", "b"}, {"chain", "HR"},
+                                               {"operators", QJsonArray{"field_to_rays"}}}}}};
+    wf["diagnostics"] = QJsonArray{QJsonObject{{"code", "plan.no_operator"}, {"severity", "error"},
+                                               {"message", "no operator"}, {"location", key}}};
+    NodeEditor e;
+    e.setWorkflow(wf);
+    QCOMPARE(e.plannedRepresentation(0), QStringLiteral("H"));
+    QCOMPARE(e.plannedRepresentation(1), QString());
+    QVERIFY(e.linkItem(0)->toolTip().contains(QStringLiteral("planned: H – only H admissible")));
+    QVERIFY(e.linkItem(0)->toolTip().contains(QStringLiteral("plan.no_operator")));
+    QCOMPARE(e.linkItem(0)->pen().style(), Qt::DashLine);
+    QCOMPARE(e.linkItem(1)->pen().style(), Qt::SolidLine);
+    QVERIFY(e.nodeItem(node)->toolTip().contains(QStringLiteral("a → b: HR (field_to_rays)")));
+    // an edit makes the plan stale
+    e.setMuted(node, true);
+    QVERIFY(!e.workflow().contains("plan"));
+    QCOMPARE(e.plannedRepresentation(0), QString());
+  }
+
   void savedWithTheDocument() {
     nfcad::document::Document doc;
     doc.setWorkflow(linnik());

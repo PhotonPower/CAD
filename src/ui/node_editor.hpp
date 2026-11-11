@@ -17,7 +17,7 @@ class LinkItem;
 /// Node editor of the RTT-Fusion workflow (RTT-Fusion docs/konzept-node-workflow.md, R16).
 ///
 /// Shows the working graph of the document – {"graph": rtt-fusion-graph, "types": [...],
-/// "diagnostics": [...]} – as blocks with sockets and links, and lets the user edit it: move blocks
+/// "diagnostics": [...], "plan": planner result} – as blocks with sockets and links, and lets the user edit it: move blocks
 /// (links follow), drag a link from an output to an input socket, delete links and blocks, mute a
 /// block, fix the transport of a link, add blocks from the type catalogue (context menu). Every
 /// edit emits `edited` with the whole workflow; the checks and the computation live in RTT-Fusion
@@ -51,6 +51,10 @@ class NodeEditor : public QGraphicsView {
   /// The item of a block (its pen marks problems; tooltip: type, parameters, problems).
   [[nodiscard]] QGraphicsRectItem* nodeItem(const QString& id) const;
   [[nodiscard]] int linkCount() const;
+  /// The item of a link (tooltip: transport, planned representation and reason, problems).
+  [[nodiscard]] QGraphicsPathItem* linkItem(int index) const;
+  /// The representation the planner chose for a link ("" without a plan).
+  [[nodiscard]] QString plannedRepresentation(int index) const;
 
  signals:
   void edited(const QJsonObject& workflow);

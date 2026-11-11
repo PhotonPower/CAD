@@ -575,6 +575,8 @@ class RaytracerPlugin(Plugin):
             execute = importlib.import_module("rtt_fusion.graph.execute")
             io = importlib.import_module("rtt_fusion.graph.io")
             validate = importlib.import_module("rtt_fusion.graph.validate")  # the module, not the function
+            if not hasattr(fg, "plan"):
+                raise ImportError("rtt_fusion without planner (R17)")
         except ImportError as e:
             raise UserError("The node workflow needs the Python package rtt_fusion (RTT-Fusion) in the plugin "
                             "environment: pip install -e <RTT-Fusion>") from e
@@ -589,10 +591,18 @@ class RaytracerPlugin(Plugin):
                         "params": [p.to_dict() for p in t.params]})
         return out
 
+    @staticmethod
+    def _checked(fg, execute, validate, graph, registry) -> tuple[list[dict], dict]:
+        """Diagnostics of the graph check and of the planner (R17, with what can run), and the plan."""
+        diagnostics = [d.__dict__ for d in validate.validate(graph, registry)]
+        plan = fg.plan(graph, registry, fg.Requirements(available=execute.EXECUTABLE))
+        diagnostics += [d.__dict__ for d in plan.diagnostics]
+        return diagnostics, plan.to_dict()
+
     @action("Workflow from system", description="Node workflow of the loaded system from its paths (RTT-Fusion)")
     def workflow_from_system(self, ctx):
         _require_rt()
-        fg, _, _, io, validate = self._fusion()
+        fg, _, execute, io, validate = self._fusion()
         system, _ = self._current(ctx)
         graph = fg.graph_from_raytatouille(system)
         registry = fg.builtin_registry()
@@ -600,25 +610,27 @@ class RaytracerPlugin(Plugin):
         for node in graph.nodes.values():
             if not node.sockets:
                 node.sockets = validate.node_sockets(node, registry)
-        diagnostics = [d.__dict__ for d in validate.validate(graph, registry)]
+        diagnostics, plan = self._checked(fg, execute, validate, graph, registry)
         ctx.set_workflow({"graph": io.to_dict(graph), "types": self._catalogue(registry),
-                          "diagnostics": diagnostics})
+                          "diagnostics": diagnostics, "plan": plan})
         return f"workflow: {len(graph.nodes)} blocks, {len(graph.links)} links"
 
     @action("Check workflow", description="Check the node workflow (RTT-Fusion) and mark problems")
     def check_workflow(self, ctx):
-        fg, _, _, io, validate = self._fusion()
+        fg, _, execute, io, validate = self._fusion()
         wf = ctx.workflow()
         if not wf.get("graph"):
             raise UserError("No node workflow yet – Workflow from system creates one.")
         graph = io.from_dict(wf["graph"])
-        diagnostics = validate.validate(graph, fg.builtin_registry())
-        wf["diagnostics"] = [d.__dict__ for d in diagnostics]
+        wf["diagnostics"], wf["plan"] = self._checked(fg, execute, validate, graph, fg.builtin_registry())
         ctx.set_workflow(wf)
-        n_err = sum(1 for d in diagnostics if d.severity == "error")
+        diagnostics = wf["diagnostics"]
+        n_err = sum(1 for d in diagnostics if d["severity"] == "error")
         for d in diagnostics:
-            ctx.log(f"{d.severity}: {d.code} – {d.message} ({d.location})")
-        return f"workflow: {n_err} error(s), {len(diagnostics) - n_err} warning(s)"
+            ctx.log(f"{d['severity']}: {d['code']} – {d['message']} ({d['location']})")
+        planned = sorted(set(v["representation"] for v in wf["plan"]["links"].values()))
+        return (f"workflow: {n_err} error(s), {len(diagnostics) - n_err} warning(s); "
+                f"planned {''.join(planned) or '–'}, {len(wf['plan']['conversions'])} conversion(s)")
 
     @action("Run workflow", description="Compute the node workflow (RTT-Fusion R15): coherent camera images")
     def run_workflow(self, ctx):
