@@ -43,10 +43,27 @@ class Context:
             args["ids"] = [int(i) for i in ids]
         return self._host.request("model.entities", args)
 
-    def add(self, geometry: dict, name: str = "", attributes: dict | None = None) -> int:
+    def add(self, geometry: dict, name: str = "", attributes: dict | None = None, group: int = 0) -> int:
+        """New entity (in the model tree group ``group``, 0 = top level); returns its id."""
         return self._host.request(
-            "model.add", {"geometry": geometry, "name": name, "attributes": attributes or {}}
+            "model.add",
+            {"geometry": geometry, "name": name, "attributes": attributes or {}, "group": int(group)},
         )
+
+    def remove(self, entity: int) -> None:
+        """Removes an entity (undone with the run)."""
+        self._host.request("model.remove", {"id": int(entity)})
+
+    def groups(self) -> list[dict]:
+        """Model tree groups: id, name, parent (0 = top level)."""
+        return self._host.request("model.groups", {})
+
+    def add_group(self, name: str, parent: int = 0) -> int:
+        return self._host.request("model.add_group", {"name": name, "parent": int(parent)})
+
+    def remove_group(self, group: int) -> None:
+        """Removes an empty group (no entities, no sub-groups)."""
+        self._host.request("model.remove_group", {"id": int(group)})
 
     def replace(self, entity: int, geometry: dict) -> None:
         """Replaces the geometry of an entity (live; the whole run is one undo step)."""

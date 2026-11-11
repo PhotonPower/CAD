@@ -37,6 +37,19 @@ class TestPlugin(Plugin):
         ctx.log("hello from the plugin")
         return f"new {new}"
 
+    @action("Model tree")
+    def tree(self, ctx):
+        system = ctx.add_group("system")
+        lens = ctx.add_group("lens", system)
+        ctx.add(g.line((0, 0, 0), (0, 0, 1)), name="in lens", group=lens)
+        old = next(e for e in ctx.entities() if e["name"] == "from plugin")
+        ctx.replace(old["id"], g.line((5, 5, 5), (6, 6, 6)))  # changed, then removed
+        ctx.remove(old["id"])
+        temp = ctx.add(g.point((0, 0, 0)), name="temp")  # added and removed: no trace
+        ctx.remove(temp)
+        ctx.remove_group(ctx.add_group("temp"))
+        return ",".join(f"{x['name']}<{x['parent']}" for x in ctx.groups())
+
     @action("Loop until cancelled")
     def loop(self, ctx):
         while True:

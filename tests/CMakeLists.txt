@@ -40,3 +40,19 @@ target_compile_definitions(test_plugin_signature PRIVATE NFCAD_TEST_PLUGIN_DIR="
 add_test(NAME signed_plugins
          COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:nfcad-plugin> -DROOT=${PROJECT_SOURCE_DIR}/python
                  -P ${PROJECT_SOURCE_DIR}/cmake/VerifySignedPlugins.cmake)
+nfcad_add_test(test_raytracer_plugin plugins/test_raytracer_plugin.cpp nfcad_gui)
+target_compile_definitions(test_raytracer_plugin PRIVATE NFCAD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+set_tests_properties(test_raytracer_plugin PROPERTIES TIMEOUT 600)
+# Raytracer plugin bridge (P6); needs a Python with raytatouille and nurbforge, otherwise skipped
+set(_nfcad_test_python "${PROJECT_SOURCE_DIR}/.venv/bin/python")
+if(WIN32)
+  set(_nfcad_test_python "${PROJECT_SOURCE_DIR}/.venv/Scripts/python.exe")
+endif()
+if(NOT EXISTS "${_nfcad_test_python}")
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  set(_nfcad_test_python "${Python3_EXECUTABLE}")
+endif()
+if(_nfcad_test_python)
+  add_test(NAME rtt_nurbs_bridge COMMAND "${_nfcad_test_python}" "${CMAKE_CURRENT_SOURCE_DIR}/python/test_rtt_nurbs.py")
+  set_tests_properties(rtt_nurbs_bridge PROPERTIES SKIP_RETURN_CODE 77)
+endif()

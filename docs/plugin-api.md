@@ -82,7 +82,9 @@ document as modified but is not an undo step.
 | `ctx.selection` | ids of the selected objects when the action started |
 | `ctx.params` | parameter values from the *Plugin* panel, converted to Python types (see below) |
 | `ctx.entities(ids=None, selection=False)` | objects as dicts; `geometry` in the [.nfcad format](file-format.md) |
-| `ctx.add(geometry, name, attributes)` | new object, returns its id |
+| `ctx.add(geometry, name, attributes, group=0)` | new object (in a model tree group), returns its id |
+| `ctx.remove(id)` | removes an object |
+| `ctx.groups()` / `ctx.add_group(name, parent=0)` / `ctx.remove_group(id)` | model tree groups (id, name, parent); only empty groups can be removed |
 | `ctx.replace(id, geometry)` | new geometry for an object – shown immediately (live optimisation) |
 | `ctx.set_attribute(id, key, value)` | attribute (None removes it) |
 | `ctx.result_set(name)` | a new run in the *Results* dock |

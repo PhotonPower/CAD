@@ -48,7 +48,9 @@ QStringList PluginManager::folders() const {
     if (!out.contains(p)) out << p;
   }
 #ifdef NFCAD_PYTHON_SOURCE_DIR
-  if (out.isEmpty()) out << QStringLiteral(NFCAD_PYTHON_SOURCE_DIR "/examples");  // development build
+  if (out.isEmpty()) {  // development build: the examples and the plugins of the repository
+    out << QStringLiteral(NFCAD_PYTHON_SOURCE_DIR "/examples") << QStringLiteral(NFCAD_PYTHON_SOURCE_DIR "/plugins");
+  }
 #endif
   return out;
 }

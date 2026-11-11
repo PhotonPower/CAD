@@ -26,6 +26,16 @@ struct Group {
   bool visible = true;
 };
 
+/// Changes already applied live (a plugin run) that become one undo step together.
+struct LiveChanges {
+  std::vector<EntityId> added;                               ///< still in the document
+  std::vector<Entity> removed;                               ///< as they were before the run
+  std::vector<GroupId> added_groups;                         ///< in creation order
+  std::vector<Group> removed_groups;                         ///< empty groups, in removal order
+  std::vector<std::pair<EntityId, GeometryPtr>> old_geometry;
+  std::vector<std::pair<EntityId, QVariantMap>> old_attributes;
+};
+
 struct Layer {
   LayerId id = 0;
   QString name;
@@ -75,9 +85,7 @@ class Document : public QObject {
 
   /// Records changes that were already applied without undo (live updates of a plugin run) as
   /// one undo step: the added entities, the previous geometry and attributes of changed ones.
-  void recordApplied(const QString& text, const std::vector<EntityId>& added,
-                     const std::vector<std::pair<EntityId, GeometryPtr>>& old_geometry,
-                     const std::vector<std::pair<EntityId, QVariantMap>>& old_attributes);
+  void recordApplied(const QString& text, const LiveChanges& changes);
 
   // ---- low level (undo commands, loading)
   GroupId insertGroup(Group g);  ///< keeps g.id if free, else assigns one
