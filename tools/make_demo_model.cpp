@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
       }
     }
     nf::StepOptions options;
-    options.name = "nurbforge-cad demo";
+    options.name = "raytatouille-fusion demo";
     options.shell_names = names;
     nf::write_step(argv[1], shells, options);
     std::printf("%s: %zu shells, %zu faces\n", argv[1], shells.size(), faces);

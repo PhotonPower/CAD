@@ -1,6 +1,6 @@
 # Third-party software
 
-Nurbforge CAD (MIT, see LICENSE) uses:
+Raytatouille Fusion (MIT, see LICENSE) uses:
 
 | Component | Licence | Use |
 |---|---|---|

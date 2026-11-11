@@ -1,12 +1,18 @@
-# Nurbforge CAD
+# Raytatouille Fusion
 
 [![CI](https://github.com/PhotonPower/CAD/actions/workflows/ci.yml/badge.svg)](https://github.com/PhotonPower/CAD/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Desktop CAD front end for the [Nurbforge](https://github.com/PhotonPower/Nurbforge) NURBS kernel** –
-C++20, Qt 6, native rendering (Metal / Direct3D / OpenGL·Vulkan via Qt RHI).
+**Desktop CAD front end for the [Nurbforge](https://github.com/PhotonPower/Nurbforge) NURBS kernel
+and the computation kernels built on it** – [Raytatouille](https://github.com/PhotonPower/Raytatouille)
+and the solvers of the *Raytatouille Fusion* ([prototype](https://github.com/PhotonPower/RTT-Fusion)) as
+signed Python plugins ([plugin plan](docs/plugins.md)). C++20, Qt 6, native rendering
+(Metal / Direct3D / OpenGL·Vulkan via Qt RHI).
 
-> **Status: 0.0 – milestone M7.** STEP files and `.nfcad` documents open and display in four
+> Formerly *Nurbforge CAD* (renamed 2026-11-11). Internal identifiers stay: the C++ namespace and
+> the Python package `nfcad`, the document format `.nfcad`, the `NFCAD_*` environment variables.
+
+> **Status: 0.0 – milestones M0–M7 and plugin milestones P1–P3.** STEP files and `.nfcad` documents open and display in four
 > navigable views (wireframe / surfaces / shaded); objects, faces, edges and vertices can be
 > selected, with property and layer panels; the magnetic cursor snaps to points, ends, mids,
 > centres, axis cut points, intersections, face corners and edges; curves are drawn with
@@ -34,7 +40,7 @@ C++20, Qt 6, native rendering (Metal / Direct3D / OpenGL·Vulkan via Qt RHI).
 brew install qt cmake ninja
 git clone https://github.com/PhotonPower/CAD.git
 cmake --preset debug && cmake --build --preset debug
-open build/debug/NurbforgeCAD.app
+open build/debug/RaytatouilleFusion.app
 ```
 
 Nurbforge is taken from an installed package, a checkout in `../Nurbforge`, or downloaded –

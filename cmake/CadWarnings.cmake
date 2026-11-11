@@ -1,4 +1,4 @@
-# Compiler warnings for Nurbforge CAD targets (named differently from Nurbforge's
+# Compiler warnings for Raytatouille Fusion targets (named differently from Nurbforge's
 # CompilerWarnings.cmake / nf_set_warnings so both can live in one CMake project).
 function(nfcad_set_warnings target)
   if(MSVC)

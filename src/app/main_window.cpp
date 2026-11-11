@@ -189,7 +189,7 @@ void MainWindow::createMenus() {
     const QString error = make_demo_results(*results_, *scene_, ids.empty() ? 0 : ids.front());
     if (!error.isEmpty()) statusBar()->showMessage(error, 5000);
   });
-  QAction* about = help->addAction(tr("About Nurbforge CAD"), this, &MainWindow::showAbout);
+  QAction* about = help->addAction(tr("About Raytatouille Fusion"), this, &MainWindow::showAbout);
   about->setMenuRole(QAction::AboutRole);
 }
 
@@ -419,8 +419,8 @@ void MainWindow::onToolTriggered(const QString& tool_id) {
 void MainWindow::showAbout() {
   const bool kernel_ok = kernel::self_test();
   QMessageBox::about(
-      this, tr("About Nurbforge CAD"),
-      tr("<b>Nurbforge CAD</b> %1<br>Desktop CAD front end for the Nurbforge NURBS kernel.<br><br>"
+      this, tr("About Raytatouille Fusion"),
+      tr("<b>Raytatouille Fusion</b> %1<br>Desktop CAD front end for the Nurbforge NURBS kernel.<br><br>"
          "Nurbforge kernel %2 – self-test %3<br>Qt %4")
           .arg(QStringLiteral(NFCAD_VERSION),
                QString::fromStdString(kernel::nurbforge_version()),

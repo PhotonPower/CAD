@@ -224,7 +224,7 @@ nf::Shell cap_planar_holes(const std::vector<nf::TrimmedSurface>& faces, double 
 std::size_t export_step(const QString& path, const std::vector<const document::Entity*>& entities) {
   std::vector<nf::Shell> shells;
   nf::StepOptions options;
-  options.name = "Nurbforge CAD";
+  options.name = "Raytatouille Fusion";
   for (const document::Entity* e : entities) {
     if (const auto* s = std::get_if<nf::Shell>(e->geometry.get())) {
       shells.push_back(*s);

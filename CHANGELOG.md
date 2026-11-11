@@ -5,6 +5,13 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 
 ## [Unreleased]
 
+### Changed
+- Renamed to **Raytatouille Fusion** (was *Nurbforge CAD*): window and menu texts, executable
+  and bundle (`RaytatouilleFusion`), installer, RPM `raytatouille-fusion` (replaces
+  `nurbforge-cad`), desktop entry and bundle id. Settings of the old name are taken over on the
+  first start; the Windows installer keeps its AppId (updates the old installation). Unchanged:
+  namespace and Python package `nfcad`, format `.nfcad`, `NFCAD_*` variables.
+
 ### Added
 - P3 – plugin host (docs/plugin-api.md): plugins in their own Python process
   (`python -m nfcad.host`), TCP channel on 127.0.0.1 with a token, JSON lines, arrays as mapped

@@ -1,13 +1,13 @@
 # Benchmarks
 
-`NurbforgeCAD --benchmark <frames> <file>` loads a file, waits for the tessellation, orbits the
+`RaytatouilleFusion --benchmark <frames> <file>` loads a file, waits for the tessellation, orbits the
 perspective view for `<frames>` frames and prints timings. The demo model comes from
 `tools/make_demo_model` (plates with holes from Booleans, spheres, tori, cones, cylinders):
 
 ```bash
 cmake --preset release && cmake --build --preset release
 build/release/tools/make_demo_model demo.step 20 20          # 400 solids, 1200 faces
-build/release/NurbforgeCAD.app/Contents/MacOS/NurbforgeCAD --benchmark 300 demo.step
+build/release/RaytatouilleFusion.app/Contents/MacOS/RaytatouilleFusion --benchmark 300 demo.step
 ```
 
 | Date | Machine | Model | Read + tessellate | Triangles | Orbit |
