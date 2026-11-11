@@ -11,6 +11,11 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
   on the last surface of the path – incident weight per projected cell area, uncounted rays
   in the plugin log – instead of the plugin's own binning; it needs a Raytatouille with #379.
 
+### Added
+- Plugin parameter type `Param.files` (a list of files with *Add…* / *Remove*); the Raytracer's
+  *Glass catalogues* use it – catalogues are chosen with the file dialog instead of typing
+  `;`-separated paths (documents with the old text are still read).
+
 ### Fixed
 - Plugin panel in a narrow dock: rows wrap (editor below its label), the file chooser button is
   no longer cut off, an empty file field says what to do.

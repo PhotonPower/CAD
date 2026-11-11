@@ -39,6 +39,10 @@ class Param:
             return bool(value)
         if self.type == "numbers":
             return [float(v) for v in value]
+        if self.type == "files":
+            if isinstance(value, str):  # a ';'-separated text (older documents)
+                value = value.split(";")
+            return [str(v).strip() for v in value if str(v).strip()]
         if self.type == "point":
             return tuple(float(v) for v in value)
         if self.type == "entity":
@@ -81,6 +85,13 @@ class Param:
     def file(default: str = "", *, filter: str = "", save: bool = False, label: str | None = None,
              group: str | None = None, description: str | None = None) -> "Param":
         return Param("file", str(default), filter=filter, save=save, label=label, group=group,
+                     description=description)
+
+    @staticmethod
+    def files(default: Sequence[str] = (), *, filter: str = "", label: str | None = None,
+              group: str | None = None, description: str | None = None) -> "Param":
+        """Several files (e.g. glass catalogues): a list with Add… / Remove in the panel."""
+        return Param("files", [str(f) for f in default], filter=filter, label=label, group=group,
                      description=description)
 
     @staticmethod

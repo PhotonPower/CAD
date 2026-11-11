@@ -4,11 +4,13 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QLocale>
 #include <QPushButton>
 #include <QSpinBox>
@@ -147,6 +149,58 @@ QWidget* PluginForm::makeEditor(const QJsonObject& p) {
       if (ok) set(name, out);
     });
     return w;
+  }
+  if (type == QLatin1String("files")) {
+    auto* box = new QWidget(this);
+    auto* column = new QVBoxLayout(box);
+    column->setContentsMargins(0, 0, 0, 0);
+    column->setSpacing(2);
+    auto* list = new QListWidget(box);
+    list->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    list->setMaximumHeight(90);
+    list->setToolTip(p["description"].toString());
+    QStringList start;
+    if (value.isString()) {  // a ';'-separated text (documents from before the files type)
+      start = value.toString().split(QLatin1Char(';'), Qt::SkipEmptyParts);
+    } else {
+      for (const QJsonValue& f : value.toArray()) start << f.toString();
+    }
+    for (const QString& f : start) {
+      auto* item = new QListWidgetItem(QFileInfo(f).fileName(), list);
+      item->setData(Qt::UserRole, f.trimmed());
+      item->setToolTip(f.trimmed());
+    }
+    column->addWidget(list);
+    auto* row = new QHBoxLayout;
+    auto* add = new QPushButton(tr("Add…"), box);
+    auto* remove = new QPushButton(tr("Remove"), box);
+    row->addWidget(add);
+    row->addWidget(remove);
+    row->addStretch(1);
+    column->addLayout(row);
+    auto store = [this, name, list] {
+      QJsonArray files;
+      for (int i = 0; i < list->count(); ++i) files.append(list->item(i)->data(Qt::UserRole).toString());
+      set(name, files);
+    };
+    const QString filter = p["filter"].toString();
+    connect(add, &QPushButton::clicked, this, [this, list, filter, store] {
+      const QStringList chosen = QFileDialog::getOpenFileNames(this, {}, {}, filter);
+      for (const QString& f : chosen) {
+        bool known = false;  // the same file twice is pointless
+        for (int i = 0; i < list->count(); ++i) known = known || list->item(i)->data(Qt::UserRole).toString() == f;
+        if (known) continue;
+        auto* item = new QListWidgetItem(QFileInfo(f).fileName(), list);
+        item->setData(Qt::UserRole, f);
+        item->setToolTip(f);
+      }
+      store();
+    });
+    connect(remove, &QPushButton::clicked, this, [list, store] {
+      qDeleteAll(list->selectedItems());
+      store();
+    });
+    return box;
   }
   if (type == QLatin1String("file")) {
     auto* box = new QWidget(this);

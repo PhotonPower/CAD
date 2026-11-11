@@ -23,8 +23,8 @@ Raytatouille Fusion – milestone P6 of the [plugin plan](../../../docs/plugins.
 | **Optimise** | Raytatouille's optimiser on the system's variables and merit function; the changed surfaces are redrawn after every accepted iteration, the merit function grows in the *Plot* dock. Cancel (Esc) ends with the last accepted state. |
 | **Save system** | writes the current system (*Save as*, default `<system>.optimised.rtt.json`). |
 
-Glass catalogues: *.agf files next to the system file and in its sub-folder `catalogs`, plus
-the files in *Glass catalogues* (separated by `;`). Without catalogues only systems with
+Glass catalogues: the files added under *Glass catalogues* (*Add…*, several at once), plus all
+*.agf files next to the system file and in its sub-folder `catalogs`. Without catalogues only systems with
 constant indices compile, such as `examples/singlet_optim.rtt.json`.
 
 **Undo.** Every action is one undo step in CAD. The plugin numbers each state of the optical
