@@ -14,4 +14,7 @@
   <provides>
     <binary>RaytatouilleFusion</binary>
   </provides>
+  <releases>
+    <release version="1.0.0" date="2026-11-11"/>
+  </releases>
 </component>

@@ -60,3 +60,6 @@ nfcad_add_test(test_plugin_distribution plugins/test_plugin_distribution.cpp nfc
 if(TARGET Qt6::CorePrivate)
   target_link_libraries(test_plugin_distribution PRIVATE Qt6::CorePrivate)
 endif()
+nfcad_add_test(test_support support/test_support.cpp nfcad_core)
+nfcad_add_test(test_doc_screenshots app/test_doc_screenshots.cpp nfcad_gui)
+target_compile_definitions(test_doc_screenshots PRIVATE NFCAD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")

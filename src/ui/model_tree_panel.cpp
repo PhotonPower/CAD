@@ -30,6 +30,7 @@ ModelTreePanel::ModelTreePanel(document::Document* doc, document::Selection* sel
   tree_->setHeaderLabels({tr("Model"), tr("Type")});
   tree_->header()->setSectionResizeMode(kName, QHeaderView::Stretch);
   tree_->header()->setSectionResizeMode(kType, QHeaderView::ResizeToContents);
+  tree_->header()->setStretchLastSection(false);  // the names get the room, not the type
   tree_->setSelectionMode(QAbstractItemView::ExtendedSelection);
   tree_->setContextMenuPolicy(Qt::CustomContextMenu);
   layout->addWidget(tree_);

@@ -4,7 +4,7 @@
 ; (Qt is deployed into it by windeployqt via qt_generate_deploy_app_script).
 
 #ifndef AppVersion
-  #define AppVersion "0.0.1"
+  #define AppVersion "1.0.0"
 #endif
 #ifndef OutputDir
   #define OutputDir "."

@@ -4,17 +4,21 @@
 #include <QActionGroup>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDesktopServices>
+#include <QDir>
 #include <QDockWidget>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QSettings>
 #include <QShortcut>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
+#include <QUrl>
 #include <algorithm>
 #include <cmath>
 
@@ -26,6 +30,7 @@
 #include "results/result_store.hpp"
 #include "ui/results_panel.hpp"
 #include "snap/snap_engine.hpp"
+#include "support/crash_handler.hpp"
 #include "ui/layer_panel.hpp"
 #include "ui/model_tree_panel.hpp"
 #include "ui/property_panel.hpp"
@@ -130,6 +135,12 @@ MainWindow::~MainWindow() {
     plugins_->disconnect(this);
     delete plugins_;
     plugins_ = nullptr;
+  }
+  // The document is destroyed after this body; clearing its undo stack emits cleanChanged, and
+  // other document signals may follow – none of them may reach this half-destroyed window.
+  if (doc_ != nullptr) {
+    doc_->undoStack()->disconnect(this);
+    doc_->disconnect(this);
   }
   delete snap_engine_;
 }
@@ -416,6 +427,21 @@ void MainWindow::onToolTriggered(const QString& tool_id) {
   if (commands_->start(tool_id)) return;
   statusBar()->showMessage(tr("Tool '%1' is not implemented yet (see docs/plan.md)").arg(tool_id),
                            4000);
+}
+
+void MainWindow::reportPreviousCrash() {
+  const QString folder = support::CrashHandler::defaultFolder();
+  const QStringList reports = support::CrashHandler::newReports(folder);
+  support::CrashHandler::markSeen(folder);
+  if (reports.isEmpty()) return;
+  QMessageBox box(QMessageBox::Warning, tr("Raytatouille Fusion"),
+                  tr("Raytatouille Fusion closed unexpectedly last time. A crash report was saved on this "
+                     "computer (it is not sent anywhere):\n%1\n\nIf you report the problem, please attach it.")
+                      .arg(QDir::toNativeSeparators(reports.front())),
+                  QMessageBox::Ok, this);
+  QPushButton* open = box.addButton(tr("Show report"), QMessageBox::ActionRole);
+  box.exec();
+  if (box.clickedButton() == open) QDesktopServices::openUrl(QUrl::fromLocalFile(reports.front()));
 }
 
 void MainWindow::showAbout() {

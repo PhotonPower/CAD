@@ -1,9 +1,29 @@
 # Changelog
 
 All notable changes are documented here. Format: [Keep a Changelog](https://keepachangelog.com),
-versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
+versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and the plugin API
+(`nfcad`, API 1) change compatibly within a major version.
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-11-11
+
+First release: a CAD front end for Nurbforge with four views, object snaps, drawing, solids,
+STEP / STL, results on the model – and plugins for computation kernels, starting with the
+Raytatouille ray tracer. Packages: Windows 11 installer, AlmaLinux / RHEL 10 RPM, macOS disk
+image (universal, unsigned).
+
+### Added
+- **Release 1.0 (M8):** macOS build as a universal binary (arm64 + x86_64); local crash
+  reports (written on a crash, pointed to at the next start, never sent); versioned settings
+  migration; user guide with screenshots and shortcuts (`docs/user-guide.md`); example
+  models (`examples/`); a tag `v*` builds the packages and drafts a GitHub release.
+- A plugin run that fills an empty document zooms all views to its result.
+
+### Fixed
+- Closing the window with an undo history could call into the half-destroyed window (crash in
+  debug builds, undefined behaviour in release builds).
+- Model tree: names get the column width instead of the type column.
 
 ### Added
 - **Plugin distribution (P7):** `.nfplugin` packages (zip of the plugin folder with its
