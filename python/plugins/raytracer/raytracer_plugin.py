@@ -134,12 +134,12 @@ class RaytracerPlugin(Plugin):
                 return i
         return len(layouts) - 1
 
-    def _detector_half(self, compiled) -> tuple[float, float]:
+    def _detector_half(self, system, compiled) -> tuple[float, float]:
         """Size of an image surface without aperture: the spread of a quick trace, plus margin."""
         idx = self._detector_index(compiled)
         L = rt.layout.surfaces(compiled)[idx]
         try:
-            rays = rt.trace.make_rays(compiled, rt.trace.HexapolarPupil(rings=4))
+            rays = self._make_rays(system, compiled, 4, 0, None, None)
             rt.trace.trace(compiled, rays)
             ok = (np.asarray(rays.status) == 0) & (np.asarray(rays.last_surface) == idx)
             p = np.stack([np.asarray(rays.pos_x), np.asarray(rays.pos_y), np.asarray(rays.pos_z)], -1)[ok]
@@ -155,7 +155,7 @@ class RaytracerPlugin(Plugin):
         h = max(h * 1.25, 0.05 * scale)
         return h, h
 
-    def _faces(self, compiled, tol: float):
+    def _faces(self, system, compiled, tol: float):
         """(surface index, Face) for every surface, the detector with its derived size."""
         layouts = rt.layout.surfaces(compiled)
         radii = [a.aperture[1].get("radius", 0) for a in layouts if a.aperture]
@@ -165,11 +165,84 @@ class RaytracerPlugin(Plugin):
         for i, L in enumerate(layouts):
             override = None
             if i == det and L.aperture is None:
-                override = self.detector_half or self._detector_half(compiled)
+                override = self.detector_half or self._detector_half(system, compiled)
                 self.detector_half = override
             faces.append((i, rtt_nurbs.surface_face(compiled, i, tol=tol, fallback_half=fallback,
                                                     half_override=override)))
         return faces
+
+    # ------------------------------------------------------------------ rays
+    def _make_rays(self, system, compiled, rings: int, path, fields, wavelength, **run):
+        """rt.trace.make_rays, or – for folded / tilted paths, which its paraxial aiming does not
+        accept – start rays built here: possible exactly when the stop is the first surface the
+        path meets (nothing to aim through), see _start_rays."""
+        try:
+            return rt.trace.make_rays(compiled, rt.trace.HexapolarPupil(rings=rings), path=path, fields=fields,
+                                      wavelength=wavelength, **run)
+        except rt.ParaxialError as e:
+            return self._start_rays(system, compiled, rings, path, fields, wavelength, e)
+
+    @staticmethod
+    def _start_rays(system, compiled, rings: int, path, fields, wavelength, why):
+        """Start rays (global RayBatch) on a hexapolar grid over the stop opening: parallel along
+        each field angle (object at infinity; direction ∝ (tan αx, tan αy, 1) as in Raytatouille)
+        or from each object point (finite object). Exact without aiming because the stop is the
+        first event of the path."""
+        import json as _json
+        d = _json.loads(system.to_json())
+        layouts = rt.layout.surfaces(compiled)
+        stop_id = (d.get("aperture", {}).get("stop") or {}).get("surface")
+        stop = next((L for L in layouts if (L.id == stop_id if stop_id else L.kind == "stop")), None)
+        paths = d.get("paths", [])
+        chosen = (paths[path] if isinstance(path, int) else next((q for q in paths if q.get("name") == path), None)) \
+            if paths else None
+        events = chosen.get("events") if chosen else None
+        first = events[0].get("surface") if isinstance(events, list) and events else layouts[0].id
+        if stop is None or stop.aperture is None or first != stop.id:
+            raise UserError(f"Raytatouille cannot aim rays into this path ({why}). The plugin can start them "
+                            "itself only when the aperture stop is the first surface of the path.")
+        kind, params = stop.aperture
+        rx, ry = (params["radius"], params["radius"]) if kind == "circular" else \
+                 (params.get("semi_axis_x", params.get("half_width_x")), params.get("semi_axis_y", params.get("half_width_y")))
+        # hexapolar grid in the stop (local x, y) exactly as rt.trace.HexapolarPupil: rings start
+        # on +y and run clockwise
+        px, py = [0.0], [0.0]
+        for k in range(1, rings + 1):
+            for j in range(6 * k):
+                a = 2 * np.pi * j / (6 * k)
+                px.append(k / rings * np.sin(a)); py.append(k / rings * np.cos(a))
+        px, py = np.array(px), np.array(py)
+        on_stop = np.stack([px * rx, py * ry, np.zeros_like(px)], -1) @ np.asarray(stop.rotation).T + stop.translation
+        field_points = d.get("fields", {}).get("points", [{}])
+        field_type = d.get("fields", {}).get("type", "angle_deg")
+        at_infinity = d.get("object", {}).get("at_infinity", True)
+        indices = range(len(field_points)) if fields is None else fields
+        pos, dirs, fid = [], [], []
+        for fi in indices:
+            f = field_points[fi]
+            fx, fy = float(f.get("x", 0.0)), float(f.get("y", 0.0))
+            if at_infinity and field_type == "angle_deg":
+                direction = np.array([np.tan(np.radians(fx)), np.tan(np.radians(fy)), 1.0])
+                direction = np.tile(direction / np.linalg.norm(direction), (len(px), 1))
+                start = on_stop - direction * (1.0 + max(rx, ry))
+            elif not at_infinity and field_type == "object_height":
+                obj = np.array([fx, fy, compiled.object_z])
+                direction = on_stop - obj
+                direction /= np.linalg.norm(direction, axis=1, keepdims=True)
+                start = np.tile(obj, (len(px), 1))
+            else:
+                raise UserError(f"Raytatouille cannot aim rays into this path ({why}); the plugin builds start "
+                                f"rays only for field angles at infinity or object heights, not '{field_type}'.")
+            pos.append(start); dirs.append(direction); fid += [fi] * len(px)
+        pos, dirs = np.concatenate(pos), np.concatenate(dirs)
+        rays = rt.trace.RayBatch(len(pos))
+        for name, values in (("pos_x", pos[:, 0]), ("pos_y", pos[:, 1]), ("pos_z", pos[:, 2]),
+                             ("dir_x", dirs[:, 0]), ("dir_y", dirs[:, 1]), ("dir_z", dirs[:, 2]),
+                             ("pupil_x", np.tile(px, len(indices))), ("pupil_y", np.tile(py, len(indices)))):
+            np.asarray(getattr(rays, name))[:] = values
+        np.asarray(rays.field)[:] = fid
+        np.asarray(rays.wl)[:] = compiled.reference_wavelength if wavelength is None else wavelength
+        return rays
 
     # ------------------------------------------------------------------ actions
     @action("Load system", description="Read the .rtt.json and draw it (replaces a drawing loaded before)")
@@ -222,7 +295,7 @@ class RaytracerPlugin(Plugin):
         tol = ctx.params["tolerance"]
         locations = compiled.surface_locations
         layouts = rt.layout.surfaces(compiled)
-        faces = self._faces(compiled, tol)
+        faces = self._faces(system, compiled, tol)
         coarse = []
         for k, (i, face) in enumerate(faces):
             ctx.check_cancel()
@@ -266,8 +339,7 @@ class RaytracerPlugin(Plugin):
         last_surface = None  # the last surface of the path (where the irradiance is computed)
         for w in wls:
             ctx.check_cancel()
-            rays = rt.trace.make_rays(compiled, rt.trace.HexapolarPupil(rings=p["rings"]), path=path,
-                                      fields=fields, wavelength=w)
+            rays = self._make_rays(system, compiled, p["rings"], path, fields, w)
             stats, rec = rt.trace.trace(compiled, rays, path=path, record_path=True,
                                         max_recorded_rays=max(rays.size, 1))
             events = np.asarray(rec.event_surfaces)
@@ -292,10 +364,10 @@ class RaytracerPlugin(Plugin):
 
         message = f"{n_ok} of {n_total} drawn rays reach the end of the path"
         if p["irradiance"]:
-            message += "; " + self._irradiance(ctx, compiled, run, path, fields, wls, last_surface)
+            message += "; " + self._irradiance(ctx, system, compiled, run, path, fields, wls, last_surface)
         return message
 
-    def _irradiance(self, ctx, compiled, run, path, fields, wls, last_surface: int | None) -> str:
+    def _irradiance(self, ctx, system, compiled, run, path, fields, wls, last_surface: int | None) -> str:
         """Irradiance on the last surface of the path (Raytatouille #379, rt.analysis.irradiance_map)
         over the parameter domain of its drawn face, so the field covers the face exactly."""
         if not hasattr(rt.analysis, "irradiance_map"):
@@ -321,16 +393,15 @@ class RaytracerPlugin(Plugin):
 
         weights = compiled.wavelength_weights
         for w in wls:
-            sampling = rt.trace.HexapolarPupil(rings=p["irradiance_rings"])
-            rays = rt.trace.make_rays(compiled, sampling, path=path, fields=fields, wavelength=w,
-                                      cancel=token, progress=progress)
+            rays = self._make_rays(system, compiled, p["irradiance_rings"], path, fields, w,
+                                   cancel=token, progress=progress)
             rt.trace.trace(compiled, rays, path=path, cancel=token, progress=progress)
             try:
                 # batch form: any number of rays, if the last event cannot change the weight
                 im = rt.analysis.irradiance_map(compiled, rays, path=path, nx=n, ny=n, extent=extent)
             except ValueError:
                 # e.g. a reflecting or absorbing last surface: the form with recorded paths
-                rays = rt.trace.make_rays(compiled, sampling, path=path, fields=fields, wavelength=w)
+                rays = self._make_rays(system, compiled, p["irradiance_rings"], path, fields, w)
                 _, rec = rt.trace.trace(compiled, rays, path=path, record_path=True,
                                         max_recorded_rays=max(rays.size, 1))
                 im = rt.analysis.irradiance_map(compiled, rec, surface=L.id, path=path, nx=n, ny=n,
@@ -368,7 +439,7 @@ class RaytracerPlugin(Plugin):
 
         def redraw(sys_k):
             compiled = self._compile(sys_k)
-            for i, face in self._faces(compiled, tol):
+            for i, face in self._faces(sys_k, compiled, tol):
                 sid = compiled.surface_ids[i]
                 if sid in entity_of:
                     ctx.replace(entity_of[sid], face.geometry)

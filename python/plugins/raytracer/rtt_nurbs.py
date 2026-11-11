@@ -40,12 +40,15 @@ def clamped_uniform_knots(n: int, degree: int, a: float, b: float) -> np.ndarray
 
 
 def greville(knots: np.ndarray, n: int, degree: int) -> np.ndarray:
-    return np.array([knots[i + 1:i + degree + 1].mean() for i in range(n)])
+    # the mean of equal knots can land a rounding error outside the domain: clamp
+    g = np.array([knots[i + 1:i + degree + 1].mean() for i in range(n)])
+    return np.clip(g, knots[0], knots[-1])
 
 
 def basis_matrix(knots: np.ndarray, n: int, degree: int, t: np.ndarray) -> np.ndarray:
-    """B[k, i] = N_i,p(t_k) (Cox-de Boor); the last knot belongs to the last span."""
-    t = np.asarray(t, dtype=float)
+    """B[k, i] = N_i,p(t_k) (Cox-de Boor); the last knot belongs to the last span. Parameters a
+    rounding error outside the domain are clamped onto it."""
+    t = np.clip(np.asarray(t, dtype=float), knots[0], knots[-1])
     m = len(knots)
     N = np.zeros((len(t), m - 1))
     for j in range(m - 1):
@@ -79,6 +82,8 @@ def circle_curve(cx: float, cy: float, rx: float, ry: float) -> dict:
 
 
 # ------------------------------------------------------------------ surfaces
+ROTATIONAL = ("conic", "even_asphere", "odd_asphere", "axicon", "qcon", "qbfs")
+PROFILE_SIZES = (8, 16, 32, 64, 128, 256)  # control points of the profile, tried in this order
 @dataclass
 class Face:
     geometry: dict          # .nfcad trimmed_surface
@@ -134,6 +139,12 @@ def surface_face(system, index: int, *, tol: float = DEFAULT_TOL, fallback_half:
     hole = None
     if layout.kind == "stop" and kind in ("circular", "elliptical") and layout.shape == "plane":
         hole, hx, hy, inner = (hx, hy), hx * STOP_RING, hy * STOP_RING, 0.0
+    # rotationally symmetric shapes with a circular aperture: a surface of revolution (handles
+    # steep, nearly hemispherical lenses; no trim needed). Detectors stay x-y parametrised:
+    # their face (u, v) = local (x, y) carries the irradiance map.
+    if (layout.shape in ROTATIONAL and kind == "circular" and layout.kind not in ("detector", "stop")
+            and half_override is None):
+        return _revolved_face(system, index, layout, inner, hx, tol)
     # domain slightly larger than the aperture so the trim curve lies inside it
     margin = 1.0 if kind == "rectangular" else 1.02
     ax, ay = hx * margin, hy * margin
@@ -220,3 +231,43 @@ def _rim(system, layouts, i0: int) -> dict | None:
             "knots_v": [0.0, 0.0, 1.0, 1.0], "num_u": 9, "num_v": 2,
             "points": [float(c) for c in pts.reshape(-1)],
             "weights": [w for w in circle["weights"] for _ in range(2)]}
+
+
+def _revolved_face(system, index: int, layout, r0: float, r1: float, tol: float) -> Face:
+    """Surface of revolution: the profile z(r), r0 <= r <= r1, interpolated by a cubic B-spline
+    over its arc length (steep rims are no problem), revolved with the exact rational circle.
+    u runs along the profile (r0 → r1), v around the axis. At r0 = 0 the u = 0 edge is a pole."""
+    sag = lambda r: np.asarray(rt.layout.sag(system, index, r, np.zeros_like(r)), dtype=float)
+    dense_r = np.linspace(r0, r1, 4001)
+    dense_z = sag(dense_r)
+    if not np.all(np.isfinite(dense_z)):
+        raise ValueError(f"{layout.id}: the shape is not defined over the whole aperture")
+    arc = np.concatenate([[0.0], np.cumsum(np.hypot(np.diff(dense_r), np.diff(dense_z)))])
+    length = arc[-1]
+    err = math.inf
+    for n in PROFILE_SIZES:
+        knots = clamped_uniform_knots(n, DEGREE, 0.0, length)
+        g = greville(knots, n, DEGREE)
+        r = np.interp(g, arc, dense_r)
+        rz = np.stack([r, sag(r)], -1)
+        B = basis_matrix(knots, n, DEGREE, g)
+        ctrl = np.linalg.solve(B, rz)
+        mid = (g[:-1] + g[1:]) / 2  # check between the samples: height error at the curve's own r
+        curve = basis_matrix(knots, n, DEGREE, mid) @ ctrl
+        r_c = np.clip(curve[:, 0], r0, r1)
+        err = float(np.max(np.abs(curve[:, 1] - sag(r_c))))
+        if err <= tol:
+            break
+    circle = circle_curve(0.0, 0.0, 1.0, 1.0)
+    unit = np.array(circle["points"], dtype=float).reshape(-1, 3)[:, :2]
+    pts = np.zeros((n, 9, 3))
+    for j in range(n):
+        pts[j, :, 0] = ctrl[j, 0] * unit[:, 0]
+        pts[j, :, 1] = ctrl[j, 0] * unit[:, 1]
+        pts[j, :, 2] = ctrl[j, 1]
+    world = pts.reshape(-1, 3) @ np.asarray(layout.rotation).T + np.asarray(layout.translation)
+    surface = {"degree_u": DEGREE, "degree_v": 2, "knots_u": list(map(float, knots)),
+               "knots_v": circle["knots"], "num_u": n, "num_v": 9,
+               "points": [float(c) for c in world.reshape(-1)],
+               "weights": [w for _ in range(n) for w in circle["weights"]]}
+    return Face({"type": "trimmed_surface", "surface": surface, "label": layout.id}, err, r1, r1)

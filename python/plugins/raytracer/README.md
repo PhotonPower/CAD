@@ -31,11 +31,21 @@ constant indices compile, such as `examples/singlet_optim.rtt.json`.
 system and stores the number in the attribute `rtt.revision` of the first surface; after an
 undo of an optimisation the next action continues with the system before it.
 
-**Drawing accuracy.** Surfaces are drawn as bicubic B-splines that interpolate the exact sag
-(*Drawing tolerance*, default 0.1 µm; planes exact) and trimmed with exact circles / ellipses.
-Rays are always traced on the exact surfaces. Non-smooth shapes (the tip of an axicon) are
-drawn with a larger error; the plugin log names them, and the error per surface is in the
-attribute `rtt.nurbs_error_mm`.
+**Drawing accuracy.** Rotationally symmetric surfaces (conic, aspheres, axicon, Q-type) with a
+circular aperture are drawn as surfaces of revolution: the profile is interpolated along its
+arc length, so steep, nearly hemispherical lenses are drawn as exactly as flat ones. Other
+shapes, rectangular / elliptical apertures and image surfaces are bicubic B-splines over the
+local x-y plane, trimmed with exact curves. The *Drawing tolerance* (default 0.1 µm) is
+checked; planes are exact. Rays are always traced on the exact surfaces. The error per
+surface is in the attribute `rtt.nurbs_error_mm`; surfaces above the tolerance are named in
+the plugin log.
+
+**Folded and tilted paths** (beam splitters, interferometers such as a Linnik): Raytatouille's
+ray aiming needs a rotationally symmetric path. For other paths the plugin starts the rays
+itself – on the same hexapolar grid over the stop, along the field angles (object at infinity)
+or from the object points (finite object). That is exact when the aperture stop is the first
+surface of the path (as with an illumination stop); otherwise the plugin says that it cannot
+aim into the path.
 
 ## Not yet
 

@@ -3,6 +3,7 @@
 #include <QAction>
 #include <QDir>
 #include <QDockWidget>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QSignalSpy>
 #include <QImage>
@@ -57,8 +58,12 @@ class TestDocScreenshots : public QObject {
     if (host == nullptr) QSKIP("raytracer plugin not found");
     // before the plugin is ready: the panel shows these values once it is
     auto* doc = w.findChild<nfcad::document::Document*>();
-    const QJsonObject params{{"system", NFCAD_SOURCE_DIR "/python/plugins/raytracer/examples/singlet_optim.rtt.json"},
-                             {"rings", 8}};
+    // NFCAD_DOC_RTT_SYSTEM / NFCAD_DOC_RTT_CATALOG: another system (default: the plugin's example)
+    const QString system = qEnvironmentVariable("NFCAD_DOC_RTT_SYSTEM",
+                                                QStringLiteral(NFCAD_SOURCE_DIR "/python/plugins/raytracer/examples/singlet_optim.rtt.json"));
+    QJsonArray catalogs;
+    if (const QString c = qEnvironmentVariable("NFCAD_DOC_RTT_CATALOG"); !c.isEmpty()) catalogs.append(c);
+    const QJsonObject params{{"system", system}, {"catalogs", catalogs}, {"rings", 8}};
     doc->setPluginParameters(QStringLiteral("raytracer"), params);
     QTRY_VERIFY_WITH_TIMEOUT(host->ready() || !host->running(), 30000);
     if (!host->ready()) QSKIP("raytracer plugin does not start (raytatouille missing?)");
