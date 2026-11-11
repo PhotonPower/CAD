@@ -11,3 +11,4 @@ New ADRs get the next number; superseded ADRs stay and are marked as such.
 | [0004](0004-display-tessellation.md) | Display tessellation in the application | accepted |
 | [0005](0005-snap-engine.md) | Snap engine with screen-space tolerance and priorities | accepted |
 | [0006](0006-cdt-for-trimmed-faces.md) | Constrained Delaunay triangulation (CDT) for trimmed faces | accepted |
+| [0007](0007-cpu-picking.md) | Picking on the CPU with BVHs over the display meshes | accepted |

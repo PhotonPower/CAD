@@ -13,6 +13,10 @@
 
 class QLabel;
 
+namespace nfcad::document {
+class Selection;
+}
+
 namespace nfcad::viewport {
 
 /// One 3D view (QRhiWidget: Metal / D3D / OpenGL·Vulkan, docs/rendering.md).
@@ -36,6 +40,8 @@ class Viewport : public QRhiWidget {
 
   /// The shared display model (owned by the main window); may be null.
   void setScene(const render::Scene* scene);
+  /// Selection to show and to change by clicking / dragging; may be null.
+  void setSelection(document::Selection* selection);
 
   /// Orbits like a mouse drag by `delta_px` (benchmark, scripted views).
   void orbitBy(const QPointF& delta_px);
@@ -68,6 +74,11 @@ class Viewport : public QRhiWidget {
 
  private:
   enum class Drag { None, Pan, Orbit };
+  enum class LeftAction { None, Pending, Rectangle };
+
+  void hoverPick(const QPointF& px, Qt::KeyboardModifiers mods);
+  void clickSelect(const QPointF& px, Qt::KeyboardModifiers mods);
+  void rectSelect(const QRectF& rect, bool crossing, Qt::KeyboardModifiers mods);
 
   void cameraChanged();
   void updateTitle();
@@ -84,6 +95,10 @@ class Viewport : public QRhiWidget {
   QPointF last_pos_;
 
   const render::Scene* scene_ = nullptr;
+  document::Selection* selection_ = nullptr;
+  LeftAction left_ = LeftAction::None;
+  QPointF press_pos_;
+  class SelectionRect* rubber_ = nullptr;
   render::SceneRenderer scene_renderer_;
   render::LineRenderer lines_;
   render::LineLayer grid_layer_;

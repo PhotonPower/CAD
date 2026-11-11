@@ -408,13 +408,24 @@ void tessellate_trimmed(const nf::TrimmedSurface& face, const std::vector<double
   add_isocurves(s, &loops, us, vs, params, out);
 }
 
-void append(DisplayMesh& dst, DisplayMesh&& src) {
+/// Appends the mesh of one face (face index = number of faces so far).
+void append_face(DisplayMesh& dst, DisplayMesh&& src) {
+  if (dst.face_starts.empty()) dst.face_starts.push_back(0);
+  const auto face = static_cast<std::int32_t>(dst.face_starts.size() - 1);
+  dst.iso_faces.insert(dst.iso_faces.end(), src.isocurves.size(), face);
   const auto base = static_cast<std::uint32_t>(dst.vertexCount());
   dst.vertices.insert(dst.vertices.end(), src.vertices.begin(), src.vertices.end());
   for (std::uint32_t i : src.indices) dst.indices.push_back(base + i);
   std::move(src.edges.begin(), src.edges.end(), std::back_inserter(dst.edges));
   std::move(src.isocurves.begin(), src.isocurves.end(), std::back_inserter(dst.isocurves));
   dst.points.insert(dst.points.end(), src.points.begin(), src.points.end());
+  dst.face_starts.push_back(static_cast<std::uint32_t>(dst.indices.size()));
+}
+
+void single_face(const nf::TrimmedSurface& face, const TessParams& params, DisplayMesh& out) {
+  DisplayMesh m;
+  tessellate_face(face, params, m, true);
+  append_face(out, std::move(m));
 }
 
 void compute_bounds(DisplayMesh& m) {
@@ -500,9 +511,9 @@ DisplayMesh tessellate(const document::Geometry& g, const TessParams& params) {
           for (const Vec3& p : tessellate_curve(v, params)) add_point(pl, p);
           out.edges.push_back(std::move(pl));
         } else if constexpr (std::is_same_v<T, nf::NurbsSurface>) {
-          tessellate_face(nf::TrimmedSurface(v), params, out, true);
+          single_face(nf::TrimmedSurface(v), params, out);
         } else if constexpr (std::is_same_v<T, nf::TrimmedSurface>) {
-          tessellate_face(v, params, out, true);
+          single_face(v, params, out);
         } else {
           // Shell: faces in parallel, shared B-rep edges once.
           const auto& faces = v.faces();
@@ -515,10 +526,15 @@ DisplayMesh tessellate(const document::Geometry& g, const TessParams& params) {
                   tessellate_face(faces[i], params, m, false);
                   return m;
                 });
-            for (DisplayMesh part : parts) append(out, std::move(part));
+            for (DisplayMesh part : parts) append_face(out, std::move(part));
           } else {
-            for (const auto& f : faces) tessellate_face(f, params, out, false);
+            for (const auto& f : faces) {
+              DisplayMesh m;
+              tessellate_face(f, params, m, false);
+              append_face(out, std::move(m));
+            }
           }
+          for (const Vec3& p : v.vertices()) add_point(out.corners, p);
           for (const nf::ShellEdge& e : v.edges()) {
             Polyline pl;
             for (const Vec3& p : tessellate_curve(e.curve, params)) add_point(pl, p);
@@ -528,6 +544,7 @@ DisplayMesh tessellate(const document::Geometry& g, const TessParams& params) {
       },
       g);
   compute_bounds(out);
+  build_pick_index(out);
   return out;
 }
 

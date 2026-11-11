@@ -37,9 +37,14 @@ add_library(nfcad_core STATIC
   src/document/document.cpp
   src/document/entity.cpp
   src/document/nfcad_io.cpp
+  src/document/selection.cpp
   src/kernel/kernel_info.cpp
+  src/kernel/properties.cpp
   src/kernel/step_import.cpp
+  src/pick/picking.cpp
   src/snap/snap_types.cpp
+  src/tessellation/bvh.cpp
+  src/tessellation/display_mesh.cpp
   src/tessellation/tessellation_service.cpp
   src/tessellation/tessellator.cpp
   src/viewport/camera.cpp
@@ -57,10 +62,13 @@ add_library(nfcad_gui STATIC
   src/app/main_window.cpp
   src/ui/tool_catalog.cpp
   src/ui/tool_box.cpp
+  src/ui/layer_panel.cpp
+  src/ui/property_panel.cpp
   src/ui/snap_bar.cpp
   src/render/line_renderer.cpp
   src/render/scene.cpp
   src/render/scene_renderer.cpp
+  src/viewport/selection_rect.cpp
   src/viewport/viewport.cpp
   src/viewport/viewport_grid.cpp)
 target_link_libraries(nfcad_gui PUBLIC nfcad_core Qt6::Widgets Qt6::GuiPrivate Qt6::Svg)

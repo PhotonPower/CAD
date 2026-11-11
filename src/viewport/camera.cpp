@@ -40,6 +40,12 @@ float Camera::worldPerPixel() const {
   return 2.0F * half_height_ / static_cast<float>(size_.height());
 }
 
+float Camera::worldPerPixelAt(const QVector3D& p) const {
+  if (projection_ == Projection::Orthographic) return worldPerPixel();
+  const float depth = std::max(QVector3D::dotProduct(p - eye(), forward_), distance() * 1e-3F);
+  return 2.0F * depth * tan_half_fov() / static_cast<float>(size_.height());
+}
+
 QVector3D Camera::eye() const {
   // The orthographic eye only defines the view orientation; the depth range is symmetric.
   const float d = projection_ == Projection::Perspective ? distance() : 1.0F;

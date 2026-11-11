@@ -12,7 +12,8 @@
  │             navigation, view presets                             │
  ├─────────────────────────────────────────────────────────────────┤
  │ commands/   command framework, drawing / modelling commands      │
- │ snap/       SnapEngine, snap providers, SnapCache, spatial index │
+ │ snap/       SnapEngine, snap providers, SnapCache                │
+ │ pick/       ray / rectangle picking on display meshes (BVH)      │
  │ render/     Scene, GPU buffers, pipelines, shaders, picking      │
  ├─────────────────────────────────────────────────────────────────┤
  │ document/   Document, Entity, Layer, Selection, undo/redo, I/O   │
@@ -28,7 +29,7 @@
 
 Dependencies point downwards only. Rules:
 
-- `document/`, `tessellation/`, `snap/` and `kernel/` do **not** use Qt Widgets (Qt Core/Gui value
+- `document/`, `tessellation/`, `pick/`, `snap/` and `kernel/` do **not** use Qt Widgets (Qt Core/Gui value
   types are allowed). They are unit tested without a window.
 - Nurbforge headers are used only below the widget layer: `document/` and `tessellation/` use the
   immutable value types (`nf::Vec3`, `nf::NurbsCurve`, `nf::TrimmedSurface`, `nf::Shell`, …) and
@@ -54,6 +55,9 @@ user input ─► Viewport ─► (active) Command ─► kernel/ (Nurbforge) �
 
 | Type | Layer | Responsibility |
 |---|---|---|
+| `Selection` | document | selected items (entity or face / edge / vertex) and the hovered item |
+| `Bvh` | tessellation | bounding volume hierarchy over triangles / segments of a display mesh |
+| `pick::pick`, `pick::pick_rect` | pick | object under the cursor, window / crossing selection |
 | `Document` | document | owns entities and layers, emits change signals, `QUndoStack` |
 | `Entity` | document | id, layer, colour, visibility; geometry variant (`Point`, `NurbsCurve`, `NurbsSurface`, `TrimmedSurface`, `Shell`) |
 | `DisplayMesh` | tessellation | vertices + normals, triangles, edge polylines, iso-curves, points, bounds of one entity |

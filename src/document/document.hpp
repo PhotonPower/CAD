@@ -43,6 +43,8 @@ class Document : public QObject {
   /// Adds entities in one undo step; returns their ids.
   std::vector<EntityId> addEntities(std::vector<Entity> entities, const QString& text);
   void removeEntities(const std::vector<EntityId>& ids, const QString& text);
+  /// Moves entities to a layer (one undo step).
+  void assignLayer(const std::vector<EntityId>& ids, LayerId layer);
 
   // ---- low level (used by undo commands and loading; not undoable)
   /// Inserts an entity. Assigns a new id if e.id == 0.
@@ -51,6 +53,10 @@ class Document : public QObject {
   Entity erase(EntityId id);
   LayerId addLayer(Layer layer);
   void setLayerVisible(LayerId id, bool visible);
+  void setLayerColor(LayerId id, const QColor& color);
+  void renameLayer(LayerId id, const QString& name);
+  /// Sets an entity's layer (low level, used by the undo command).
+  void setEntityLayer(EntityId id, LayerId layer);
   /// Removes everything, keeps the default layer, clears the undo stack.
   void clear();
   /// Replaces the content (after loading a file); clears the undo stack.

@@ -48,6 +48,8 @@ class Camera {
   [[nodiscard]] float distance() const;
   /// World length of one screen pixel in the target plane.
   [[nodiscard]] float worldPerPixel() const;
+  /// World length of one screen pixel at the depth of `p` (perspective), else worldPerPixel().
+  [[nodiscard]] float worldPerPixelAt(const QVector3D& p) const;
 
   [[nodiscard]] QMatrix4x4 viewMatrix() const;
   /// OpenGL-style projection (NDC z in [-1, 1]); the renderer applies the RHI clip correction.

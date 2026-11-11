@@ -75,6 +75,15 @@ tessellation::Box3 Scene::bounds() const {
   return box;
 }
 
+std::vector<pick::Target> Scene::pickTargets() const {
+  std::vector<pick::Target> out;
+  out.reserve(items_.size());
+  for (const auto& [id, item] : items_) {
+    if (item.visible && item.mesh) out.push_back({id, item.mesh.get()});
+  }
+  return out;
+}
+
 std::size_t Scene::triangleCount() const {
   std::size_t n = 0;
   for (const auto& [id, item] : items_) {

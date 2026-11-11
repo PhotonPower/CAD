@@ -6,6 +6,13 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- M3 – picking and selection: CPU picking with BVHs over the display meshes (ADR 0007);
+  click / Shift / Cmd-Ctrl selection, Cmd/Ctrl+Shift for faces, edges and vertices, window
+  (left → right) and crossing (right → left) selection with rubber band; hover highlight (cyan)
+  and selection highlight (yellow, face overlays); property panel (type, degrees, knots,
+  length, area, volume); layer panel (visibility, colour, rename, new layer, move selection);
+  Edit menu Delete / Select All / Select None; tests for picking, selection, layer assignment,
+  properties and viewport selection
 - M2 – document model and display: `Document` with entities (point, curve, surface, trimmed
   surface, shell), layers, undo/redo; STEP import (Nurbforge reader, in the background); native
   format `.nfcad` (JSON, docs/file-format.md); adaptive display tessellation in worker threads

@@ -11,6 +11,7 @@ class QMenu;
 
 namespace nfcad::document {
 class Document;
+class Selection;
 }
 namespace nfcad::render {
 class Scene;
@@ -74,8 +75,13 @@ class MainWindow : public QMainWindow {
   void onActiveViewChanged(nfcad::viewport::Viewport* view);
   void onToolTriggered(const QString& tool_id);
   void showAbout();
+  void createPanels();
+  void deleteSelection();
+  void selectAll();
+  void updateHoverInfo();
 
   document::Document* doc_ = nullptr;
+  document::Selection* selection_ = nullptr;
   tessellation::TessellationService* tessellator_ = nullptr;
   render::Scene* scene_ = nullptr;
   bool zoom_after_tessellation_ = false;

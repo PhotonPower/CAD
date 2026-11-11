@@ -50,8 +50,10 @@ as the boundary of both faces.
 5. Overlay: hover / selection highlight, snap glyph, rubber band, view title (QPainter over the RHI
    image is avoided; overlays are drawn as RHI geometry too)
 
-Picking (M3) renders entity / sub-element ids into an `R32UI` texture of the same view and reads
-back a small window around the cursor.
+Picking (M3) runs on the CPU against BVHs of the display meshes ([ADR 0007](adr/0007-cpu-picking.md)).
+Highlights: selected objects get yellow edges and yellow-tinted faces, the hovered object cyan;
+a selected or hovered single face is drawn a second time with an equal-depth overlay pipeline
+(`LessOrEqual`, no depth write) in the tint colour, B-rep vertices as screen-sized crosses.
 
 ## Display modes
 

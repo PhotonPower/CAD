@@ -7,7 +7,8 @@
 | Tool column (left) | `QDockWidget` → `ToolBox` | ~10 % of the window width (min 96 px, max 220 px), resizable; collapsible groups of icon buttons |
 | Viewports (centre) | `ViewportGrid` | 2×2 grid of `Viewport` (QRhiWidget) with splitters; Front, Left, Top, Perspective |
 | View toolbar (top) | `QToolBar` | display mode (wireframe / surfaces / shaded), standard views, zoom extents, grid on/off |
-| Property panel (right) | `QDockWidget` | hidden by default, appears with a selection (M3) |
+| Property panel (right) | `QDockWidget` → `PropertyPanel` | properties of the selection (type, degrees, knots, length / area / volume) |
+| Layer panel (right) | `QDockWidget` → `LayerPanel` | visibility, colour, name, new layer, move selection to a layer |
 | Command line (bottom) | `CommandLine` | prompt, numeric input, history (M5) |
 | Status bar | `QStatusBar` + `SnapBar` | cursor coordinates, active view, snap toggles |
 
@@ -70,6 +71,24 @@ to a text abbreviation, so the skeleton runs before the icon set exists.
 | Cancel / confirm | `Esc` / `Enter`, right-click | same |
 
 `src/platform/` maps Cmd ↔ Ctrl and handles trackpad gestures.
+
+## Selection (M3)
+
+| Action | Effect |
+|---|---|
+| Click | select the object under the cursor (replaces the selection); click into empty space clears |
+| Shift + click | add |
+| Cmd (macOS) / Ctrl + click | remove |
+| Cmd / Ctrl + Shift + click | toggle a single face, edge or B-rep vertex (sub-element) |
+| Drag left → right | window: objects completely inside the rectangle (solid blue frame) |
+| Drag right → left | crossing: objects inside or touching the rectangle (dashed green frame) |
+| `Esc` / Cmd+A / `Delete` | select none / select all / delete selected objects (undoable) |
+
+The object under the cursor is highlighted in cyan (with Cmd/Ctrl + Shift held: the face, edge
+or vertex), selected objects in yellow; the status bar names the hovered object. Pick tolerance
+for curves, edges and points: 6 px. Priority: points before curves and edges before faces;
+curves hidden behind faces cannot be picked in the surfaces / shaded modes; in wireframe the
+iso-curves select their face. Picking works on the display meshes with a BVH ([ADR 0007](adr/0007-cpu-picking.md)).
 
 ## Display modes
 

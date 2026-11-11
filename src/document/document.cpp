@@ -50,6 +50,29 @@ class RemoveEntitiesCommand : public QUndoCommand {
   std::vector<Entity> removed_;
 };
 
+class AssignLayerCommand : public QUndoCommand {
+ public:
+  AssignLayerCommand(Document* doc, std::vector<EntityId> ids, LayerId layer)
+      : QUndoCommand(QObject::tr("Change layer")), doc_(doc), ids_(std::move(ids)), layer_(layer) {
+    for (EntityId id : ids_) {
+      const Entity* e = doc_->entity(id);
+      old_.push_back(e != nullptr ? e->layer : 0);
+    }
+  }
+  void redo() override {
+    for (EntityId id : ids_) doc_->setEntityLayer(id, layer_);
+  }
+  void undo() override {
+    for (std::size_t i = 0; i < ids_.size(); ++i) doc_->setEntityLayer(ids_[i], old_[i]);
+  }
+
+ private:
+  Document* doc_;
+  std::vector<EntityId> ids_;
+  std::vector<LayerId> old_;
+  LayerId layer_;
+};
+
 }  // namespace
 
 Document::Document(QObject* parent) : QObject(parent) { layers_.push_back(default_layer()); }
@@ -101,6 +124,38 @@ Entity Document::erase(EntityId id) {
   if (node.empty()) return {};
   emit entityRemoved(id);
   return std::move(node.mapped());
+}
+
+void Document::assignLayer(const std::vector<EntityId>& ids, LayerId layer) {
+  if (ids.empty() || this->layer(layer) == nullptr) return;
+  undo_.push(new AssignLayerCommand(this, ids, layer));
+}
+
+void Document::setEntityLayer(EntityId id, LayerId layer) {
+  const auto it = entities_.find(id);
+  if (it == entities_.end() || it->second.layer == layer) return;
+  it->second.layer = layer;
+  ++it->second.revision;
+  emit entityChanged(id);
+}
+
+void Document::setLayerColor(LayerId id, const QColor& color) {
+  for (Layer& l : layers_) {
+    if (l.id == id && l.color != color) {
+      l.color = color;
+      touchLayer(id);
+      emit layersChanged();
+    }
+  }
+}
+
+void Document::renameLayer(LayerId id, const QString& name) {
+  for (Layer& l : layers_) {
+    if (l.id == id && l.name != name) {
+      l.name = name;
+      emit layersChanged();
+    }
+  }
 }
 
 LayerId Document::addLayer(Layer layer) {

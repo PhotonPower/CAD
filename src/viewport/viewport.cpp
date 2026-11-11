@@ -8,7 +8,10 @@
 #include <cmath>
 #include <rhi/qrhi.h>
 
+#include "document/selection.hpp"
+#include "pick/picking.hpp"
 #include "platform/rhi_backend.hpp"
+#include "viewport/selection_rect.hpp"
 
 namespace nfcad::viewport {
 
@@ -19,6 +22,21 @@ constexpr float kWheelZoomPerNotch = 0.85F;
 constexpr int kTriadMargin = 8;     // px from the bottom-left corner
 constexpr int kTriadSize = 70;      // px, square
 constexpr float kTriadRange = 1.45F;  // ortho half-size of the triad scene (axes have length 1)
+constexpr float kPickRadiusPx = 6.0F;
+constexpr double kDragThresholdPx = 4.0;
+
+/// Selection modifiers (docs/ui-concept.md, "Selection"); Qt maps Ctrl to Cmd on macOS.
+document::Selection::Mode selection_mode(Qt::KeyboardModifiers mods) {
+  if ((mods & Qt::ControlModifier) && !(mods & Qt::ShiftModifier)) {
+    return document::Selection::Mode::Remove;
+  }
+  if (mods & Qt::ShiftModifier) return document::Selection::Mode::Add;
+  return document::Selection::Mode::Replace;
+}
+
+bool sub_element_mode(Qt::KeyboardModifiers mods) {
+  return (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier);
+}
 
 QString modeName(render::DisplayMode mode) {
   switch (mode) {
@@ -53,6 +71,7 @@ Viewport::Viewport(ViewKind kind, QWidget* parent) : QRhiWidget(parent), kind_(k
   title_->setAttribute(Qt::WA_TransparentForMouseEvents);
   title_->setCursor(Qt::PointingHandCursor);
   title_->move(8, 6);
+  rubber_ = new SelectionRect(this);
 
   for (std::size_t i = 0; i < kAxes.size(); ++i) {
     auto* label = new QLabel(QString::fromLatin1(kAxes[i].name), this);
@@ -109,6 +128,54 @@ void Viewport::setScene(const render::Scene* scene) {
     connect(scene_, &render::Scene::changed, this, [this] { update(); });
   }
   update();
+}
+
+void Viewport::setSelection(document::Selection* selection) {
+  if (selection_ != nullptr) disconnect(selection_, nullptr, this, nullptr);
+  selection_ = selection;
+  if (selection_ != nullptr) {
+    connect(selection_, &document::Selection::changed, this, [this] { update(); });
+    connect(selection_, &document::Selection::hoverChanged, this, [this] { update(); });
+  }
+  update();
+}
+
+void Viewport::hoverPick(const QPointF& px, Qt::KeyboardModifiers mods) {
+  if (selection_ == nullptr || scene_ == nullptr) return;
+  pick::Query q;
+  q.cursor_px = px;
+  q.radius_px = kPickRadiusPx;
+  q.faces = mode_ != render::DisplayMode::Wireframe;
+  q.isocurves = mode_ == render::DisplayMode::Wireframe;
+  q.sub_elements = sub_element_mode(mods);
+  const auto hit = pick::pick(scene_->pickTargets(), camera_, q);
+  selection_->setHovered(hit ? std::optional(hit->item) : std::nullopt);
+}
+
+void Viewport::clickSelect(const QPointF& px, Qt::KeyboardModifiers mods) {
+  if (selection_ == nullptr || scene_ == nullptr) return;
+  pick::Query q;
+  q.cursor_px = px;
+  q.radius_px = kPickRadiusPx;
+  q.faces = mode_ != render::DisplayMode::Wireframe;
+  q.isocurves = mode_ == render::DisplayMode::Wireframe;
+  q.sub_elements = sub_element_mode(mods);
+  const auto hit = pick::pick(scene_->pickTargets(), camera_, q);
+  const auto mode = q.sub_elements ? document::Selection::Mode::Toggle : selection_mode(mods);
+  if (hit) {
+    selection_->apply({hit->item}, mode);
+  } else if (mode == document::Selection::Mode::Replace) {
+    selection_->clear();
+  }
+}
+
+void Viewport::rectSelect(const QRectF& rect, bool crossing, Qt::KeyboardModifiers mods) {
+  if (selection_ == nullptr || scene_ == nullptr) return;
+  std::vector<document::SelectionItem> items;
+  for (document::EntityId id : pick::pick_rect(scene_->pickTargets(), camera_, rect, crossing)) {
+    items.push_back({id, {}});
+  }
+  selection_->apply(items, selection_mode(mods));
 }
 
 void Viewport::orbitBy(const QPointF& delta_px) {
@@ -215,6 +282,7 @@ void Viewport::render(QRhiCommandBuffer* cb) {
     frame.perspective = camera_.projection() == Camera::Projection::Perspective;
     frame.world_per_pixel = camera_.worldPerPixel();
     frame.mode = mode_;
+    frame.selection = selection_;
     scene_renderer_.prepare(*scene_, frame, updates);
   }
 
@@ -256,7 +324,13 @@ void Viewport::mousePressEvent(QMouseEvent* event) {
       drag_ = (mods & Qt::ShiftModifier) || !orbit_allowed ? Drag::Pan : Drag::Orbit;
       break;
     case Qt::LeftButton:
-      if (mods & Qt::AltModifier) drag_ = orbit_allowed ? Drag::Orbit : Drag::Pan;
+      if (mods & Qt::AltModifier) {
+        drag_ = orbit_allowed ? Drag::Orbit : Drag::Pan;
+      } else {
+        left_ = LeftAction::Pending;  // click or rectangle, decided by the movement
+        press_pos_ = pos;
+        return;
+      }
       break;
     default: break;
   }
@@ -271,6 +345,19 @@ void Viewport::mousePressEvent(QMouseEvent* event) {
 void Viewport::mouseMoveEvent(QMouseEvent* event) {
   camera_.setViewportSize(size());  // resize events of hidden widgets arrive late
   const QPointF pos = event->position();
+  if (left_ == LeftAction::Pending &&
+      QLineF(press_pos_, pos).length() > kDragThresholdPx) {
+    left_ = LeftAction::Rectangle;
+    rubber_->show();
+    rubber_->raise();
+  }
+  if (left_ == LeftAction::Rectangle) {
+    // left-to-right: window, right-to-left: crossing (docs/ui-concept.md)
+    rubber_->setRect(QRectF(press_pos_, pos), pos.x() < press_pos_.x());
+    reportCursor(pos);
+    return;
+  }
+  if (drag_ == Drag::None && left_ == LeftAction::None) hoverPick(pos, event->modifiers());
   if (drag_ != Drag::None) {
     const QPointF delta = pos - last_pos_;
     last_pos_ = pos;
@@ -285,6 +372,17 @@ void Viewport::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void Viewport::mouseReleaseEvent(QMouseEvent* event) {
+  if (event->button() == Qt::LeftButton && left_ != LeftAction::None) {
+    const QPointF pos = event->position();
+    if (left_ == LeftAction::Rectangle) {
+      rubber_->hide();
+      rectSelect(QRectF(press_pos_, pos), pos.x() < press_pos_.x(), event->modifiers());
+    } else {
+      clickSelect(pos, event->modifiers());
+    }
+    left_ = LeftAction::None;
+    return;
+  }
   if (drag_ != Drag::None) {
     drag_ = Drag::None;
     unsetCursor();
@@ -338,6 +436,7 @@ bool Viewport::event(QEvent* event) {
 
 void Viewport::leaveEvent(QEvent* event) {
   emit cursorMoved({}, false);
+  if (selection_ != nullptr && left_ == LeftAction::None) selection_->setHovered(std::nullopt);
   QRhiWidget::leaveEvent(event);
 }
 

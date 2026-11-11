@@ -93,10 +93,12 @@ jobs build from M0 on but are allowed to fail until M7.
   tessellation), wide lines
 - **Done when:** a STEP file with ~1 000 faces loads, displays in all three modes and navigates at ≥ 60 fps on an M1 Mac.
 
-### M3 – Picking and selection
-- GPU ID-buffer picking (entity + sub-element: face, edge, vertex)
+### M3 – Picking and selection ✅
+- Picking (entity + sub-element: face, edge, vertex) on the CPU with BVHs over the display meshes ([ADR 0007](adr/0007-cpu-picking.md), instead of a GPU id buffer)
 - Click, Shift-click, window (left→right) and crossing (right→left) selection, highlight on hover
 - Property panel (right dock, collapsible) showing type, degree, knots, area / length
+- Layer panel (from M2): visibility, colour, name, new layer, move selection to layer (undoable)
+- Edit menu: delete (undoable), select all, select none
 - **Done when:** selection works in all four views and in all display modes.
 
 ### M4 – Object snaps (core of this project)

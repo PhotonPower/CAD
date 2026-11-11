@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "document/document.hpp"
+#include "pick/picking.hpp"
 #include "tessellation/tessellation_service.hpp"
 
 namespace nfcad::render {
@@ -30,6 +31,8 @@ class Scene : public QObject {
   }
   /// Bounds of all visible, tessellated items (invalid if there are none).
   [[nodiscard]] tessellation::Box3 bounds() const;
+  /// Visible, tessellated items for picking and snapping.
+  [[nodiscard]] std::vector<pick::Target> pickTargets() const;
   /// Number of triangles of all tessellated items.
   [[nodiscard]] std::size_t triangleCount() const;
 

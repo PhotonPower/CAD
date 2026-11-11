@@ -17,6 +17,9 @@
 #include <algorithm>
 
 #include "document/document.hpp"
+#include "document/selection.hpp"
+#include "ui/layer_panel.hpp"
+#include "ui/property_panel.hpp"
 #include "kernel/kernel_info.hpp"
 #include "render/scene.hpp"
 #include "tessellation/tessellation_service.hpp"
@@ -34,9 +37,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   doc_ = new document::Document(this);
   tessellator_ = new tessellation::TessellationService(this);
   scene_ = new render::Scene(doc_, tessellator_, this);
+  selection_ = new document::Selection(this);
+  selection_->attach(doc_);
 
   grid_ = new viewport::ViewportGrid(this);
   grid_->setScene(scene_);
+  grid_->setSelection(selection_);
   setCentralWidget(grid_);
 
   connect(doc_->undoStack(), &QUndoStack::cleanChanged, this, &MainWindow::updateTitle);
@@ -59,6 +65,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   createToolDock();
   createCommandLine();
   createStatusBar();
+  createPanels();
+  connect(selection_, &document::Selection::hoverChanged, this, &MainWindow::updateHoverInfo);
 
   connect(grid_, &viewport::ViewportGrid::activeViewChanged, this,
           &MainWindow::onActiveViewChanged);
@@ -109,6 +117,12 @@ void MainWindow::createMenus() {
   redo->setShortcut(QKeySequence::Redo);
   edit->addAction(undo);
   edit->addAction(redo);
+  edit->addSeparator();
+  QAction* del = edit->addAction(tr("&Delete"), this, &MainWindow::deleteSelection);
+  del->setShortcuts({QKeySequence::Delete, QKeySequence(Qt::Key_Backspace)});
+  edit->addAction(tr("Select &All"), QKeySequence::SelectAll, this, &MainWindow::selectAll);
+  QAction* none = edit->addAction(tr("Select &None"), this, [this] { selection_->clear(); });
+  none->setShortcut(QKeySequence(Qt::Key_Escape));
 
   view_menu_ = menuBar()->addMenu(tr("&View"));  // filled in createViewToolBar / createToolDock
 
@@ -203,6 +217,9 @@ void MainWindow::showEvent(QShowEvent* event) {
     // Tool column ~10 % of the window width (docs/ui-concept.md).
     const int width = std::clamp(this->width() / 10, 96, 280);
     resizeDocks({tool_dock_}, {width}, Qt::Horizontal);
+    if (auto* props = findChild<QDockWidget*>(QStringLiteral("propertyDock"))) {
+      resizeDocks({props}, {260}, Qt::Horizontal);
+    }
   }
 }
 
@@ -234,7 +251,67 @@ void MainWindow::onActiveViewChanged(viewport::Viewport* view) {
   }
 }
 
+void MainWindow::createPanels() {
+  auto* props = new QDockWidget(tr("Properties"), this);
+  props->setObjectName(QStringLiteral("propertyDock"));
+  props->setWidget(new ui::PropertyPanel(doc_, selection_, props));
+  props->setMinimumWidth(220);
+  addDockWidget(Qt::RightDockWidgetArea, props);
+  auto* layers = new QDockWidget(tr("Layers"), this);
+  layers->setObjectName(QStringLiteral("layerDock"));
+  layers->setWidget(new ui::LayerPanel(doc_, selection_, layers));
+  addDockWidget(Qt::RightDockWidgetArea, layers);
+  splitDockWidget(props, layers, Qt::Vertical);
+  view_menu_->addAction(props->toggleViewAction());
+  view_menu_->addAction(layers->toggleViewAction());
+}
+
+void MainWindow::deleteSelection() {
+  const std::vector<document::EntityId> ids = [this] {
+    std::vector<document::EntityId> out;
+    for (const document::SelectionItem& i : selection_->items()) {
+      if (i.sub.kind == document::SubElement::Kind::None) out.push_back(i.entity);
+    }
+    return out;
+  }();
+  if (ids.empty()) {
+    if (!selection_->empty()) {
+      statusBar()->showMessage(tr("Faces, edges and vertices cannot be deleted on their own"), 4000);
+    }
+    return;
+  }
+  doc_->removeEntities(ids, tr("Delete %n object(s)", nullptr, static_cast<int>(ids.size())));
+}
+
+void MainWindow::selectAll() {
+  std::vector<document::SelectionItem> items;
+  for (const auto& [id, e] : doc_->entities()) {
+    if (doc_->isDisplayed(e)) items.push_back({id, {}});
+  }
+  selection_->apply(items, document::Selection::Mode::Replace);
+}
+
+void MainWindow::updateHoverInfo() {
+  const auto h = selection_->hovered();
+  if (!h) {
+    statusBar()->clearMessage();
+    return;
+  }
+  const document::Entity* e = doc_->entity(h->entity);
+  if (e == nullptr) return;
+  QString text = (e->name.isEmpty() ? tr("Entity %1").arg(e->id) : e->name) +
+                 QStringLiteral(" · ") + document::kind_name(document::kind_of(*e->geometry));
+  if (h->sub.kind != document::SubElement::Kind::None) {
+    text += QStringLiteral(" · ") + document::sub_element_name(h->sub);
+  }
+  statusBar()->showMessage(text);
+}
+
 void MainWindow::onToolTriggered(const QString& tool_id) {
+  if (tool_id == QLatin1String("delete")) {
+    deleteSelection();
+    return;
+  }
   statusBar()->showMessage(tr("Tool '%1' is not implemented yet (see docs/plan.md)").arg(tool_id),
                            4000);
 }

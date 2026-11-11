@@ -8,6 +8,9 @@
 namespace nfcad::render {
 class Scene;
 }
+namespace nfcad::document {
+class Selection;
+}
 
 class QFrame;
 class QSplitter;
@@ -27,6 +30,7 @@ class ViewportGrid : public QWidget {
   [[nodiscard]] const std::array<Viewport*, 4>& views() const { return views_; }
 
   void setScene(const render::Scene* scene);
+  void setSelection(document::Selection* selection);
   void zoomExtentsAll();
 
   /// Sets the display mode of the active view, or of all views if `all` is true.

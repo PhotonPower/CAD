@@ -63,6 +63,10 @@ void ViewportGrid::setScene(const render::Scene* scene) {
   for (Viewport* v : views_) v->setScene(scene);
 }
 
+void ViewportGrid::setSelection(document::Selection* selection) {
+  for (Viewport* v : views_) v->setSelection(selection);
+}
+
 void ViewportGrid::zoomExtentsAll() {
   for (Viewport* v : views_) v->zoomExtents();
 }
