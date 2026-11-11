@@ -21,16 +21,23 @@ enum class SnapType : std::uint16_t {
 };
 
 /// All snap types, ordered by priority (highest first).
+/// Face corners rank right after curve ends: they are the ends of the B-rep edges (a vertical edge
+/// seen end-on would otherwise offer its midpoint at the same pixel first).
 inline constexpr std::array<SnapType, 10> kSnapPriority = {
-    SnapType::Point,    SnapType::End,  SnapType::Intersection, SnapType::Centre,
-    SnapType::Quadrant, SnapType::Mid,  SnapType::FaceCorner,   SnapType::FaceEdge,
-    SnapType::Near,     SnapType::Grid};
+    SnapType::Point,  SnapType::End,      SnapType::FaceCorner, SnapType::Intersection,
+    SnapType::Centre, SnapType::Quadrant, SnapType::Mid,        SnapType::FaceEdge,
+    SnapType::Near,   SnapType::Grid};
 
 /// Rank in kSnapPriority (0 = highest priority).
 [[nodiscard]] int priority_rank(SnapType type);
 
 /// Short label shown in the snap bar and the snap tooltip ("End", "Mid", ...).
 [[nodiscard]] std::string_view short_name(SnapType type);
+
+/// Exact (double precision) point; widgets use it without seeing Nurbforge types.
+struct SnapPoint {
+  double x = 0.0, y = 0.0, z = 0.0;
+};
 
 /// Set of enabled snap types.
 class SnapMask {
@@ -54,5 +61,10 @@ class SnapMask {
  private:
   std::uint16_t bits_ = 0;
 };
+
+[[nodiscard]] constexpr SnapMask operator|(SnapMask m, SnapType t) {
+  m.set(t, true);
+  return m;
+}
 
 }  // namespace nfcad::snap

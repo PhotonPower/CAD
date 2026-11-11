@@ -101,7 +101,7 @@ jobs build from M0 on but are allowed to fail until M7.
 - Edit menu: delete (undoable), select all, select none
 - **Done when:** selection works in all four views and in all display modes.
 
-### M4 – Object snaps (core of this project)
+### M4 – Object snaps (core of this project) ✅
 - Snap engine with the snap types from [snapping.md](snapping.md):
   point, end, mid, centre, quadrant (circle × axis planes), near, intersection,
   face corners, face edges (boundaries)
@@ -110,7 +110,11 @@ jobs build from M0 on but are allowed to fail until M7.
 - Snap toggles in the status bar, F3 turns snapping on and off, persistent settings
 - Spatial index (BVH) over the display geometry for candidate search; exact refinement with
   Nurbforge (`closest_point`, `intersect`)
+- First users of the magnetic cursor: the tools **Point** (Draw) and **Distance** (Analyze);
+  the general command framework follows in M5
 - **Done when:** every snap type has a unit test against exact geometry and the snap search takes < 2 ms per mouse move with 10 000 curves.
+- Done: all snap types tested against exact values (`tests/snap/test_snap_engine.cpp`);
+  0.34 ms per query with 10 000 curves (release, Apple Silicon)
 
 ### M5 – Drawing commands
 - Command framework (state machine, prompts in the command line, numeric input, Esc / Enter)

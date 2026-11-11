@@ -15,9 +15,11 @@
 #include <QTimer>
 #include <QToolBar>
 #include <algorithm>
+#include <cmath>
 
 #include "document/document.hpp"
 #include "document/selection.hpp"
+#include "snap/snap_engine.hpp"
 #include "ui/layer_panel.hpp"
 #include "ui/property_panel.hpp"
 #include "kernel/kernel_info.hpp"
@@ -39,10 +41,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   scene_ = new render::Scene(doc_, tessellator_, this);
   selection_ = new document::Selection(this);
   selection_->attach(doc_);
+  snap_engine_ = new snap::SnapEngine;
+  connect(doc_, &document::Document::documentReset, this, [this] { snap_engine_->clear(); });
 
   grid_ = new viewport::ViewportGrid(this);
   grid_->setScene(scene_);
   grid_->setSelection(selection_);
+  grid_->setSnapEngine(snap_engine_);
   setCentralWidget(grid_);
 
   connect(doc_->undoStack(), &QUndoStack::cleanChanged, this, &MainWindow::updateTitle);
@@ -67,6 +72,18 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   createStatusBar();
   createPanels();
   connect(selection_, &document::Selection::hoverChanged, this, &MainWindow::updateHoverInfo);
+  grid_->setSnapSettings(snapbar_->mask(), snapbar_->snappingEnabled());
+  connect(snapbar_, &ui::SnapBar::maskChanged, this,
+          [this](snap::SnapMask mask, bool enabled) { grid_->setSnapSettings(mask, enabled); });
+  for (viewport::Viewport* v : grid_->views()) {
+    connect(v, &viewport::Viewport::pointPicked, this,
+            [this](const snap::SnapPoint& p, bool snapped, snap::SnapType type) {
+              onPointPicked(p, snapped, static_cast<int>(type));
+            });
+    connect(v, &viewport::Viewport::pointInputFinished, this, [this] { finishCommand(); });
+  }
+  auto* enter = new QShortcut(QKeySequence(Qt::Key_Return), this);
+  connect(enter, &QShortcut::activated, this, [this] { finishCommand(); });
 
   connect(grid_, &viewport::ViewportGrid::activeViewChanged, this,
           &MainWindow::onActiveViewChanged);
@@ -94,7 +111,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   restoreState(settings.value(QStringLiteral("window/state")).toByteArray());
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() { delete snap_engine_; }
 
 void MainWindow::createMenus() {
   QMenu* file = menuBar()->addMenu(tr("&File"));
@@ -121,7 +138,13 @@ void MainWindow::createMenus() {
   QAction* del = edit->addAction(tr("&Delete"), this, &MainWindow::deleteSelection);
   del->setShortcuts({QKeySequence::Delete, QKeySequence(Qt::Key_Backspace)});
   edit->addAction(tr("Select &All"), QKeySequence::SelectAll, this, &MainWindow::selectAll);
-  QAction* none = edit->addAction(tr("Select &None"), this, [this] { selection_->clear(); });
+  QAction* none = edit->addAction(tr("Select &None / Cancel"), this, [this] {
+    if (command_ != Command::None) {
+      finishCommand(tr("Cancelled"));
+    } else {
+      selection_->clear();
+    }
+  });
   none->setShortcut(QKeySequence(Qt::Key_Escape));
 
   view_menu_ = menuBar()->addMenu(tr("&View"));  // filled in createViewToolBar / createToolDock
@@ -190,6 +213,7 @@ void MainWindow::createToolDock() {
 
 void MainWindow::createCommandLine() {
   auto* line = new QLineEdit(this);
+  command_line_ = line;
   line->setObjectName(QStringLiteral("commandLine"));
   line->setPlaceholderText(tr("Command:"));
   auto* dock = new QDockWidget(tr("Command line"), this);
@@ -248,6 +272,66 @@ void MainWindow::onActiveViewChanged(viewport::Viewport* view) {
   active_view_->setText(tr("Active view: %1").arg(viewport::view_title(view->kind())));
   for (QAction* action : display_modes_->actions()) {
     action->setChecked(action->data().toInt() == static_cast<int>(view->displayMode()));
+  }
+}
+
+void MainWindow::setPrompt(const QString& prompt) {
+  command_line_->setPlaceholderText(prompt.isEmpty() ? tr("Command:") : prompt);
+}
+
+void MainWindow::startCommand(Command command) {
+  if (command_ != Command::None) finishCommand();
+  command_ = command;
+  first_point_.clear();
+  grid_->setPointInput(true);
+  if (grid_->activeView() != nullptr) grid_->activeView()->setFocus();
+  setPrompt(command == Command::Point
+                ? tr("Point: click locations (snaps: F3, Tab cycles, Alt suppresses) – "
+                     "Enter / right-click / Esc to finish")
+                : tr("Distance: first point"));
+}
+
+void MainWindow::finishCommand(const QString& message) {
+  if (command_ == Command::None) return;
+  command_ = Command::None;
+  first_point_.clear();
+  grid_->setPointInput(false);
+  setPrompt({});
+  if (!message.isEmpty()) statusBar()->showMessage(message, 6000);
+}
+
+void MainWindow::onPointPicked(const snap::SnapPoint& p, bool snapped, int type) {
+  const QString how = snapped ? tr(" (%1)").arg(QString::fromLatin1(
+                                    snap::short_name(static_cast<snap::SnapType>(type))))
+                              : QString();
+  const QString coords = QStringLiteral("%1, %2, %3")
+                             .arg(p.x, 0, 'f', 4)
+                             .arg(p.y, 0, 'f', 4)
+                             .arg(p.z, 0, 'f', 4);
+  switch (command_) {
+    case Command::Point:
+      doc_->addEntities({document::make_point_entity(p.x, p.y, p.z)}, tr("Point"));
+      statusBar()->showMessage(tr("Point at %1%2").arg(coords, how), 6000);
+      break;
+    case Command::Distance:
+      if (first_point_.empty()) {
+        first_point_ = {p.x, p.y, p.z};
+        setPrompt(tr("Distance: second point (first: %1%2)").arg(coords, how));
+      } else {
+        const double dx = p.x - first_point_[0];
+        const double dy = p.y - first_point_[1];
+        const double dz = p.z - first_point_[2];
+        const QString msg = tr("Distance %1   (dx %2, dy %3, dz %4)")
+                                .arg(std::sqrt(dx * dx + dy * dy + dz * dz), 0, 'g', 10)
+                                .arg(dx, 0, 'g', 8)
+                                .arg(dy, 0, 'g', 8)
+                                .arg(dz, 0, 'g', 8);
+        finishCommand();
+        statusBar()->showMessage(msg);
+        command_line_->setPlaceholderText(msg);
+      }
+      break;
+    case Command::None: break;
   }
 }
 
@@ -310,6 +394,14 @@ void MainWindow::updateHoverInfo() {
 void MainWindow::onToolTriggered(const QString& tool_id) {
   if (tool_id == QLatin1String("delete")) {
     deleteSelection();
+    return;
+  }
+  if (tool_id == QLatin1String("point")) {
+    startCommand(Command::Point);
+    return;
+  }
+  if (tool_id == QLatin1String("distance")) {
+    startCommand(Command::Distance);
     return;
   }
   statusBar()->showMessage(tr("Tool '%1' is not implemented yet (see docs/plan.md)").arg(tool_id),

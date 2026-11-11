@@ -4,12 +4,16 @@
 #include <array>
 
 #include "render/display_mode.hpp"
+#include "snap/snap_types.hpp"
 
 namespace nfcad::render {
 class Scene;
 }
 namespace nfcad::document {
 class Selection;
+}
+namespace nfcad::snap {
+class SnapEngine;
 }
 
 class QFrame;
@@ -31,6 +35,9 @@ class ViewportGrid : public QWidget {
 
   void setScene(const render::Scene* scene);
   void setSelection(document::Selection* selection);
+  void setSnapEngine(snap::SnapEngine* engine);
+  void setSnapSettings(snap::SnapMask mask, bool enabled);
+  void setPointInput(bool on);
   void zoomExtentsAll();
 
   /// Sets the display mode of the active view, or of all views if `all` is true.

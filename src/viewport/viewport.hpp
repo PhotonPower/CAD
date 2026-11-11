@@ -7,6 +7,7 @@
 #include "render/display_mode.hpp"
 #include "render/line_renderer.hpp"
 #include "render/scene_renderer.hpp"
+#include "snap/snap_engine.hpp"
 #include "viewport/camera.hpp"
 #include "viewport/grid.hpp"
 #include "viewport/view_kind.hpp"
@@ -43,6 +44,16 @@ class Viewport : public QRhiWidget {
   /// Selection to show and to change by clicking / dragging; may be null.
   void setSelection(document::Selection* selection);
 
+  // ---- point input with object snaps (M4, docs/snapping.md)
+  void setSnapEngine(snap::SnapEngine* engine) { snap_engine_ = engine; }
+  void setSnapSettings(snap::SnapMask mask, bool enabled);
+  /// While on, the cursor snaps (magnet radius 10 px, Tab cycles candidates, Alt suppresses)
+  /// and a left click emits pointPicked; a right click emits pointInputFinished.
+  void setPointInput(bool on);
+  [[nodiscard]] bool pointInput() const { return point_input_; }
+  /// Current snap candidates under the cursor (best first) and the chosen one.
+  [[nodiscard]] const std::vector<snap::SnapResult>& snapCandidates() const { return snaps_; }
+
   /// Orbits like a mouse drag by `delta_px` (benchmark, scripted views).
   void orbitBy(const QPointF& delta_px);
 
@@ -57,6 +68,9 @@ class Viewport : public QRhiWidget {
   void cursorMoved(const QVector3D& world, bool valid);
   /// Emitted after each rendered frame (benchmark).
   void frameRendered();
+  /// Point input: a point was clicked; `type` is valid if `snapped`.
+  void pointPicked(const nfcad::snap::SnapPoint& point, bool snapped, nfcad::snap::SnapType type);
+  void pointInputFinished();
 
  protected:
   void initialize(QRhiCommandBuffer* cb) override;
@@ -79,6 +93,8 @@ class Viewport : public QRhiWidget {
   void hoverPick(const QPointF& px, Qt::KeyboardModifiers mods);
   void clickSelect(const QPointF& px, Qt::KeyboardModifiers mods);
   void rectSelect(const QRectF& rect, bool crossing, Qt::KeyboardModifiers mods);
+  void updateSnap(const QPointF& px, Qt::KeyboardModifiers mods);
+  void showSnap();
 
   void cameraChanged();
   void updateTitle();
@@ -96,6 +112,17 @@ class Viewport : public QRhiWidget {
 
   const render::Scene* scene_ = nullptr;
   document::Selection* selection_ = nullptr;
+  snap::SnapEngine* snap_engine_ = nullptr;
+  snap::SnapMask snap_mask_ = snap::SnapMask::defaults();
+  bool snap_enabled_ = true;
+  bool point_input_ = false;
+  std::vector<snap::SnapResult> snaps_;
+  std::size_t snap_index_ = 0;
+  QPointF snap_px_{-1, -1};
+  snap::SnapPoint cursor_point_;  // snapped or construction-plane point under the cursor
+  bool cursor_point_valid_ = false;
+  bool drag_moved_ = false;
+  class SnapMarker* marker_ = nullptr;
   LeftAction left_ = LeftAction::None;
   QPointF press_pos_;
   class SelectionRect* rubber_ = nullptr;

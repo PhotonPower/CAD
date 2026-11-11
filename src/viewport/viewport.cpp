@@ -3,6 +3,7 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QKeyEvent>
 #include <QNativeGestureEvent>
 #include <QWheelEvent>
 #include <cmath>
@@ -12,6 +13,7 @@
 #include "pick/picking.hpp"
 #include "platform/rhi_backend.hpp"
 #include "viewport/selection_rect.hpp"
+#include "viewport/snap_marker.hpp"
 
 namespace nfcad::viewport {
 
@@ -65,6 +67,7 @@ Viewport::Viewport(ViewKind kind, QWidget* parent) : QRhiWidget(parent), kind_(k
   setSampleCount(4);  // MSAA: smoother edges and grid
   setMinimumSize(120, 90);
   setMouseTracking(true);
+  setFocusPolicy(Qt::StrongFocus);  // Tab cycles snap candidates during point input
 
   title_ = new QLabel(this);
   title_->setObjectName(QStringLiteral("viewportTitle"));
@@ -72,6 +75,7 @@ Viewport::Viewport(ViewKind kind, QWidget* parent) : QRhiWidget(parent), kind_(k
   title_->setCursor(Qt::PointingHandCursor);
   title_->move(8, 6);
   rubber_ = new SelectionRect(this);
+  marker_ = new SnapMarker(this);
 
   for (std::size_t i = 0; i < kAxes.size(); ++i) {
     auto* label = new QLabel(QString::fromLatin1(kAxes[i].name), this);
@@ -138,6 +142,60 @@ void Viewport::setSelection(document::Selection* selection) {
     connect(selection_, &document::Selection::hoverChanged, this, [this] { update(); });
   }
   update();
+}
+
+void Viewport::setSnapSettings(snap::SnapMask mask, bool enabled) {
+  snap_mask_ = mask;
+  snap_enabled_ = enabled;
+}
+
+void Viewport::setPointInput(bool on) {
+  point_input_ = on;
+  snaps_.clear();
+  snap_px_ = QPointF(-1, -1);
+  marker_->clear();
+  if (on) {
+    setCursor(Qt::CrossCursor);
+    if (selection_ != nullptr) selection_->setHovered(std::nullopt);
+  } else {
+    unsetCursor();
+  }
+}
+
+void Viewport::updateSnap(const QPointF& px, Qt::KeyboardModifiers mods) {
+  snaps_.clear();
+  snap_index_ = 0;
+  snap_px_ = px;
+  if (snap_enabled_ && !(mods & Qt::AltModifier) && snap_engine_ != nullptr && scene_ != nullptr) {
+    snap::SnapQuery q;
+    q.cursor_px = px;
+    q.mask = snap_mask_;
+    q.faces_occlude = mode_ != render::DisplayMode::Wireframe;
+    q.grid = std::make_pair(cplane_, grid_spacing(camera_.worldPerPixel()));
+    snaps_ = snap_engine_->query(scene_->pickTargets(), camera_, q);
+  }
+  showSnap();
+}
+
+void Viewport::showSnap() {
+  if (snaps_.empty()) {
+    marker_->clear();
+    const auto hit = intersect_plane(camera_.pickRay(snap_px_), cplane_.origin, cplane_.normal());
+    cursor_point_valid_ = hit.has_value();
+    if (hit) cursor_point_ = {hit->x(), hit->y(), hit->z()};
+    emit cursorMoved(hit.value_or(QVector3D()), hit.has_value());
+    return;
+  }
+  const snap::SnapResult& r = snaps_[snap_index_ % snaps_.size()];
+  QString label = QString::fromLatin1(snap::short_name(r.type));
+  if (r.apparent) label += tr(" (apparent)");
+  if (snaps_.size() > 1) {
+    label += QStringLiteral("  %1/%2").arg(snap_index_ % snaps_.size() + 1).arg(snaps_.size());
+  }
+  if (const auto s = camera_.project(r.position())) marker_->showAt(*s, r.type, label);
+  cursor_point_ = r.point;
+  cursor_point_valid_ = true;
+  emit cursorMoved(r.position(), true);
 }
 
 void Viewport::hoverPick(const QPointF& px, Qt::KeyboardModifiers mods) {
@@ -336,6 +394,7 @@ void Viewport::mousePressEvent(QMouseEvent* event) {
   }
   if (drag_ != Drag::None) {
     last_pos_ = pos;
+    drag_moved_ = false;
     setCursor(Qt::ClosedHandCursor);
     return;
   }
@@ -345,6 +404,10 @@ void Viewport::mousePressEvent(QMouseEvent* event) {
 void Viewport::mouseMoveEvent(QMouseEvent* event) {
   camera_.setViewportSize(size());  // resize events of hidden widgets arrive late
   const QPointF pos = event->position();
+  if (point_input_ && drag_ == Drag::None) {
+    updateSnap(pos, event->modifiers());  // the left button only clicks points here
+    return;
+  }
   if (left_ == LeftAction::Pending &&
       QLineF(press_pos_, pos).length() > kDragThresholdPx) {
     left_ = LeftAction::Rectangle;
@@ -361,6 +424,8 @@ void Viewport::mouseMoveEvent(QMouseEvent* event) {
   if (drag_ != Drag::None) {
     const QPointF delta = pos - last_pos_;
     last_pos_ = pos;
+    drag_moved_ = drag_moved_ || delta.manhattanLength() > 0.0;
+    marker_->clear();
     if (drag_ == Drag::Pan) {
       camera_.pan(delta);
     } else {
@@ -372,6 +437,17 @@ void Viewport::mouseMoveEvent(QMouseEvent* event) {
 }
 
 void Viewport::mouseReleaseEvent(QMouseEvent* event) {
+  if (event->button() == Qt::LeftButton && left_ != LeftAction::None && point_input_) {
+    const QPointF pos = event->position();
+    if (pos != snap_px_) updateSnap(pos, event->modifiers());  // keep a Tab-cycled choice
+    left_ = LeftAction::None;
+    if (cursor_point_valid_) {
+      const bool snapped = !snaps_.empty();
+      emit pointPicked(cursor_point_, snapped,
+                       snapped ? snaps_[snap_index_ % snaps_.size()].type : snap::SnapType::Point);
+    }
+    return;
+  }
   if (event->button() == Qt::LeftButton && left_ != LeftAction::None) {
     const QPointF pos = event->position();
     if (left_ == LeftAction::Rectangle) {
@@ -384,8 +460,19 @@ void Viewport::mouseReleaseEvent(QMouseEvent* event) {
     return;
   }
   if (drag_ != Drag::None) {
+    const bool click = !drag_moved_;
     drag_ = Drag::None;
-    unsetCursor();
+    if (point_input_) {
+      setCursor(Qt::CrossCursor);
+      if (click && event->button() == Qt::RightButton) emit pointInputFinished();
+      if (click && event->button() == Qt::LeftButton) {
+        // Alt + click (no drag): a point without snapping; Alt + drag still orbits / pans
+        updateSnap(event->position(), event->modifiers());
+        if (cursor_point_valid_) emit pointPicked(cursor_point_, false, snap::SnapType::Point);
+      }
+    } else {
+      unsetCursor();
+    }
     return;
   }
   QRhiWidget::mouseReleaseEvent(event);
@@ -413,11 +500,24 @@ void Viewport::wheelEvent(QWheelEvent* event) {
     camera_.zoomAt(pos, static_cast<float>(std::pow(kWheelZoomPerNotch, steps)));
   }
   cameraChanged();
-  reportCursor(pos);
+  if (point_input_) {
+    updateSnap(pos, event->modifiers());
+  } else {
+    reportCursor(pos);
+  }
   event->accept();
 }
 
 bool Viewport::event(QEvent* event) {
+  if (event->type() == QEvent::KeyPress && point_input_) {
+    auto* key = static_cast<QKeyEvent*>(event);
+    if ((key->key() == Qt::Key_Tab || key->key() == Qt::Key_Backtab) && !snaps_.empty()) {
+      // Tab cycles through the snap candidates under the cursor (docs/snapping.md)
+      snap_index_ = key->key() == Qt::Key_Tab ? snap_index_ + 1 : snap_index_ + snaps_.size() - 1;
+      showSnap();
+      return true;
+    }
+  }
   if (event->type() == QEvent::NativeGesture) {
     auto* gesture = static_cast<QNativeGestureEvent*>(event);
     if (gesture->gestureType() == Qt::ZoomNativeGesture) {  // trackpad pinch
@@ -436,6 +536,7 @@ bool Viewport::event(QEvent* event) {
 
 void Viewport::leaveEvent(QEvent* event) {
   emit cursorMoved({}, false);
+  marker_->clear();
   if (selection_ != nullptr && left_ == LeftAction::None) selection_->setHovered(std::nullopt);
   QRhiWidget::leaveEvent(event);
 }

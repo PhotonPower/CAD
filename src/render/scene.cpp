@@ -79,7 +79,7 @@ std::vector<pick::Target> Scene::pickTargets() const {
   std::vector<pick::Target> out;
   out.reserve(items_.size());
   for (const auto& [id, item] : items_) {
-    if (item.visible && item.mesh) out.push_back({id, item.mesh.get()});
+    if (item.visible && item.mesh) out.push_back({id, item.mesh.get(), item.geometry});
   }
   return out;
 }
