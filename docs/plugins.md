@@ -1,6 +1,6 @@
 # Plugin plan: computation kernels in Nurbforge CAD
 
-Status: **accepted** (decisions of 2026-11-11 in section 5; D10 still open).
+Status: **accepted** (decisions of 2026-11-11 in section 5).
 
 Several computation kernels build on Nurbforge – a ray tracer (Raytatouille), field solvers
 (BEM / FEM / FMM), grating and writing-path tools. Nurbforge CAD becomes their common
@@ -143,12 +143,27 @@ class Raytracer(plugin.Plugin):
 - Important: a signature proves **who** wrote a plugin and that it is unchanged – it does not
   sandbox it. Signed Python code can do everything the user can do.
 
+## 3a. Result display (P2)
+
+`results::ResultStore` holds one `ResultSet` per run with items of three kinds – the data
+interface the plugin host (P3) fills:
+
+| Kind | Data | Display |
+|---|---|---|
+| `LineSet` | polylines (points + start indices), optional value per point, colour map, range, unit; `on_top` | coloured lines in all views (on top of the model by default, so rays inside lenses stay visible); NaN ends a polyline (lost ray) |
+| `FaceField` | entity + face, grid of values (or RGBA image) over the face's normalised (u, v) | texture on the face (shaded: lit; surfaces / wireframe: flat), colour bar with name, unit and range in every view |
+| `Curve` | x / y with labels; `appendToCurve` for live updates | Plot dock (appears with the first curve) |
+
+Results are listed in the *Results* dock (visibility per run and item, delete a run, *Convert to
+CAD curves* for rays). Colour maps: viridis, inferno, plasma, coolwarm, grey. Not yet: saving
+results with the document (P3, together with the plugin runs), 2D image plots.
+
 ## 4. Milestones
 
 | # | Content | Testable without a kernel? |
 |---|---|---|
 | **P1** ✅ | CAD core, part 1: model tree (groups, visibility, isolate), entity attributes (saved in `.nfcad`, edited in the property panel), (u, v) in display meshes | yes |
-| **P2** | CAD core, part 2: result sets and layers – line sets with per-vertex colour (millions of segments), face fields / images with colour maps and legend, plot dock (curves, 2D images), promote results to entities | yes, with generated demo data |
+| **P2** ✅ | CAD core, part 2: result sets and layers – line sets with per-vertex colour, face fields / images with colour maps and legend, plot dock (curves), promote rays to CAD curves; *Help → Demo results* | yes, with generated demo data |
 | **P3** | Plugin host: process start / stop, `nfcad` client package, socket + shared memory, model access, geometry exchange, results API, job runner (progress, cancel, log) | yes, with a test plugin |
 | **P4** | Parameter panel from the schema (numbers + units, enums, lists, files, entity pick, point pick with snaps), parameter sets saved in the document | yes |
 | **P5** | Signing: manifest, `nfcad-plugin sign / verify`, trusted keys, developer mode, CI check | yes |
@@ -171,6 +186,6 @@ tree, attributes, result display from scripts).
 | D7 | What do the other kernels need? | step by step; essentially **textures on geometry** (scalar fields and images on faces) – P2 makes that the central result type |
 | D8 | Order | **plugins first** (P1 starts now), release 1.0 later |
 | D9 | Replace the 3D part of Raytatouille's own GUI (M10)? | **yes** |
-| D10 | Where does the bridge rtt → Nurbforge live? | ❓ open – first in the plugin, later possibly an optional module `raytatouille.nurbs` |
+| D10 | Where does the bridge rtt → Nurbforge live? | **first in the plugin**, moved to an optional module `raytatouille.nurbs` once stable (STEP export of optical systems, meshing for other solvers) |
 | D11 | Switch parts on / off | **both**: hide in the CAD view, and exclude from the computation ("inactive" attribute) – the exclusion needs support in Raytatouille (library item) |
 | D12 | Mechanical parts in the trace | display only in sequential mode; obstacles once non-sequential tracing (rtt M9) exists |

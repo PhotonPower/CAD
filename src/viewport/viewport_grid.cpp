@@ -67,6 +67,10 @@ void ViewportGrid::setSelection(document::Selection* selection) {
   for (Viewport* v : views_) v->setSelection(selection);
 }
 
+void ViewportGrid::setResults(const results::ResultStore* results) {
+  for (Viewport* v : views_) v->setResults(results);
+}
+
 void ViewportGrid::setSnapEngine(snap::SnapEngine* engine) {
   for (Viewport* v : views_) v->setSnapEngine(engine);
 }

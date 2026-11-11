@@ -21,6 +21,9 @@
 #include "document/document.hpp"
 #include "document/selection.hpp"
 #include "app/command_controller.hpp"
+#include "app/demo_results.hpp"
+#include "results/result_store.hpp"
+#include "ui/results_panel.hpp"
 #include "snap/snap_engine.hpp"
 #include "ui/layer_panel.hpp"
 #include "ui/model_tree_panel.hpp"
@@ -38,7 +41,7 @@ namespace nfcad::app {
 using render::DisplayMode;
 
 namespace {
-constexpr int kWindowStateVersion = 2;  // 2: model tree dock (P1)
+constexpr int kWindowStateVersion = 3;  // 2: model tree dock (P1), 3: results + plot (P2)
 }
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -48,12 +51,15 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   scene_ = new render::Scene(doc_, tessellator_, this);
   selection_ = new document::Selection(this);
   selection_->attach(doc_);
+  results_ = new results::ResultStore(this);
+  connect(doc_, &document::Document::documentReset, results_, &results::ResultStore::clear);
   snap_engine_ = new snap::SnapEngine;
   connect(doc_, &document::Document::documentReset, this, [this] { snap_engine_->clear(); });
 
   grid_ = new viewport::ViewportGrid(this);
   grid_->setScene(scene_);
   grid_->setSelection(selection_);
+  grid_->setResults(results_);
   grid_->setSnapEngine(snap_engine_);
   setCentralWidget(grid_);
 
@@ -164,6 +170,11 @@ void MainWindow::createMenus() {
   view_menu_ = menuBar()->addMenu(tr("&View"));  // filled in createViewToolBar / createToolDock
 
   QMenu* help = menuBar()->addMenu(tr("&Help"));
+  help->addAction(tr("Demo results on the selected object"), this, [this] {
+    const auto ids = selection_->entities();
+    const QString error = make_demo_results(*results_, *scene_, ids.empty() ? 0 : ids.front());
+    if (!error.isEmpty()) statusBar()->showMessage(error, 5000);
+  });
   QAction* about = help->addAction(tr("About Nurbforge CAD"), this, &MainWindow::showAbout);
   about->setMenuRole(QAction::AboutRole);
 }
@@ -312,8 +323,23 @@ void MainWindow::createPanels() {
   model->setWidget(model_tree_);
   addDockWidget(Qt::RightDockWidgetArea, model);
   tabifyDockWidget(layers, model);
+  auto* results = new QDockWidget(tr("Results"), this);
+  results->setObjectName(QStringLiteral("resultsDock"));
+  results->setWidget(new ui::ResultsPanel(results_, doc_, results));
+  addDockWidget(Qt::RightDockWidgetArea, results);
+  tabifyDockWidget(model, results);
   model->raise();
+  auto* plot = new QDockWidget(tr("Plot"), this);
+  plot->setObjectName(QStringLiteral("plotDock"));
+  plot->setWidget(new ui::PlotWidget(results_, plot));
+  addDockWidget(Qt::BottomDockWidgetArea, plot);
+  plot->hide();  // appears with the first curve
+  connect(results_, &results::ResultStore::changed, this, [this, plot] {
+    if (!results_->visibleItems(results::ResultItem::Kind::Curve).empty()) plot->show();
+  });
   view_menu_->addAction(model->toggleViewAction());
+  view_menu_->addAction(results->toggleViewAction());
+  view_menu_->addAction(plot->toggleViewAction());
   view_menu_->addAction(props->toggleViewAction());
   view_menu_->addAction(layers->toggleViewAction());
 }

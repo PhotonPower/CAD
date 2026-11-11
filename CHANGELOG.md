@@ -6,6 +6,11 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- P2 – result display (docs/plugins.md): `ResultStore` with runs of line sets (rays, coloured
+  by a value), face fields / images (textures on faces via the mesh (u, v)) and curves; colour
+  maps (viridis, inferno, plasma, coolwarm, grey) with a colour bar per view; Results dock;
+  Plot dock with live curves; rays → CAD curves; *Help → Demo results on the selected object*;
+  offscreen render test
 - P1 – model tree and attributes (docs/plugins.md): groups (nested, undoable group / ungroup),
   visibility of objects and groups (inherited), isolate, show all; Model dock with selection
   in both directions; entity attributes (key / value, undoable, edited in the property panel,

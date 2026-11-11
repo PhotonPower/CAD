@@ -28,3 +28,4 @@ nfcad_add_test(test_solid_transform_commands commands/test_solid_transform_comma
 nfcad_add_test(test_surface_commands commands/test_surface_commands.cpp nfcad_core)
 nfcad_add_test(test_edit_commands commands/test_edit_commands.cpp nfcad_core)
 nfcad_add_test(test_model_tree document/test_model_tree.cpp nfcad_gui)
+nfcad_add_test(test_results results/test_results.cpp nfcad_gui)
