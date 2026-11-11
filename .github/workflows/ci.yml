@@ -14,8 +14,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Nurbforge is downloaded at this tag (cmake/FindOrFetchNurbforge.cmake)
-  NURBFORGE_TAG: v0.7.0
+  # Nurbforge is downloaded at this tag or commit (cmake/FindOrFetchNurbforge.cmake).
+  # a35e929 = Nurbforge branch feature/macos (macOS < 26 support for the STEP reader);
+  # switch back to a release tag once that is released.
+  NURBFORGE_TAG: a35e92994ed55d5dbaba4e72f30bbdd106584d1c
 
 jobs:
   macos:
@@ -71,7 +73,7 @@ jobs:
           cache: true
       - name: Configure & build
         run: |
-          cmake --preset msvc -DNFCAD_NURBFORGE_TAG=${{ env.NURBFORGE_TAG }}
+          cmake --preset msvc "-DNFCAD_NURBFORGE_TAG=${{ env.NURBFORGE_TAG }}"
           cmake --build --preset msvc
       - name: Tests
         run: ctest --preset msvc

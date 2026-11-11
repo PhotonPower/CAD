@@ -33,10 +33,16 @@ if(NFCAD_NURBFORGE_SOURCE_DIR)
 else()
   message(STATUS "Nurbforge: downloading ${NFCAD_NURBFORGE_REPOSITORY} @ ${NFCAD_NURBFORGE_TAG}")
   include(FetchContent)
+  # Shallow clones work for tags and branches only, not for commit hashes.
+  if(NFCAD_NURBFORGE_TAG MATCHES "^[0-9a-f]+$")
+    set(_nf_shallow FALSE)
+  else()
+    set(_nf_shallow TRUE)
+  endif()
   FetchContent_Declare(nurbforge
     GIT_REPOSITORY "${NFCAD_NURBFORGE_REPOSITORY}"
     GIT_TAG "${NFCAD_NURBFORGE_TAG}"
-    GIT_SHALLOW TRUE
+    GIT_SHALLOW ${_nf_shallow}
     EXCLUDE_FROM_ALL
     SYSTEM)
   FetchContent_MakeAvailable(nurbforge)
