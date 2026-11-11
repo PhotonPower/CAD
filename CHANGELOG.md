@@ -6,6 +6,12 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- M5 – drawing commands: command framework (`Command`, `CommandController`), Point, Line,
+  Polyline, Rectangle, Polygon, Circle, Circle (3 points), Arc, Helix, Distance; typed command
+  names and aliases, coordinates (`x,y,z`, `x,y` in the construction plane, `@` relative,
+  `d<a` polar), numbers and lengths; orange rubber-band preview; ortho (F8); Enter /
+  right-click finish or repeat, Esc cancels; one undo step per result; typing in a view goes to
+  the command line; docs/commands.md; tests for parser, commands and controller
 - M4 – object snaps: `SnapEngine` with Point, End, Mid, Centre, Quadrant (cut points of the
   coordinate planes), Near, Intersection (real and apparent), Face corner, Face edge and Grid;
   exact refinement with Nurbforge (circle detection, arc length, closest point, curve/curve

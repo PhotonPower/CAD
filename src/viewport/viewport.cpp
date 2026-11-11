@@ -184,6 +184,7 @@ void Viewport::showSnap() {
     cursor_point_valid_ = hit.has_value();
     if (hit) cursor_point_ = {hit->x(), hit->y(), hit->z()};
     emit cursorMoved(hit.value_or(QVector3D()), hit.has_value());
+    emit pointerMoved(cursor_point_, cursor_point_valid_, false);
     return;
   }
   const snap::SnapResult& r = snaps_[snap_index_ % snaps_.size()];
@@ -196,6 +197,33 @@ void Viewport::showSnap() {
   cursor_point_ = r.point;
   cursor_point_valid_ = true;
   emit cursorMoved(r.position(), true);
+  emit pointerMoved(cursor_point_, true, true);
+}
+
+void Viewport::setPreview(const std::vector<std::vector<QVector3D>>& polylines) {
+  std::vector<render::LineVertex> v;
+  for (const auto& pl : polylines) {
+    for (std::size_t i = 0; i + 1 < pl.size(); ++i) {
+      v.push_back({pl[i].x(), pl[i].y(), pl[i].z(), 1.0F, 0.62F, 0.25F, 1.0F});
+      v.push_back({pl[i + 1].x(), pl[i + 1].y(), pl[i + 1].z(), 1.0F, 0.62F, 0.25F, 1.0F});
+    }
+  }
+  preview_layer_.setVertices(std::move(v));
+  update();
+}
+
+void Viewport::keyPressEvent(QKeyEvent* event) {
+  if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+    emit enterPressed();
+    return;
+  }
+  const QString text = event->text();
+  if (!text.isEmpty() && text.front().isPrint() &&
+      !(event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier))) {
+    emit textTyped(text);  // typing in a view goes to the command line
+    return;
+  }
+  QRhiWidget::keyPressEvent(event);
 }
 
 void Viewport::hoverPick(const QPointF& px, Qt::KeyboardModifiers mods) {
@@ -292,6 +320,7 @@ void Viewport::initialize(QRhiCommandBuffer* /*cb*/) {
 void Viewport::releaseResources() {
   grid_layer_.releaseGpu();
   triad_layer_.releaseGpu();
+  preview_layer_.releaseGpu();
   lines_.release();
   scene_renderer_.release();
 }
@@ -333,6 +362,8 @@ void Viewport::render(QRhiCommandBuffer* cb) {
   QRhiResourceUpdateBatch* updates = r->nextResourceUpdateBatch();
   lines_.prepare(grid_layer_, updates);
   lines_.prepare(triad_layer_, updates);
+  preview_layer_.setMvp(clip * camera_.viewProjection());
+  lines_.prepare(preview_layer_, updates);
   if (scene_ != nullptr) {
     render::SceneRenderer::FrameParams frame;
     frame.clip_view_projection = clip * camera_.viewProjection();
@@ -355,6 +386,7 @@ void Viewport::render(QRhiCommandBuffer* cb) {
     scene_renderer_.drawFaces(cb, full);
     scene_renderer_.drawLines(cb, full);
   }
+  lines_.draw(cb, preview_layer_, full);  // rubber band on top (no depth test)
   // QRhiViewport origin is bottom left.
   lines_.draw(cb, triad_layer_,
               QRhiViewport(kTriadMargin * dpr, kTriadMargin * dpr, kTriadSize * dpr,

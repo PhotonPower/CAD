@@ -72,7 +72,9 @@ user input ─► Viewport ─► (active) Command ─► kernel/ (Nurbforge) �
 | `ToolCatalog` | ui | data-driven list of tools (id, group, icon, shortcut) |
 | `ToolBox` | ui | tool column with collapsible `ToolGroup`s |
 | `SnapEngine` | snap | candidate search on the pick BVHs, cached characteristic points, exact refinement via `kernel/curve_features`, see [snapping.md](snapping.md) |
-| `Command` | commands | state machine that asks for points / options and edits the document |
+| `Command` | commands | state machine that asks for points / numbers, previews and produces entities ([commands.md](commands.md)) |
+| `parse_input` | commands | typed coordinates, numbers and command names |
+| `CommandController` | app | runs commands: viewports, command line, ortho, undo |
 
 ## Directory layout
 

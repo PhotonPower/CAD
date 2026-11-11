@@ -51,6 +51,8 @@ class Viewport : public QRhiWidget {
   /// and a left click emits pointPicked; a right click emits pointInputFinished.
   void setPointInput(bool on);
   [[nodiscard]] bool pointInput() const { return point_input_; }
+  /// Rubber-band preview of the active command (world polylines), drawn in all views.
+  void setPreview(const std::vector<std::vector<QVector3D>>& polylines);
   /// Current snap candidates under the cursor (best first) and the chosen one.
   [[nodiscard]] const std::vector<snap::SnapResult>& snapCandidates() const { return snaps_; }
 
@@ -71,6 +73,12 @@ class Viewport : public QRhiWidget {
   /// Point input: a point was clicked; `type` is valid if `snapped`.
   void pointPicked(const nfcad::snap::SnapPoint& point, bool snapped, nfcad::snap::SnapType type);
   void pointInputFinished();
+  /// Point input: the (snapped) point under the cursor changed.
+  void pointerMoved(const nfcad::snap::SnapPoint& point, bool valid, bool snapped);
+  /// Printable text typed while the view has the focus (goes to the command line).
+  void textTyped(const QString& text);
+  /// Enter / Return pressed in the view.
+  void enterPressed();
 
  protected:
   void initialize(QRhiCommandBuffer* cb) override;
@@ -81,6 +89,7 @@ class Viewport : public QRhiWidget {
   void mouseMoveEvent(QMouseEvent* event) override;
   void mouseReleaseEvent(QMouseEvent* event) override;
   void mouseDoubleClickEvent(QMouseEvent* event) override;
+  void keyPressEvent(QKeyEvent* event) override;
   void wheelEvent(QWheelEvent* event) override;
   void leaveEvent(QEvent* event) override;
   void resizeEvent(QResizeEvent* event) override;
@@ -130,6 +139,7 @@ class Viewport : public QRhiWidget {
   render::LineRenderer lines_;
   render::LineLayer grid_layer_;
   render::LineLayer triad_layer_;
+  render::LineLayer preview_layer_;
   bool grid_dirty_ = true;
 
   QLabel* title_ = nullptr;
