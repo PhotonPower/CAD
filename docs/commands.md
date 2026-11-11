@@ -34,6 +34,20 @@ the command expects; the rubber band (orange) previews the result. Every result 
 | Grid array | `array_grid` | (count a, count b,) base, step a, step b |
 | Polar array | `arraypolar` | (count,) centre, total angle (Enter: 360°) |
 
+| **Curves and surfaces** (M6b) | | |
+| Spline | `sp` | points (Enter: done); interpolating cubic |
+| Offset curve | `offset` | (distance,) click the side; on the selection, in the construction plane |
+| Fillet curves | `fillet` | radius; two selected curves (arc + both trimmed) or one curve (all corners) |
+| Plane | `plane` | two corners in the construction plane |
+| Extrude | `ext` | selected curves; distance along the plane normal, or two points |
+| Revolve | `rev` | selected curves; axis start, axis end, angle (Enter: 360°) |
+| Loft | `loft` | ≥ 2 selected sections, in selection order |
+| Sweep 1 / 2 rails | `sweep1` / `sweep2` | selected: profile, then rail(s) |
+| Coons | `coons` | four selected boundary curves (orientation is corrected) |
+| Gordon | `network` | a selected curve network (≥ 2 × 2, any order: sorted automatically) |
+| Offset surface | `offsetsrf` | selected (untrimmed) surfaces; signed distance along the normal |
+| Fillet surfaces | `filletsrf` | two selected surfaces; radius (the ball side is found automatically) |
+
 Selection-based commands use the whole selected objects in selection order; each result –
 including a Boolean that removes its inputs – is one undo step.
 
