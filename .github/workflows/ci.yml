@@ -78,12 +78,13 @@ jobs:
       - name: Failing tests run directly (diagnostics on failure)
         if: failure()
         run: |
-          foreach ($name in @("test_support", "test_plugin_host")) {
+          foreach ($name in @("test_support")) {
             $exe = Get-ChildItem -Recurse build\msvc -Filter "$name.exe" | Select-Object -First 1
             if ($exe) {
               Write-Host "== $($exe.FullName)"
-              & $exe.FullName -o -,txt 2>&1 | Out-Host
+              & $exe.FullName -o "$env:RUNNER_TEMP\$name.txt,txt"
               Write-Host ("exit code: 0x{0:X8}" -f $LASTEXITCODE)
+              Get-Content "$env:RUNNER_TEMP\$name.txt" -ErrorAction SilentlyContinue | Out-Host
             }
           }
 
