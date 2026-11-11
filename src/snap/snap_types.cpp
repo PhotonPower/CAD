@@ -5,7 +5,7 @@
 namespace nfcad::snap {
 
 int priority_rank(SnapType type) {
-  const auto* it = std::find(kSnapPriority.begin(), kSnapPriority.end(), type);
+  const auto it = std::find(kSnapPriority.begin(), kSnapPriority.end(), type);
   return static_cast<int>(it - kSnapPriority.begin());
 }
 
