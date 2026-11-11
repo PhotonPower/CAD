@@ -2,6 +2,8 @@
 
 #include "document/document.hpp"
 
+#include <algorithm>
+
 namespace nfcad::document {
 
 QString sub_element_name(const SubElement& s) {
@@ -56,6 +58,13 @@ void Selection::apply(const std::vector<SelectionItem>& items, Mode mode) {
   }
   if (next == items_) return;
   items_ = std::move(next);
+  if (mode == Mode::Replace) order_.clear();
+  for (const SelectionItem& i : items) {
+    if (items_.contains(i) && std::find(order_.begin(), order_.end(), i) == order_.end()) {
+      order_.push_back(i);
+    }
+  }
+  syncOrder();
   ++version_;
   emit changed();
 }
@@ -69,6 +78,10 @@ void Selection::setHovered(std::optional<SelectionItem> item) {
   emit hoverChanged();
 }
 
+void Selection::syncOrder() {
+  std::erase_if(order_, [this](const SelectionItem& i) { return !items_.contains(i); });
+}
+
 void Selection::dropEntity(EntityId id) {
   bool changed_any = false;
   for (auto it = items_.lower_bound({id, {}}); it != items_.end() && it->entity == id;) {
@@ -76,6 +89,7 @@ void Selection::dropEntity(EntityId id) {
     changed_any = true;
   }
   if (hovered_ && hovered_->entity == id) setHovered(std::nullopt);
+  syncOrder();
   if (changed_any) {
     ++version_;
     emit changed();

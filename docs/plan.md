@@ -125,7 +125,12 @@ jobs build from M0 on but are allowed to fail until M7.
   construction planes moved to a later milestone
 - **Done when:** all commands work with snaps and keyboard input, with undo.
 
-### M6 – Surfaces and solids
+### M6a – Solids, transforms, export ✅
+- Solid primitives (box, sphere, cylinder, cone, torus), Booleans (union, difference = first
+  selected minus the others, intersection), transforms (move, copy, rotate, scale, mirror),
+  arrays (linear, grid, polar), angle; STEP and STL export; one undo step per result
+
+### M6b – Surfaces from curves
 - Extrude, revolve, loft, sweep (1/2 rails), Coons/Gordon, offset, fillet
 - Solid primitives: box, sphere, cylinder, cone, torus; Booleans (union, difference, intersection)
 - Transform: move, copy, rotate, scale, mirror, arrays (linear, grid, polar)

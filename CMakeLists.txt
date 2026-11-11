@@ -36,11 +36,14 @@ qt_standard_project_setup(REQUIRES 6.8)
 add_library(nfcad_core STATIC
   src/commands/drawing_commands.cpp
   src/commands/input_parser.cpp
+  src/commands/solid_commands.cpp
+  src/commands/transform_commands.cpp
   src/document/document.cpp
   src/document/entity.cpp
   src/document/nfcad_io.cpp
   src/document/selection.cpp
   src/kernel/curve_features.cpp
+  src/kernel/geometry_ops.cpp
   src/kernel/kernel_info.cpp
   src/kernel/properties.cpp
   src/kernel/step_import.cpp
@@ -49,6 +52,7 @@ add_library(nfcad_core STATIC
   src/snap/snap_types.cpp
   src/tessellation/bvh.cpp
   src/tessellation/display_mesh.cpp
+  src/tessellation/stl_export.cpp
   src/tessellation/tessellation_service.cpp
   src/tessellation/tessellator.cpp
   src/viewport/camera.cpp

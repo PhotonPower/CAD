@@ -9,6 +9,14 @@
 
 namespace nfcad::document {
 
+/// A combined change applied as one undo step (commands: transforms, Booleans, ...).
+struct Edit {
+  std::vector<Entity> add;
+  std::vector<EntityId> remove;
+  std::vector<std::pair<EntityId, GeometryPtr>> replace;  ///< new geometry for an entity
+  [[nodiscard]] bool empty() const { return add.empty() && remove.empty() && replace.empty(); }
+};
+
 struct Layer {
   LayerId id = 0;
   QString name;
@@ -43,6 +51,8 @@ class Document : public QObject {
   /// Adds entities in one undo step; returns their ids.
   std::vector<EntityId> addEntities(std::vector<Entity> entities, const QString& text);
   void removeEntities(const std::vector<EntityId>& ids, const QString& text);
+  /// Applies an Edit as one undo step; returns the ids of the added entities.
+  std::vector<EntityId> apply(Edit edit, const QString& text);
   /// Moves entities to a layer (one undo step).
   void assignLayer(const std::vector<EntityId>& ids, LayerId layer);
 
@@ -55,6 +65,8 @@ class Document : public QObject {
   void setLayerVisible(LayerId id, bool visible);
   void setLayerColor(LayerId id, const QColor& color);
   void renameLayer(LayerId id, const QString& name);
+  /// Replaces an entity's geometry (low level, used by undo commands); returns the old one.
+  GeometryPtr setGeometry(EntityId id, GeometryPtr geometry);
   /// Sets an entity's layer (low level, used by the undo command).
   void setEntityLayer(EntityId id, LayerId layer);
   /// Removes everything, keeps the default layer, clears the undo stack.

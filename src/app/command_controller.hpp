@@ -10,7 +10,8 @@ class QStatusBar;
 
 namespace nfcad::document {
 class Document;
-}
+class Selection;
+}  // namespace nfcad::document
 namespace nfcad::viewport {
 class Viewport;
 class ViewportGrid;
@@ -24,8 +25,9 @@ namespace nfcad::app {
 class CommandController : public QObject {
   Q_OBJECT
  public:
-  CommandController(document::Document* doc, viewport::ViewportGrid* grid, QLineEdit* line,
-                    QStatusBar* status, QObject* parent = nullptr);
+  CommandController(document::Document* doc, document::Selection* selection,
+                    viewport::ViewportGrid* grid, QLineEdit* line, QStatusBar* status,
+                    QObject* parent = nullptr);
   ~CommandController() override;
 
   /// Starts a command by id or alias; false if unknown.
@@ -56,6 +58,7 @@ class CommandController : public QObject {
   [[nodiscard]] commands::PlaneFrame frameOf(const viewport::Viewport* view) const;
 
   document::Document* doc_;
+  document::Selection* selection_;
   viewport::ViewportGrid* grid_;
   QLineEdit* line_;
   QStatusBar* status_;

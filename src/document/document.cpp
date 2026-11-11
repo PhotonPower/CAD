@@ -50,6 +50,37 @@ class RemoveEntitiesCommand : public QUndoCommand {
   std::vector<Entity> removed_;
 };
 
+class EditCommand : public QUndoCommand {
+ public:
+  EditCommand(Document* doc, Edit edit, const QString& text)
+      : QUndoCommand(text), doc_(doc), edit_(std::move(edit)) {}
+  void redo() override {
+    removed_.clear();
+    for (EntityId id : edit_.remove) {
+      if (doc_->entity(id) != nullptr) removed_.push_back(doc_->erase(id));
+    }
+    old_.clear();
+    for (auto& [id, g] : edit_.replace) old_.emplace_back(id, doc_->setGeometry(id, g));
+    for (Entity& e : edit_.add) e.id = doc_->insert(e);
+  }
+  void undo() override {
+    for (auto it = edit_.add.rbegin(); it != edit_.add.rend(); ++it) doc_->erase(it->id);
+    for (auto it = old_.rbegin(); it != old_.rend(); ++it) doc_->setGeometry(it->first, it->second);
+    for (auto it = removed_.rbegin(); it != removed_.rend(); ++it) doc_->insert(*it);
+  }
+  [[nodiscard]] std::vector<EntityId> added() const {
+    std::vector<EntityId> out;
+    for (const Entity& e : edit_.add) out.push_back(e.id);
+    return out;
+  }
+
+ private:
+  Document* doc_;
+  Edit edit_;
+  std::vector<Entity> removed_;
+  std::vector<std::pair<EntityId, GeometryPtr>> old_;
+};
+
 class AssignLayerCommand : public QUndoCommand {
  public:
   AssignLayerCommand(Document* doc, std::vector<EntityId> ids, LayerId layer)
@@ -124,6 +155,22 @@ Entity Document::erase(EntityId id) {
   if (node.empty()) return {};
   emit entityRemoved(id);
   return std::move(node.mapped());
+}
+
+std::vector<EntityId> Document::apply(Edit edit, const QString& text) {
+  if (edit.empty()) return {};
+  auto* cmd = new EditCommand(this, std::move(edit), text);
+  undo_.push(cmd);
+  return cmd->added();
+}
+
+GeometryPtr Document::setGeometry(EntityId id, GeometryPtr geometry) {
+  const auto it = entities_.find(id);
+  if (it == entities_.end()) return {};
+  GeometryPtr old = std::exchange(it->second.geometry, std::move(geometry));
+  ++it->second.revision;
+  emit entityChanged(id);
+  return old;
 }
 
 void Document::assignLayer(const std::vector<EntityId>& ids, LayerId layer) {

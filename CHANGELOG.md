@@ -6,6 +6,10 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- M6a – solids, transforms, export: commands Box, Sphere, Cylinder, Cone, Torus, Union,
+  Difference, Intersection, Move, Copy, Rotate, Scale, Mirror, Linear / Grid / Polar array,
+  Angle; selection-based commands (selection order kept for Difference); `Document::apply`
+  (add / remove / replace as one undo step); File → Export STEP / STL; tests with exact volumes
 - M5 – drawing commands: command framework (`Command`, `CommandController`), Point, Line,
   Polyline, Rectangle, Polygon, Circle, Circle (3 points), Arc, Helix, Distance; typed command
   names and aliases, coordinates (`x,y,z`, `x,y` in the construction plane, `@` relative,

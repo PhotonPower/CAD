@@ -6,6 +6,7 @@
 
 #include "commands/input_parser.hpp"
 #include "document/document.hpp"
+#include "document/selection.hpp"
 #include "viewport/viewport.hpp"
 #include "viewport/viewport_grid.hpp"
 
@@ -15,9 +16,10 @@ using commands::Command;
 using commands::ParsedInput;
 using commands::Point3;
 
-CommandController::CommandController(document::Document* doc, viewport::ViewportGrid* grid,
-                                     QLineEdit* line, QStatusBar* status, QObject* parent)
-    : QObject(parent), doc_(doc), grid_(grid), line_(line), status_(status) {
+CommandController::CommandController(document::Document* doc, document::Selection* selection,
+                                     viewport::ViewportGrid* grid, QLineEdit* line,
+                                     QStatusBar* status, QObject* parent)
+    : QObject(parent), doc_(doc), selection_(selection), grid_(grid), line_(line), status_(status) {
   for (viewport::Viewport* v : grid_->views()) {
     connect(v, &viewport::Viewport::pointerMoved, this,
             [this, v](const snap::SnapPoint& p, bool valid, bool snapped) { onPointer(v, p, valid, snapped); });
@@ -45,8 +47,27 @@ bool CommandController::start(const QString& name) {
   auto cmd = commands::create_command(name);
   if (!cmd) return false;
   if (command_) cancel();
+  last_name_ = cmd->id();
+  if (cmd->usesSelection()) {
+    // whole entities in selection order (Boolean difference: first minus the others)
+    std::vector<document::Entity> picked;
+    if (selection_ != nullptr) {
+      for (const document::SelectionItem& i : selection_->ordered()) {
+        if (i.sub.kind != document::SubElement::Kind::None) continue;
+        if (const document::Entity* e = doc_->entity(i.entity)) picked.push_back(*e);
+      }
+    }
+    if (!cmd->begin(picked)) {
+      status_->showMessage(cmd->message(), 6000);
+      return true;  // known command, but nothing to do
+    }
+    if (cmd->immediate()) {
+      command_ = std::move(cmd);
+      handle(command_->finish());
+      return true;
+    }
+  }
   command_ = std::move(cmd);
-  last_name_ = command_->id();
   grid_->setPointInput(true);
   if (grid_->activeView() != nullptr) grid_->activeView()->setFocus();
   emit activeChanged(true);
@@ -156,8 +177,8 @@ void CommandController::onPicked(viewport::Viewport* view, const Point3& p, bool
 
 void CommandController::flush() {
   if (!command_) return;
-  auto entities = command_->takeEntities();
-  if (!entities.empty()) doc_->addEntities(std::move(entities), command_->title());
+  document::Edit edit = command_->takeEdit();
+  if (!edit.empty()) doc_->apply(std::move(edit), command_->title());
 }
 
 void CommandController::handle(Command::Result r) {

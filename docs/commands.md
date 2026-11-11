@@ -16,6 +16,32 @@ the command expects; the rubber band (orange) previews the result. Every result 
 | Arc | `a` | start, end, point on the arc |
 | Helix | `h` | (number of turns,) axis start, axis end, radius point or radius |
 | Distance | `dist` | two points; the result appears in the status bar |
+| Angle | `ang` | vertex, a point on each leg |
+| **Solids** (M6a) | | |
+| Box | `b` | base corner, opposite corner, height (point or number, sign = direction) |
+| Sphere | `sph` | centre, radius |
+| Cylinder / Cone | `cyl` / `cone` | base centre, radius, height (axis: construction-plane normal) |
+| Torus | `tor` | centre, major radius, tube radius |
+| Union / Intersection | `bu` / `bi` | the selected solids (immediately) |
+| Difference | `bd` | the **first selected** solid minus the other selected solids |
+| **Transforms** (on the selection) | | |
+| Move | `m` | from, to |
+| Copy | `co` | from, to (repeat; Enter: done) |
+| Rotate | `ro` | centre, angle in degrees – or two reference points (axis: plane normal) |
+| Scale | `sc` | base, factor – or two reference points (ratio of distances) |
+| Mirror | `mi` | two points of the mirror line (plane through the line and the plane normal); creates copies |
+| Linear array | `array` | (count,) base, step |
+| Grid array | `array_grid` | (count a, count b,) base, step a, step b |
+| Polar array | `arraypolar` | (count,) centre, total angle (Enter: 360°) |
+
+Selection-based commands use the whole selected objects in selection order; each result –
+including a Boolean that removes its inputs – is one undo step.
+
+## Export (M6a)
+
+File → Export STEP / Export STL writes the selected objects (or all visible ones if nothing is
+selected). STEP: solids and surfaces, exact (AP214, mm). STL: binary, from the display
+tessellation.
 
 ## Keyboard input
 
