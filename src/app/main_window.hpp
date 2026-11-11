@@ -37,6 +37,7 @@ struct SnapPoint;
 }
 
 namespace nfcad::ui {
+class ImageView;
 class ModelTreePanel;
 class PluginPanel;
 class SnapBar;
@@ -124,6 +125,8 @@ class MainWindow : public QMainWindow {
   QPlainTextEdit* plugin_log_ = nullptr;
   ui::PluginPanel* plugin_panel_ = nullptr;
   QLabel* developer_banner_ = nullptr;
+  ui::ImageView* image_view_ = nullptr;
+  std::uint64_t last_image_ = 0;
   snap::SnapEngine* snap_engine_ = nullptr;
   class CommandController* commands_ = nullptr;
   QLineEdit* command_line_ = nullptr;

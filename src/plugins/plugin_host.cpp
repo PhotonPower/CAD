@@ -388,6 +388,35 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     return static_cast<qint64>(results_->addField(static_cast<results::ResultId>(args["set"].toInteger()),
                                                   args["name"].toString(), std::move(f)));
   }
+  if (method == QLatin1String("results.image")) {
+    results::Image im;
+    im.width = args["width"].toInt();
+    im.height = args["height"].toInt();
+    im.values = read_array<float>(args["values"], arrayDir());
+    if (im.width <= 0 || im.height <= 0 ||
+        im.values.size() != static_cast<std::size_t>(im.width) * static_cast<std::size_t>(im.height)) {
+      throw std::runtime_error("image: values do not match width x height");
+    }
+    const QJsonArray extent = args["extent"].toArray();
+    if (extent.size() == 4) {
+      im.x0 = extent[0].toDouble();
+      im.x1 = extent[1].toDouble();
+      im.y0 = extent[2].toDouble();
+      im.y1 = extent[3].toDouble();
+    } else {
+      im.x1 = im.width;
+      im.y1 = im.height;
+    }
+    if (!(im.x1 > im.x0) || !(im.y1 > im.y0)) throw std::runtime_error("image: empty extent");
+    im.x_label = args["x_label"].toString();
+    im.y_label = args["y_label"].toString();
+    im.colormap = results::colormap_from_name(args["colormap"].toString());
+    im.unit = args["unit"].toString();
+    im.description = args["description"].toString();
+    im.range = range_of(args);
+    return static_cast<qint64>(results_->addImage(static_cast<results::ResultId>(args["set"].toInteger()),
+                                                  args["name"].toString(), std::move(im)));
+  }
   if (method == QLatin1String("results.curve")) {
     results::Curve c;
     for (const QJsonValue& v : args["x"].toArray()) c.x.push_back(v.toDouble());

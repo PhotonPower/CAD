@@ -90,7 +90,12 @@ class TestPluginHost : public QObject {
     // results (arrays through files)
     QCOMPARE(results_.sets().size(), std::size_t{1});
     const auto& items = results_.sets().front().items;
-    QCOMPARE(items.size(), std::size_t{3});
+    QCOMPARE(items.size(), std::size_t{4});
+    QCOMPARE(items[3].kind, results::ResultItem::Kind::Image);
+    QCOMPARE(items[3].image->width, 3);
+    QCOMPARE(items[3].image->x0, -1.5);
+    QCOMPARE(items[3].image->value(2, 1), 5.0F);
+    QCOMPARE(items[3].image->description, QStringLiteral("6 px"));
     QCOMPARE(items[0].lines->polylineCount(), std::size_t{2});
     QCOMPARE(items[0].lines->values.size(), std::size_t{4});
     QCOMPARE(items[1].field->values.size(), std::size_t{6});

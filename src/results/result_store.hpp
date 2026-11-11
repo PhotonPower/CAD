@@ -26,6 +26,7 @@ class ResultStore : public QObject {
   ResultId addLines(ResultId set, const QString& name, LineSet lines);
   ResultId addField(ResultId set, const QString& name, FaceField field);
   ResultId addCurve(ResultId set, const QString& name, Curve curve);
+  ResultId addImage(ResultId set, const QString& name, Image image);
   /// Appends points to a curve (live plots, e.g. a merit function per iteration).
   void appendToCurve(ResultId item, double x, double y);
 

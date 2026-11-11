@@ -106,6 +106,21 @@ class Context:
             args["range"] = [float(value_range[0]), float(value_range[1])]
         return self._host.request("results.field", args)
 
+    def image(self, result_set: int, name: str, values, width: int, height: int, *,
+              extent: tuple[float, float, float, float] | None = None, x_label: str = "x / mm",
+              y_label: str = "y / mm", colormap: str = "inferno", unit: str = "",
+              value_range: tuple[float, float] | None = None, description: str = "") -> int:
+        """A 2D image in the *Image* dock (e.g. a camera image): values[j * width + i], row 0 at
+        y0; extent = (x0, x1, y0, y1) of the grid (cell edges), e.g. in mm."""
+        args: dict[str, Any] = {"set": result_set, "name": name, "width": int(width), "height": int(height),
+                                "values": arrays.write(values, "f4"), "x_label": x_label, "y_label": y_label,
+                                "colormap": colormap, "unit": unit, "description": description}
+        if extent is not None:
+            args["extent"] = [float(v) for v in extent]
+        if value_range is not None:
+            args["range"] = [float(value_range[0]), float(value_range[1])]
+        return self._host.request("results.image", args)
+
     def curve(self, result_set: int, name: str, x=(), y=(), *, x_label: str = "", y_label: str = "") -> int:
         return self._host.request("results.curve", {"set": result_set, "name": name,
                                                     "x": [float(v) for v in x], "y": [float(v) for v in y],

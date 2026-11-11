@@ -12,6 +12,7 @@
 #include "app/main_window.hpp"
 #include "document/document.hpp"
 #include "plugins/plugin_manager.hpp"
+#include "ui/image_view.hpp"
 #include "render/scene.hpp"
 #include "viewport/viewport.hpp"
 
@@ -68,7 +69,11 @@ class TestDocScreenshots : public QObject {
     doc->setPluginParameters(QStringLiteral("raytracer"), params);
     QTRY_VERIFY_WITH_TIMEOUT(host->ready() || !host->running(), 30000);
     if (!host->ready()) QSKIP("raytracer plugin does not start (raytatouille missing?)");
-    for (const char* action : {"load", "trace"}) {
+    params.insert(QStringLiteral("camera_rays"), qEnvironmentVariableIntValue("NFCAD_DOC_RTT_RAYS") > 0
+                                                     ? qEnvironmentVariableIntValue("NFCAD_DOC_RTT_RAYS")
+                                                     : 50000);
+    doc->setPluginParameters(QStringLiteral("raytracer"), params);
+    for (const char* action : {"load", "trace", "camera_image"}) {
       QSignalSpy finished(host, &nfcad::plugins::PluginHost::finished);
       QVERIFY(manager->run(host, QString::fromLatin1(action), params) != 0);
       QVERIFY(finished.wait(60000));
@@ -81,6 +86,22 @@ class TestDocScreenshots : public QObject {
     QImage img = w.grab().toImage();
     img.setDevicePixelRatio(1.0);
     QVERIFY(img.save(QDir(dir).filePath(QStringLiteral("raytracer.png"))));
+    // the camera image in its own window
+    auto* image_dock = w.findChild<QDockWidget*>(QStringLiteral("imageDock"));
+    QVERIFY(image_dock != nullptr);
+    QVERIFY(image_dock->isVisible());
+    auto* view = w.findChild<nfcad::ui::ImageView*>();
+    QVERIFY(view != nullptr && view->current() != nullptr);
+    view->resize(640, 520);
+    QTest::qWait(200);
+    QImage cam = view->grab().toImage();
+    cam.setDevicePixelRatio(1.0);
+    QVERIFY(cam.save(QDir(dir).filePath(QStringLiteral("camera-image.png"))));
+    view->setLogScale(true);
+    QTest::qWait(100);
+    cam = view->grab().toImage();
+    cam.setDevicePixelRatio(1.0);
+    QVERIFY(cam.save(QDir(dir).filePath(QStringLiteral("camera-image-log.png"))));
   }
 };
 

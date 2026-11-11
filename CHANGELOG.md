@@ -6,6 +6,14 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
 
 ## [Unreleased]
 
+### Added
+- **Camera image** (Raytracer): the irradiance on the last surface of each path from many rays
+  (default 200 000 per field and wavelength, millions possible), square pixels over the
+  sensor, shown in the new **Image** window and optionally on the surface in 3D. The quick
+  irradiance of *Trace rays* is now optional (off).
+- **Image** window and result type: 2D images with physical axes, colour bar, linear / log
+  scale, read-out under the cursor, zoom and pan; plugin API `ctx.image`.
+
 ### Changed
 - Raytracer plugin: the irradiance comes from Raytatouille (`rt.analysis.irradiance_map`, #379)
   on the last surface of the path – incident weight per projected cell area, uncounted rays
