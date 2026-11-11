@@ -109,9 +109,13 @@ void on_terminate() {
 
 #ifdef Q_OS_WIN
 LONG WINAPI on_exception(EXCEPTION_POINTERS* info) {
-  std::array<char, 64> cause{};
-  std::snprintf(cause.data(), cause.size(), "Windows exception 0x%08lx",
-                info != nullptr ? info->ExceptionRecord->ExceptionCode : 0UL);
+  std::array<char, 96> cause{};
+  const unsigned long code = info != nullptr ? info->ExceptionRecord->ExceptionCode : 0UL;
+  // 0xE06D7363 ("msc"): how MSVC throws C++ exceptions – an uncaught one arrives here before
+  // std::terminate would be called
+  std::snprintf(cause.data(), cause.size(), code == 0xE06D7363UL ? "uncaught C++ exception (Windows exception 0x%08lx)"
+                                                                 : "Windows exception 0x%08lx",
+                code);
   write_report(cause.data());
   return EXCEPTION_CONTINUE_SEARCH;
 }

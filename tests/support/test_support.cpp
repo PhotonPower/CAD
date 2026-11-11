@@ -43,7 +43,9 @@ class TestSupport : public QObject {
 
   void uncaughtExceptionIsReported() {
     const QString report = crashChild(QStringLiteral("throw"));
-    QVERIFY2(report.contains(QStringLiteral("std::terminate")), qPrintable(report));
+    // POSIX: std::terminate; Windows: the unhandled-exception filter sees it first
+    QVERIFY2(report.contains(QStringLiteral("std::terminate")) || report.contains(QStringLiteral("uncaught C++ exception")),
+             qPrintable(report));
   }
 
   void reportsAreShownOnce() {
