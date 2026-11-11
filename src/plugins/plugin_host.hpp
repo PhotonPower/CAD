@@ -128,6 +128,9 @@ class PluginHost : public QObject {
   std::map<document::EntityId, document::GeometryPtr> original_geometry_;
   std::map<document::EntityId, QVariantMap> original_attributes_;
   std::vector<document::EntityId> added_;
+  std::vector<document::Entity> removed_;          ///< state before the job
+  std::vector<document::GroupId> added_groups_;
+  std::vector<document::Group> removed_groups_;
 };
 
 }  // namespace nfcad::plugins

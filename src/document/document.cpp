@@ -162,16 +162,21 @@ class AttributeCommand : public QUndoCommand {
 
 class AppliedCommand : public QUndoCommand {
  public:
-  AppliedCommand(Document* doc, const QString& text, std::vector<Entity> added,
+  AppliedCommand(Document* doc, const QString& text, std::vector<Entity> added, std::vector<Entity> removed,
+                 std::vector<Group> added_groups, std::vector<Group> removed_groups,
                  std::vector<std::tuple<EntityId, GeometryPtr, GeometryPtr>> geometry,
                  std::vector<std::tuple<EntityId, QVariantMap, QVariantMap>> attributes)
-      : QUndoCommand(text), doc_(doc), added_(std::move(added)), geometry_(std::move(geometry)),
-        attributes_(std::move(attributes)) {}
+      : QUndoCommand(text), doc_(doc), added_(std::move(added)), removed_(std::move(removed)),
+        added_groups_(std::move(added_groups)), removed_groups_(std::move(removed_groups)),
+        geometry_(std::move(geometry)), attributes_(std::move(attributes)) {}
   void redo() override {
     if (first_) {  // already applied live
       first_ = false;
       return;
     }
+    for (const Entity& e : removed_) doc_->erase(e.id);
+    for (const Group& g : removed_groups_) doc_->eraseGroup(g.id);
+    for (const Group& g : added_groups_) doc_->insertGroup(g);
     for (const Entity& e : added_) doc_->insert(e);
     for (const auto& [id, before, after] : geometry_) doc_->setGeometry(id, after);
     for (const auto& [id, before, after] : attributes_) doc_->setEntityAttributes(id, after);
@@ -180,12 +185,18 @@ class AppliedCommand : public QUndoCommand {
     for (const auto& [id, before, after] : attributes_) doc_->setEntityAttributes(id, before);
     for (const auto& [id, before, after] : geometry_) doc_->setGeometry(id, before);
     for (auto it = added_.rbegin(); it != added_.rend(); ++it) doc_->erase(it->id);
+    for (auto it = added_groups_.rbegin(); it != added_groups_.rend(); ++it) doc_->eraseGroup(it->id);
+    for (auto it = removed_groups_.rbegin(); it != removed_groups_.rend(); ++it) doc_->insertGroup(*it);
+    for (const Entity& e : removed_) doc_->insert(e);
   }
 
  private:
   Document* doc_;
   bool first_ = true;
   std::vector<Entity> added_;
+  std::vector<Entity> removed_;
+  std::vector<Group> added_groups_;
+  std::vector<Group> removed_groups_;
   std::vector<std::tuple<EntityId, GeometryPtr, GeometryPtr>> geometry_;
   std::vector<std::tuple<EntityId, QVariantMap, QVariantMap>> attributes_;
 };
@@ -446,23 +457,29 @@ void Document::setPluginParameters(const QString& plugin, const QJsonObject& val
 
 void Document::setAllPluginParameters(const QJsonObject& all) { plugin_parameters_ = all; }
 
-void Document::recordApplied(const QString& text, const std::vector<EntityId>& added,
-                             const std::vector<std::pair<EntityId, GeometryPtr>>& old_geometry,
-                             const std::vector<std::pair<EntityId, QVariantMap>>& old_attributes) {
+void Document::recordApplied(const QString& text, const LiveChanges& changes) {
   std::vector<Entity> add;
-  for (EntityId id : added) {
+  for (EntityId id : changes.added) {
     if (const Entity* e = entity(id)) add.push_back(*e);
   }
+  std::vector<Group> groups;
+  for (GroupId id : changes.added_groups) {
+    if (const Group* g = group(id)) groups.push_back(*g);
+  }
   std::vector<std::tuple<EntityId, GeometryPtr, GeometryPtr>> geometry;
-  for (const auto& [id, before] : old_geometry) {
+  for (const auto& [id, before] : changes.old_geometry) {
     if (const Entity* e = entity(id)) geometry.emplace_back(id, before, e->geometry);
   }
   std::vector<std::tuple<EntityId, QVariantMap, QVariantMap>> attributes;
-  for (const auto& [id, before] : old_attributes) {
+  for (const auto& [id, before] : changes.old_attributes) {
     if (const Entity* e = entity(id)) attributes.emplace_back(id, before, e->attributes);
   }
-  if (add.empty() && geometry.empty() && attributes.empty()) return;
-  undo_.push(new AppliedCommand(this, text, std::move(add), std::move(geometry), std::move(attributes)));
+  if (add.empty() && groups.empty() && changes.removed.empty() && changes.removed_groups.empty() &&
+      geometry.empty() && attributes.empty()) {
+    return;
+  }
+  undo_.push(new AppliedCommand(this, text, std::move(add), changes.removed, std::move(groups),
+                                changes.removed_groups, std::move(geometry), std::move(attributes)));
 }
 
 GeometryPtr Document::setGeometry(EntityId id, GeometryPtr geometry) {

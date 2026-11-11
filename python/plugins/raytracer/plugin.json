@@ -1,0 +1,8 @@
+{
+  "id": "raytracer",
+  "name": "Raytracer",
+  "version": "0.1.0",
+  "api": 1,
+  "entry": "raytracer_plugin:RaytracerPlugin",
+  "description": "Raytatouille: load optical systems, trace rays, irradiance on the image, optimise live. Needs the Python package raytatouille in the plugin environment."
+}

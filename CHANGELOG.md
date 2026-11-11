@@ -6,6 +6,13 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- **Raytracer plugin (P6)**, `python/plugins/raytracer`: loads Raytatouille systems
+  (`.rtt.json`) as NURBS faces (bridge rtt → NURBS: interpolated sag within a tolerance,
+  exact trims, lens rims, stop ring) in a model tree following the rtt node tree; traces rays
+  (line set) and the irradiance on the image surface (face field); optimises with live
+  surface updates and a merit curve; saves the system. Undo in CAD follows the system revision.
+- Plugin API: `ctx.remove`, `ctx.groups`, `ctx.add_group`, `ctx.remove_group`, `group=` in
+  `ctx.add` – all part of the run's single undo step.
 - **Plugin signatures (P5):** only plugins signed with the built-in publisher key load
   (Ed25519 via Monocypher; file `SIGNATURE`); they run from a private, checked copy. Developer
   mode loads unsigned plugins, marked, with a red banner. Tool `nfcad-plugin` (keygen, sign,

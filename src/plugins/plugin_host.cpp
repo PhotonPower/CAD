@@ -270,9 +270,58 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     document::Entity e = document::make_entity(document::geometry_from_json(args["geometry"].toObject()),
                                                args["name"].toString());
     e.attributes = args["attributes"].toObject().toVariantMap();
+    const auto group = static_cast<document::GroupId>(args["group"].toInteger());
+    if (group != 0 && doc_->group(group) == nullptr) throw std::runtime_error("unknown group");
+    e.group = group;
     const EntityId id = doc_->insert(std::move(e));  // live; one undo step at the end of the job
     added_.push_back(id);
     return static_cast<qint64>(id);
+  }
+  if (method == QLatin1String("model.remove")) {
+    const auto id = static_cast<EntityId>(args["id"].toInteger());
+    if (doc_->entity(id) == nullptr) throw std::runtime_error("unknown entity");
+    document::Entity e = doc_->erase(id);
+    if (const auto it = std::find(added_.begin(), added_.end(), id); it != added_.end()) {
+      added_.erase(it);  // added and removed in the same run: nothing to undo
+    } else {
+      // the undo step restores the state before the run
+      if (const auto g = original_geometry_.find(id); g != original_geometry_.end()) e.geometry = g->second;
+      if (const auto a = original_attributes_.find(id); a != original_attributes_.end()) e.attributes = a->second;
+      removed_.push_back(std::move(e));
+    }
+    original_geometry_.erase(id);
+    original_attributes_.erase(id);
+    return QJsonValue::Null;
+  }
+  if (method == QLatin1String("model.groups")) {
+    QJsonArray out;
+    for (const document::Group& g : doc_->groups()) {
+      out.append(QJsonObject{{"id", static_cast<qint64>(g.id)}, {"name", g.name}, {"parent", static_cast<qint64>(g.parent)}});
+    }
+    return out;
+  }
+  if (method == QLatin1String("model.add_group")) {
+    const auto parent = static_cast<document::GroupId>(args["parent"].toInteger());
+    if (parent != 0 && doc_->group(parent) == nullptr) throw std::runtime_error("unknown parent group");
+    const document::GroupId id = doc_->insertGroup({0, args["name"].toString(), parent, true});
+    added_groups_.push_back(id);
+    return static_cast<qint64>(id);
+  }
+  if (method == QLatin1String("model.remove_group")) {
+    const auto id = static_cast<document::GroupId>(args["id"].toInteger());
+    const document::Group* g = doc_->group(id);
+    if (g == nullptr) throw std::runtime_error("unknown group");
+    const bool has_children = std::any_of(doc_->groups().begin(), doc_->groups().end(),
+                                          [id](const document::Group& o) { return o.parent == id; });
+    if (has_children || !doc_->entitiesInGroup(id).empty()) throw std::runtime_error("group is not empty");
+    const document::Group copy = *g;
+    doc_->eraseGroup(id);
+    if (const auto it = std::find(added_groups_.begin(), added_groups_.end(), id); it != added_groups_.end()) {
+      added_groups_.erase(it);
+    } else {
+      removed_groups_.push_back(copy);
+    }
+    return QJsonValue::Null;
   }
   if (method == QLatin1String("model.replace")) {
     const auto id = static_cast<EntityId>(args["id"].toInteger());
@@ -368,20 +417,29 @@ void PluginHost::beginJob(int job) {
   original_geometry_.clear();
   original_attributes_.clear();
   added_.clear();
+  removed_.clear();
+  added_groups_.clear();
+  removed_groups_.clear();
 }
 
 void PluginHost::endJob(int job, bool ok, bool cancelled, const QString& message) {
   if (!active_job_ || *active_job_ != job) return;
   active_job_.reset();
   // everything the run changed in the model is one undo step (also when cancelled)
-  std::vector<std::pair<document::EntityId, document::GeometryPtr>> geometry(original_geometry_.begin(),
-                                                                              original_geometry_.end());
-  std::vector<std::pair<document::EntityId, QVariantMap>> attributes(original_attributes_.begin(),
-                                                                     original_attributes_.end());
-  doc_->recordApplied(manifest_.name, added_, geometry, attributes);
+  document::LiveChanges changes;
+  changes.added = std::move(added_);
+  changes.removed = std::move(removed_);
+  changes.added_groups = std::move(added_groups_);
+  changes.removed_groups = std::move(removed_groups_);
+  changes.old_geometry.assign(original_geometry_.begin(), original_geometry_.end());
+  changes.old_attributes.assign(original_attributes_.begin(), original_attributes_.end());
+  doc_->recordApplied(manifest_.name, changes);
   original_geometry_.clear();
   original_attributes_.clear();
   added_.clear();
+  removed_.clear();
+  added_groups_.clear();
+  removed_groups_.clear();
   emit finished(job, ok, cancelled, message);
 }
 

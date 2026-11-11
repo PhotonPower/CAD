@@ -50,7 +50,7 @@ class TestPluginHost : public QObject {
     host_->start(python_, plugins::PluginManager::nfcadPythonPath());
     QVERIFY2(ready.wait(20000), qPrintable(failed.isEmpty() ? QStringLiteral("timeout")
                                                             : failed.first().at(0).toString()));
-    QCOMPARE(host_->actions().size(), std::size_t{5});
+    QCOMPARE(host_->actions().size(), std::size_t{6});
     QCOMPARE(host_->paramsSchema().size(), 5);
     QCOMPARE(host_->paramsSchema()[0].toObject()["name"].toString(), QStringLiteral("count"));  // order kept
   }
@@ -106,6 +106,39 @@ class TestPluginHost : public QObject {
     QVERIFY(doc_.entity(ids[0])->attributes.isEmpty());
     doc_.undoStack()->redo();
     QCOMPARE(doc_.entities().size(), std::size_t{2});
+  }
+
+  void groupsAndRemovalOneUndoStep() {
+    // after modelAndResultsOneUndoStep: "target" and "from plugin"
+    QCOMPARE(doc_.entities().size(), std::size_t{2});
+    const document::Entity* from_plugin = nullptr;
+    for (const auto& [id, e] : doc_.entities()) from_plugin = e.name == QStringLiteral("from plugin") ? &e : from_plugin;
+    QVERIFY(from_plugin != nullptr);
+    const document::EntityId removed_id = from_plugin->id;
+    const document::GeometryPtr removed_geometry = from_plugin->geometry;
+    QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
+    QVERIFY(host_->run(QStringLiteral("tree")) > 0);
+    QVERIFY(waitFinished(finished));
+    QVERIFY2(finished.first().at(1).toBool(), qPrintable(finished.first().at(3).toString()));
+    QCOMPARE(doc_.groups().size(), std::size_t{2});
+    QCOMPARE(doc_.entity(removed_id), nullptr);
+    QCOMPARE(doc_.entities().size(), std::size_t{2});  // target + "in lens"
+    const document::Entity* in_lens = nullptr;
+    for (const auto& [id, e] : doc_.entities()) in_lens = e.name == QStringLiteral("in lens") ? &e : in_lens;
+    QVERIFY(in_lens != nullptr);
+    const document::GroupId lens = in_lens->group;
+    QCOMPARE(doc_.group(lens)->name, QStringLiteral("lens"));
+    QCOMPARE(doc_.group(doc_.group(lens)->parent)->name, QStringLiteral("system"));
+    // one undo step: groups gone, the removed entity back with its geometry from before the run
+    doc_.undoStack()->undo();
+    QCOMPARE(doc_.groups().size(), std::size_t{0});
+    QCOMPARE(doc_.entities().size(), std::size_t{2});
+    QVERIFY(doc_.entity(removed_id) != nullptr);
+    QVERIFY(doc_.entity(removed_id)->geometry == removed_geometry);
+    doc_.undoStack()->redo();
+    QCOMPARE(doc_.groups().size(), std::size_t{2});
+    QCOMPARE(doc_.entity(removed_id), nullptr);
+    QVERIFY(doc_.group(lens) != nullptr);  // same ids again
   }
 
   void parametersReachThePlugin() {
