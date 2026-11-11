@@ -6,6 +6,9 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- M6c – editing and analysis: Join (curve chains in any order, faces into shells), Explode,
+  Cap planar holes (`kernel::cap_planar_holes`), Split, Trim, Intersect, Area, Volume,
+  Curvature; tests incl. exact volumes of a joined box and a capped extrusion
 - M6b – surfaces from curves: Spline, Offset curve, Fillet curves (two curves or all corners),
   Plane, Extrude, Revolve, Loft, Sweep 1 / 2 rails, Coons, Gordon (network sorted
   automatically), Offset surface, Fillet surfaces; tests against exact areas

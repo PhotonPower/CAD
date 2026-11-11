@@ -94,6 +94,8 @@ std::unique_ptr<Command> create_solid_command(const QString& name);
 std::unique_ptr<Command> create_transform_command(const QString& name);
 std::unique_ptr<Command> create_surface_command(const QString& name);
 QStringList surface_command_ids();
+std::unique_ptr<Command> create_edit_command(const QString& name);
+QStringList edit_command_ids();
 QStringList solid_command_ids();
 QStringList transform_command_ids();
 }  // namespace detail

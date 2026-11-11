@@ -135,7 +135,9 @@ jobs build from M0 on but are allowed to fail until M7.
   Gordon (network sorted automatically), offset / fillet surfaces – all via Nurbforge
 - Moved to M6c: trim / split / join / explode, capping planar ends into solids, curvature analysis
 
-### M6c – Editing (open)
+### M6c – Editing and analysis ✅
+- Join (curves, faces → shell), Explode, Cap planar holes, Split / Trim (curves by points or
+  cutters, surfaces by surfaces), Intersect, Area, Volume, Curvature
 - Extrude, revolve, loft, sweep (1/2 rails), Coons/Gordon, offset, fillet
 - Solid primitives: box, sphere, cylinder, cone, torus; Booleans (union, difference, intersection)
 - Transform: move, copy, rotate, scale, mirror, arrays (linear, grid, polar)

@@ -35,6 +35,7 @@ qt_standard_project_setup(REQUIRES 6.8)
 # Layers below the widget layer; unit tested without a window (docs/architecture.md).
 add_library(nfcad_core STATIC
   src/commands/drawing_commands.cpp
+  src/commands/edit_commands.cpp
   src/commands/input_parser.cpp
   src/commands/solid_commands.cpp
   src/commands/surface_commands.cpp
