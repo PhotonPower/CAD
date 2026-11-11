@@ -78,7 +78,9 @@ jobs:
       - name: Failing tests run directly (diagnostics on failure)
         if: failure()
         run: |
-          foreach ($name in @("test_support")) {
+          $failed = Get-Content build\msvc\Testing\Temporary\LastTestsFailed.log -ErrorAction SilentlyContinue |
+                    ForEach-Object { ($_ -split ':', 2)[1] }
+          foreach ($name in $failed) {
             $exe = Get-ChildItem -Recurse build\msvc -Filter "$name.exe" | Select-Object -First 1
             if ($exe) {
               Write-Host "== $($exe.FullName)"

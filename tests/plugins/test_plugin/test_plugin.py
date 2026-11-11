@@ -1,7 +1,7 @@
 import os
 import time
 
-from nfcad import Param, Plugin, action
+from nfcad import Param, Plugin, UserError, action
 from nfcad import geometry as g
 
 
@@ -55,6 +55,10 @@ class TestPlugin(Plugin):
         while True:
             ctx.check_cancel()
             time.sleep(0.01)
+
+    @action("Needs input")
+    def needs_input(self, ctx):
+        raise UserError("Choose a file first.")
 
     @action("Raise")
     def fail(self, ctx):

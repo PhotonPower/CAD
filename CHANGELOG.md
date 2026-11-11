@@ -11,6 +11,12 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
   on the last surface of the path – incident weight per projected cell area, uncounted rays
   in the plugin log – instead of the plugin's own binning; it needs a Raytatouille with #379.
 
+### Fixed
+- Plugin panel in a narrow dock: rows wrap (editor below its label), the file chooser button is
+  no longer cut off, an empty file field says what to do.
+- Plugin errors the user can fix (`nfcad.UserError`, e.g. no system file chosen, missing glass
+  catalogue) are shown as a message instead of a Python traceback in the log.
+
 ## [1.0.0] - 2026-11-11
 
 First release: a CAD front end for Nurbforge with four views, object snaps, drawing, solids,

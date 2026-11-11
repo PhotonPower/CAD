@@ -122,7 +122,7 @@ void MainWindow::connectPlugin(plugins::PluginHost* host) {
     if (!text.isEmpty()) statusBar()->showMessage(text);
   });
   connect(host, &plugins::PluginHost::finished, this,
-          [this, host](int, bool ok, bool cancelled, const QString& message) {
+          [this, host](int, bool ok, bool cancelled, const QString& message, bool user_error) {
             if (active_plugin_ == host) active_plugin_ = nullptr;
             plugin_panel_->setBusy(false);
             if (std::exchange(plugin_started_on_empty_, false) && !doc_->entities().empty()) {
@@ -137,7 +137,10 @@ void MainWindow::connectPlugin(plugins::PluginHost* host) {
                                      : ok      ? tr("%1: %2").arg(what, message.isEmpty() ? tr("done") : message)
                                                : tr("%1 failed: %2").arg(what, message),
                                      ok ? 8000 : 0);
-            if (!ok && !cancelled) {
+            if (user_error) {
+              // something the user can fix (nfcad.UserError): say it, no traceback / log
+              QMessageBox::information(this, what, message);
+            } else if (!ok && !cancelled) {
               if (auto* d = findChild<QDockWidget*>(QStringLiteral("pluginLogDock"))) {
                 d->show();
                 d->raise();

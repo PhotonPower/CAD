@@ -6,7 +6,7 @@ its actions; the actions talk to CAD through the :class:`Context` they receive.
 """
 
 from .plugin import API_VERSION, Plugin, action
-from .context import Cancelled, Context
+from .context import Cancelled, Context, UserError
 from .params import Param
 
-__all__ = ["API_VERSION", "Plugin", "action", "Context", "Cancelled", "Param"]
+__all__ = ["API_VERSION", "Plugin", "action", "Context", "Cancelled", "UserError", "Param"]
