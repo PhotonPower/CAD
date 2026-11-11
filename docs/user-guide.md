@@ -81,7 +81,7 @@ Details: [snapping.md](snapping.md).
 
 | Format | Read | Write | Notes |
 |---|---|---|---|
-| `.nfcad` | ✓ | ✓ | the document: exact geometry, layers, groups, attributes, plugin parameters ([format](file-format.md)) |
+| `.rttf` (also `.nfcad` from before 1.0) | ✓ | ✓ | the document: exact geometry, layers, groups, attributes, plugin parameters ([format](file-format.md)) |
 | STEP | ✓ | ✓ (AP214) | opening replaces the document, *File → Import STEP…* adds to it; *File → Export STEP…* writes solids and surfaces exactly |
 | STL | | ✓ | *File → Export STL…*: binary, from the display tessellation |
 

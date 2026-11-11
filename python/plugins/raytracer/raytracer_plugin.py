@@ -37,6 +37,14 @@ except ImportError:  # reported when an action runs
 TOP_GROUP_PREFIX = "Raytatouille: "
 
 
+def rings_for(rays: int) -> int:
+    """Hexapolar rings r whose 1 + 3 r (r + 1) rays come closest to `rays` (at least 1 ring)."""
+    r = (-3 + np.sqrt(max(9 + 12 * (rays - 1), 0))) / 6
+    lo, hi = max(1, int(np.floor(r))), max(1, int(np.ceil(r)))
+    count = lambda k: 1 + 3 * k * (k + 1)
+    return lo if abs(count(lo) - rays) <= abs(count(hi) - rays) else hi
+
+
 def _require_rt():
     if rt is None:
         raise UserError("The Python package 'raytatouille' is not installed in the plugin's Python "
@@ -59,13 +67,14 @@ class RaytracerPlugin(Plugin):
                            description="Names of the paths, separated by commas; empty: every path"),
         "fields": Param.integer(0, min=0, label="Field", group="Trace", description="0: all fields"),
         "wavelengths": Param.choice(["all", "reference"], "all", label="Wavelengths", group="Trace"),
-        "rings": Param.integer(6, min=1, max=60, label="Pupil rings (drawn)", group="Trace",
-                               description="Hexapolar sampling of the rays that are drawn"),
+        "rays": Param.integer(127, min=1, max=20_000, label="Rays (drawn)", group="Trace",
+                              description="Rays drawn per field and wavelength (hexapolar pupil; the next possible "
+                                          "number 1, 7, 19, 37, … 127, … is used)"),
         "colour_by": Param.choice(["wavelength", "field", "path"], "wavelength", label="Colour by", group="Trace"),
         "irradiance": Param.boolean(False, label="Quick irradiance", group="Trace",
                                     description="A coarse irradiance with the trace; for a real camera image use "
                                                 "Camera image"),
-        "irradiance_rings": Param.integer(40, min=2, max=400, label="Pupil rings (quick irradiance)", group="Trace"),
+        "irradiance_rays": Param.integer(5_000, min=7, max=500_000, label="Rays (quick irradiance)", group="Trace"),
         "grid": Param.integer(128, min=8, max=1024, label="Quick irradiance grid", group="Trace"),
         "camera_rays": Param.integer(200_000, min=1_000, max=50_000_000, label="Rays per field and wavelength",
                                      group="Camera image",
@@ -356,7 +365,7 @@ class RaytracerPlugin(Plugin):
                 summary.append(f"{label}: {n_ok}/{n_total}")
                 if p["irradiance"]:
                     self._irradiance(ctx, system, compiled, path, fields, wls, last, irradiance,
-                                     rings=p["irradiance_rings"], pixels=p["grid"])
+                                     rings=rings_for(p["irradiance_rays"]), pixels=p["grid"])
             except UserError as e:
                 if len(paths) == 1:
                     raise
@@ -383,7 +392,7 @@ class RaytracerPlugin(Plugin):
         n_ok = n_total = 0
         last_surface = None
         for w in wls:
-            rays = self._make_rays(system, compiled, p["rings"], path, fields, w)
+            rays = self._make_rays(system, compiled, rings_for(p["rays"]), path, fields, w)
             stats, rec = rt.trace.trace(compiled, rays, path=path, record_path=True,
                                         max_recorded_rays=max(rays.size, 1))
             events = np.asarray(rec.event_surfaces)
@@ -505,9 +514,7 @@ class RaytracerPlugin(Plugin):
         fields = None if p["fields"] == 0 else [p["fields"] - 1]
         wls = range(len(compiled.wavelengths_um)) if p["wavelengths"] == "all" else [None]
         n_fields = compiled.field_count if fields is None else 1
-        # hexapolar rings for the wanted number of rays per field and wavelength: 1 + 3 r (r + 1)
-        target = max(p["camera_rays"], 1)
-        rings = max(1, int(np.ceil((-3 + np.sqrt(9 + 12 * (target - 1))) / 6)))
+        rings = rings_for(p["camera_rays"])
         self._warn_inactive(ctx)
         run = ctx.result_set(f"Camera image {Path(self.loaded_from or 'system').name.split('.')[0]}")
         acc: dict[int, dict] = {}

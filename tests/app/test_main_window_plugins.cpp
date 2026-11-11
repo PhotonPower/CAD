@@ -60,6 +60,21 @@ class TestMainWindowPlugins : public QObject {
           return rays != nullptr;
         }(),
         20000);
+    // Uninstall lists the plugin from the folder, greyed out with where it comes from
+    QMenu* uninstall = nullptr;
+    for (QAction* a : plugins->actions()) {
+      if (a->menu() != nullptr && a->text().contains(QStringLiteral("Uninstall"))) uninstall = a->menu();
+    }
+    QVERIFY(uninstall != nullptr);
+    bool listed = false;
+    for (QAction* a : uninstall->actions()) {
+      if (a->text().contains(QStringLiteral("Demo plugin"))) {
+        listed = true;
+        QVERIFY(!a->isEnabled());
+        QVERIFY(a->toolTip().contains(QStringLiteral("examples")));
+      }
+    }
+    QVERIFY(listed);
     // the plugin also got a group in the tool column
     auto* toolbox = w.findChild<nfcad::ui::ToolBox*>();
     QVERIFY(toolbox != nullptr);

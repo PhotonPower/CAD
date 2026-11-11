@@ -76,7 +76,7 @@ class TestRaytracerPlugin : public QObject {
     host_->start(python, plugins::PluginManager::nfcadPythonPath());
     QVERIFY(ready.wait(30000));
     params_ = {{"system", dir + QStringLiteral("/examples/singlet_optim.rtt.json")},
-               {"irradiance_rings", 12},
+               {"irradiance_rays", 469},
                {"grid", 64}};
   }
 
