@@ -19,7 +19,7 @@ Raytatouille Fusion – milestone P6 of the [plugin plan](../../../docs/plugins.
 | Action | What happens |
 |---|---|
 | **Load system** | reads the `.rtt.json` (*System file*), compiles it with the glass catalogues and draws every surface as a NURBS face – lenses with their rims, the aperture stop as a ring, the image surface sized to the spot. The model tree follows the rtt node tree. Loading again replaces the drawing. |
-| **Trace rays** | rays along the path (*Path*, *Field*, *Wavelengths*, *Pupil rings*) as a line set in *Results*, coloured by wavelength or field; with *Irradiance on the image* the irradiance on the last surface of the path as a field on its face (*Irradiance grid*, *Pupil rings (irradiance)*), computed by Raytatouille (`rt.analysis.irradiance_map`, #379: incident weight per projected cell area). Rays that are not counted (outside the face, vignetted, not reached) are listed in the plugin log. |
+| **Trace rays** | rays along the paths (*Paths*: names separated by commas, empty = every path of the system; *Field*, *Wavelengths*, *Pupil rings*), one line set per path in *Results* (show / hide each), coloured by wavelength, field or path; with *Irradiance on the image* the irradiance on the last surface of each path as a field on its face – paths ending on the same surface add up (incoherently, no interference) (*Irradiance grid*, *Pupil rings (irradiance)*), computed by Raytatouille (`rt.analysis.irradiance_map`, #379: incident weight per projected cell area). Rays that are not counted (outside the face, vignetted, not reached) are listed in the plugin log. |
 | **Optimise** | Raytatouille's optimiser on the system's variables and merit function; the changed surfaces are redrawn after every accepted iteration, the merit function grows in the *Plot* dock. Cancel (Esc) ends with the last accepted state. |
 | **Save system** | writes the current system (*Save as*, default `<system>.optimised.rtt.json`). |
 
@@ -31,11 +31,21 @@ constant indices compile, such as `examples/singlet_optim.rtt.json`.
 system and stores the number in the attribute `rtt.revision` of the first surface; after an
 undo of an optimisation the next action continues with the system before it.
 
-**Drawing accuracy.** Surfaces are drawn as bicubic B-splines that interpolate the exact sag
-(*Drawing tolerance*, default 0.1 µm; planes exact) and trimmed with exact circles / ellipses.
-Rays are always traced on the exact surfaces. Non-smooth shapes (the tip of an axicon) are
-drawn with a larger error; the plugin log names them, and the error per surface is in the
-attribute `rtt.nurbs_error_mm`.
+**Drawing accuracy.** Rotationally symmetric surfaces (conic, aspheres, axicon, Q-type) with a
+circular aperture are drawn as surfaces of revolution: the profile is interpolated along its
+arc length, so steep, nearly hemispherical lenses are drawn as exactly as flat ones. Other
+shapes, rectangular / elliptical apertures and image surfaces are bicubic B-splines over the
+local x-y plane, trimmed with exact curves. The *Drawing tolerance* (default 0.1 µm) is
+checked; planes are exact. Rays are always traced on the exact surfaces. The error per
+surface is in the attribute `rtt.nurbs_error_mm`; surfaces above the tolerance are named in
+the plugin log.
+
+**Folded and tilted paths** (beam splitters, interferometers such as a Linnik): Raytatouille's
+ray aiming needs a rotationally symmetric path. For other paths the plugin starts the rays
+itself – on the same hexapolar grid over the stop, along the field angles (object at infinity)
+or from the object points (finite object). That is exact when the aperture stop is the first
+surface of the path (as with an illumination stop); otherwise the plugin says that it cannot
+aim into the path.
 
 ## Not yet
 
