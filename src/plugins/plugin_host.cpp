@@ -3,6 +3,7 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QRandomGenerator>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -93,9 +94,16 @@ std::optional<Manifest> read_manifest(const QString& dir, QString* error) {
   m.api = o["api"].toInt();
   m.entry = o["entry"].toString();
   m.description = o["description"].toString();
+  for (const QJsonValue& r : o["requires"].toArray()) m.requirements << r.toString().trimmed();
+  m.update_url = o["update_url"].toString();
   m.directory = QDir(dir).absolutePath();
   m.source_directory = m.directory;
   if (m.id.isEmpty() || m.entry.isEmpty()) return fail(QObject::tr("plugin.json needs 'id' and 'entry'"));
+  // the id names the folder of an installed plugin
+  static const QRegularExpression valid_id(QStringLiteral("^[a-z0-9][a-z0-9_.-]{0,63}$"));
+  if (!valid_id.match(m.id).hasMatch()) {
+    return fail(QObject::tr("plugin id '%1': use lower-case letters, digits, '_', '-', '.'").arg(m.id));
+  }
   if (m.api != kPluginApiVersion) {
     return fail(QObject::tr("plugin API %1 is not supported (this version: %2)").arg(m.api).arg(kPluginApiVersion));
   }

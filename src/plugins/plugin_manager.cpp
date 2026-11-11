@@ -42,6 +42,40 @@ void PluginManager::setPython(const QString& path) {
   for (auto& h : hosts_) h->stop();
 }
 
+QString PluginManager::installFolder() {
+  const QString env = qEnvironmentVariable("NFCAD_PLUGIN_INSTALL_DIR");
+  if (!env.isEmpty()) return env;
+  return QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath(QStringLiteral("plugins"));
+}
+
+Installation PluginManager::install(const QString& package) {
+  for (auto& h : hosts_) h->stop();  // an installed version may be running from its folder
+  Installation r = install_plugin(package, installFolder(), trustedKeys(), developerMode());
+  reload();
+  return r;
+}
+
+QString PluginManager::uninstall(const QString& id) {
+  for (auto& h : hosts_) h->stop();
+  const QString error = uninstall_plugin(installFolder(), id);
+  reload();
+  return error;
+}
+
+bool PluginManager::isInstalled(const PluginHost* host) const {
+  return QFileInfo(host->manifest().source_directory).absolutePath() == QDir(installFolder()).absolutePath();
+}
+
+EnvironmentReport PluginManager::checkEnvironment() const {
+  QStringList requirements{QStringLiteral("numpy")};  // the nfcad package uses it for arrays
+  for (const auto& h : hosts_) {
+    for (const QString& r : h->manifest().requirements) {
+      if (!requirements.contains(r)) requirements << r;
+    }
+  }
+  return check_environment(python(), requirements);
+}
+
 QStringList PluginManager::folders() const {
   QStringList out = QSettings().value(QStringLiteral("plugins/folders")).toStringList();
   for (const QString& p : qEnvironmentVariable("NFCAD_PLUGIN_PATH").split(QDir::listSeparator(), Qt::SkipEmptyParts)) {
@@ -52,6 +86,7 @@ QStringList PluginManager::folders() const {
     out << QStringLiteral(NFCAD_PYTHON_SOURCE_DIR "/examples") << QStringLiteral(NFCAD_PYTHON_SOURCE_DIR "/plugins");
   }
 #endif
+  if (!out.contains(installFolder())) out.prepend(installFolder());  // installed plugins win over same ids
   return out;
 }
 

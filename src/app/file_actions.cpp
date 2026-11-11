@@ -14,6 +14,7 @@
 #include "document/nfcad_io.hpp"
 #include "kernel/geometry_ops.hpp"
 #include "kernel/step_import.hpp"
+#include "plugins/distribution.hpp"
 #include "document/selection.hpp"
 #include "tessellation/stl_export.hpp"
 #include "render/scene.hpp"
@@ -72,6 +73,10 @@ void MainWindow::importStepDialog() {
 }
 
 bool MainWindow::openFile(const QString& path, bool quiet) {
+  if (path.endsWith(QLatin1String(plugins::kPackageSuffix), Qt::CaseInsensitive)) {
+    installPlugin(path);  // a plugin package (P7)
+    return true;
+  }
   load_timer_.start();
   if (is_step(path)) {
     importStep(path, /*replace=*/true, quiet);

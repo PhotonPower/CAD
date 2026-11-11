@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
   parser.addHelpOption();
   parser.addVersionOption();
   parser.addPositionalArgument(QStringLiteral("file"),
-                               QStringLiteral("Document (.nfcad) or STEP file to open"));
+                               QStringLiteral("Document (.nfcad) or STEP file to open, or a plugin package (.nfplugin) to install"));
   const QCommandLineOption benchmark(
       QStringLiteral("benchmark"),
       QStringLiteral("Open the file, orbit the 3D view for <frames> frames, print timings, quit."),

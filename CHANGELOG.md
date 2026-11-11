@@ -6,6 +6,11 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- **Plugin distribution (P7):** `.nfplugin` packages (zip of the plugin folder with its
+  signature; `nfcad-plugin pack`), *Plugins → Install plugin…* / *Uninstall plugin* into the
+  folder for installed plugins (also by opening the file); requirements in `plugin.json`
+  (`requires`) with *Check environment* and *Create environment…* in the plugin settings;
+  manual update check *Help → Check for updates…* (GitHub releases, `update_url` of plugins).
 - **Raytracer plugin (P6)**, `python/plugins/raytracer`: loads Raytatouille systems
   (`.rtt.json`) as NURBS faces (bridge rtt → NURBS: interpolated sag within a tolerance,
   exact trims, lens rims, stop ring) in a model tree following the rtt node tree; traces rays

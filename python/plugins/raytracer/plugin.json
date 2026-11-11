@@ -4,5 +4,6 @@
   "version": "0.1.0",
   "api": 1,
   "entry": "raytracer_plugin:RaytracerPlugin",
+  "requires": ["numpy", "raytatouille>=0.9"],
   "description": "Raytatouille: load optical systems, trace rays, irradiance on the image, optimise live. Needs the Python package raytatouille in the plugin environment."
 }
