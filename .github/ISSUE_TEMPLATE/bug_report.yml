@@ -1,0 +1,26 @@
+name: Bug report
+description: Crash, wrong display, wrong snap or build failure
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Steps to reproduce; attach a model file (STEP / .nfcad) and a screenshot if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [macOS (Apple Silicon), macOS (Intel), Windows 11, AlmaLinux / RHEL 10, Other]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit (Help → About shows app, Nurbforge and Qt versions)

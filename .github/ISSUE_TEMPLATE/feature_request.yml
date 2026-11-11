@@ -1,0 +1,20 @@
+name: Feature request
+description: New tool, snap type, view feature or platform support
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What should the application do?
+      description: How do established CAD programs handle it? Mock-ups welcome.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Tool column, Viewports / navigation, Display modes, Object snaps, Commands, Modelling, Platform, Other]
+  - type: input
+    id: milestone
+    attributes:
+      label: Fits milestone (see docs/plan.md)

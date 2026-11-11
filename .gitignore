@@ -1,0 +1,24 @@
+# Build
+/build/
+/out/
+CMakeUserPresets.json
+compile_commands.json
+*.qsb
+
+# CAD outputs
+*.step
+*.stp
+*.stl
+*.msh
+
+# IDEs / OS
+.vscode/
+.idea/
+.vs/
+*.user
+*.swp
+.DS_Store
+Thumbs.db
+
+# Claude Code agent worktrees
+.claude/worktrees/
