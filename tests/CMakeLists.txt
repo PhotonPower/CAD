@@ -34,3 +34,9 @@ target_compile_definitions(test_plugin_host PRIVATE NFCAD_TEST_PLUGIN_DIR="${CMA
 nfcad_add_test(test_main_window_plugins app/test_main_window_plugins.cpp nfcad_gui)
 target_compile_definitions(test_main_window_plugins PRIVATE NFCAD_EXAMPLES_DIR="${PROJECT_SOURCE_DIR}/python/examples")
 nfcad_add_test(test_plugin_form ui/test_plugin_form.cpp nfcad_gui)
+nfcad_add_test(test_plugin_signature plugins/test_plugin_signature.cpp nfcad_core)
+target_compile_definitions(test_plugin_signature PRIVATE NFCAD_TEST_PLUGIN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/plugins/test_plugin")
+# Signed plugins in the repository must stay valid (P5)
+add_test(NAME signed_plugins
+         COMMAND ${CMAKE_COMMAND} -DTOOL=$<TARGET_FILE:nfcad-plugin> -DROOT=${PROJECT_SOURCE_DIR}/python
+                 -P ${PROJECT_SOURCE_DIR}/cmake/VerifySignedPlugins.cmake)

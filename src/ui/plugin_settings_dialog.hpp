@@ -2,6 +2,7 @@
 
 #include <QDialog>
 
+class QCheckBox;
 class QLineEdit;
 class QListWidget;
 class QLabel;
@@ -25,6 +26,7 @@ class PluginSettingsDialog : public QDialog {
   plugins::PluginManager* manager_;
   QLineEdit* python_ = nullptr;
   QListWidget* folders_ = nullptr;
+  QCheckBox* developer_ = nullptr;
 };
 
 }  // namespace nfcad::ui

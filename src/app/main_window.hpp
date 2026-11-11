@@ -118,6 +118,7 @@ class MainWindow : public QMainWindow {
   QToolButton* job_cancel_ = nullptr;
   QPlainTextEdit* plugin_log_ = nullptr;
   ui::PluginPanel* plugin_panel_ = nullptr;
+  QLabel* developer_banner_ = nullptr;
   snap::SnapEngine* snap_engine_ = nullptr;
   class CommandController* commands_ = nullptr;
   QLineEdit* command_line_ = nullptr;

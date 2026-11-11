@@ -1,5 +1,6 @@
 #include "ui/plugin_settings_dialog.hpp"
 
+#include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFormLayout>
@@ -8,9 +9,11 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QSettings>
 #include <QVBoxLayout>
 
 #include "plugins/plugin_manager.hpp"
+#include "plugins/signature.hpp"
 
 namespace nfcad::ui {
 
@@ -39,6 +42,23 @@ PluginSettingsDialog::PluginSettingsDialog(plugins::PluginManager* manager, QWid
   folder_buttons->addWidget(remove);
   folder_buttons->addStretch();
   layout->addLayout(folder_buttons);
+  // signatures (P5)
+  const QStringList keys = manager_->trustedKeys();
+  auto* publisher = new QLabel(
+      keys.isEmpty() ? tr("Trusted publisher: none built in – signed plugins cannot be loaded (see keys/trusted-publishers.txt)")
+                     : tr("Trusted publisher key: %1").arg(keys.join(QStringLiteral(", "))),
+      this);
+  publisher->setWordWrap(true);
+  publisher->setTextInteractionFlags(Qt::TextSelectableByMouse);
+  layout->addWidget(publisher);
+  developer_ = new QCheckBox(tr("Developer mode: also load unsigned plugins"), this);
+  developer_->setChecked(manager_->developerMode());
+  developer_->setToolTip(tr("Unsigned plugins run Python code that nobody has vouched for. Only for plugins you are developing."));
+  if (qEnvironmentVariable("NFCAD_DEVELOPER_MODE") == QLatin1String("1")) {
+    developer_->setEnabled(false);
+    developer_->setText(developer_->text() + tr(" (on through NFCAD_DEVELOPER_MODE)"));
+  }
+  layout->addWidget(developer_);
   if (!manager_->problems().isEmpty()) {
     auto* problems = new QLabel(tr("Problems:\n") + manager_->problems().join(QLatin1Char('\n')), this);
     problems->setWordWrap(true);
@@ -69,7 +89,10 @@ void PluginSettingsDialog::apply() {
   manager_->setPython(python_->text().trimmed());
   QStringList folders;
   for (int i = 0; i < folders_->count(); ++i) folders << folders_->item(i)->text();
-  manager_->setFolders(folders);
+  if (developer_->isEnabled() && developer_->isChecked() != manager_->developerMode()) {
+    QSettings().setValue(QStringLiteral("plugins/developerMode"), developer_->isChecked());
+  }
+  manager_->setFolders(folders);  // reloads
 }
 
 }  // namespace nfcad::ui

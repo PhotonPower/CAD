@@ -137,6 +137,8 @@ class Raytracer(plugin.Plugin):
 
 - Ed25519 signature over the manifest and the SHA-256 of every file (`nfcad-plugin sign`,
   `nfcad-plugin verify`; the private key never leaves the signer's machine / a CI secret).
+  Implemented in P5: file `SIGNATURE` next to `plugin.json`, Monocypher, checked private copy –
+  [ADR 0009](adr/0009-plugin-signatures.md), [plugin-api.md](plugin-api.md#signing).
 - Exactly **one** trusted key – the project owner's – is built into the application; there is no
   user-managed list of publishers. Replacing the key needs a new CAD build.
 - Unsigned or modified plugins are not loaded; a developer mode (explicit switch, red banner)
@@ -166,7 +168,7 @@ CAD curves* for rays). Colour maps: viridis, inferno, plasma, coolwarm, grey. No
 | **P2** ✅ | CAD core, part 2: result sets and layers – line sets with per-vertex colour, face fields / images with colour maps and legend, plot dock (curves), promote rays to CAD curves; *Help → Demo results* | yes, with generated demo data |
 | **P3** ✅ | Plugin host: process start / stop, `nfcad` client package, channel (TCP on 127.0.0.1 with a token; arrays as mapped temporary files), model access, geometry exchange, results API, job runner (progress, cancel, log), one undo step per run – see [plugin-api.md](plugin-api.md) | yes, with a test plugin |
 | **P4** ✅ | Parameter panel from the schema (numbers + units, enums, lists, files, entity pick, point pick with snaps), parameter sets saved in the document | yes |
-| **P5** | Signing: manifest, `nfcad-plugin sign / verify`, trusted keys, developer mode, CI check | yes |
+| **P5** ✅ | Signing: manifest, `nfcad-plugin sign / verify`, trusted keys, developer mode, CI check | yes |
 | **P6** | Reference plugin *Raytracer*: load / edit `.rtt.json`, bridge to Nurbforge geometry, model tree from the rtt node tree, trace with rays, image-surface irradiance as face field, optimise (final result; live once rtt has the iteration callback), convergence plot, undo via inverse patches | needs Raytatouille + the library items of section 2a |
 | **P7** | Distribution: Python runtime for the plugins (❓ D5), plugin installation from a file, update check | – |
 

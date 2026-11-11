@@ -1,0 +1,7 @@
+# Public keys whose plugin signatures Raytatouille Fusion accepts (docs/plugins.md, D3:
+# exactly one publisher, the project owner). One key per line: "ed25519:<base64>  <comment>".
+# Built into the application at configure time; changing it needs a new build.
+#
+# Create the key pair once on the signer's machine (the secret key never leaves it):
+#   build/<preset>/tools/nfcad-plugin keygen ~/.raytatouille-fusion/publisher.key
+# and paste the printed public key line here.

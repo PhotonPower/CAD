@@ -6,6 +6,8 @@
 #include <QSettings>
 #include <QStandardPaths>
 
+#include "plugins/signature.hpp"
+
 namespace nfcad::plugins {
 
 PluginManager::PluginManager(document::Document* doc, document::Selection* selection,
@@ -74,21 +76,53 @@ QString PluginManager::nfcadPythonPath() {
   return {};
 }
 
+bool PluginManager::developerMode() const {
+  return QSettings().value(QStringLiteral("plugins/developerMode"), false).toBool() ||
+         qEnvironmentVariable("NFCAD_DEVELOPER_MODE") == QLatin1String("1");
+}
+
+void PluginManager::setDeveloperMode(bool on) {
+  QSettings().setValue(QStringLiteral("plugins/developerMode"), on);
+  reload();
+}
+
+QStringList PluginManager::trustedKeys() const {
+  return trusted_override_ ? *trusted_override_ : built_in_publisher_keys();
+}
+
 void PluginManager::reload() {
   for (auto& h : hosts_) h->stop();
   hosts_.clear();
   problems_.clear();
+  runtime_ = std::make_unique<QTemporaryDir>();  // the previous copies are removed
+  const bool developer = developerMode();
+  const QStringList keys = trustedKeys();
+  int copies = 0;
   for (const QString& folder : folders()) {
     const QDir dir(folder);
     const QStringList subdirs = dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
     for (const QString& sub : subdirs) {
       const QString path = dir.filePath(sub);
       if (!QFileInfo::exists(QDir(path).filePath(QStringLiteral("plugin.json")))) continue;
+      // signed: check a private copy and run that; otherwise only in developer mode, from the folder
+      const QString copy = runtime_->isValid() ? runtime_->filePath(QString::number(++copies)) : QString();
+      const Verification v = copy.isEmpty() ? Verification{} : verify_plugin(path, keys, copy);
+      if (!v.ok() && !developer) {
+        problems_ << tr("%1: %2 – not loaded (only signed plugins; unsigned ones in developer mode)")
+                         .arg(QDir::toNativeSeparators(path), v.message.isEmpty() ? tr("cannot be checked") : v.message);
+        continue;
+      }
       QString error;
-      auto m = read_manifest(path, &error);
+      auto m = read_manifest(v.ok() ? copy : path, &error);
       if (!m) {
         problems_ << QStringLiteral("%1: %2").arg(path, error);
         continue;
+      }
+      m->source_directory = QDir(path).absolutePath();
+      m->trusted = v.ok();
+      if (!v.ok()) {
+        m->trust_note = v.status == Verification::Status::Unsigned ? tr("unsigned") : tr("signature invalid");
+        problems_ << tr("%1: %2 – loaded because developer mode is on").arg(QDir::toNativeSeparators(path), v.message);
       }
       if (plugin(m->id) != nullptr) {
         problems_ << tr("%1: plugin id '%2' is used twice").arg(path, m->id);

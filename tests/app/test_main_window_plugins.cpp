@@ -1,3 +1,4 @@
+#include <QLabel>
 #include <QMenuBar>
 #include <QStatusBar>
 #include <QStandardPaths>
@@ -18,7 +19,11 @@ class TestMainWindowPlugins : public QObject {
     }
     QStandardPaths::setTestModeEnabled(true);  // settings of this test only
     qputenv("NFCAD_PLUGIN_PATH", QByteArray(NFCAD_EXAMPLES_DIR));
+    qputenv("NFCAD_DEVELOPER_MODE", "1");  // the example plugin in the repository is not signed
     nfcad::app::MainWindow w;
+    bool banner = false;  // developer mode is always visible
+    for (auto* l : w.statusBar()->findChildren<QLabel*>()) banner = banner || (l->text().contains(QStringLiteral("DEVELOPER MODE")) && !l->isHidden());
+    QVERIFY(banner);
     // the plugin menu fills once the demo plugin said hello
     QMenu* plugins = nullptr;
     for (QAction* a : w.menuBar()->actions()) {

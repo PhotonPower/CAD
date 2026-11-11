@@ -2,7 +2,9 @@
 
 #include <QObject>
 #include <QStringList>
+#include <QTemporaryDir>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "plugins/plugin_host.hpp"
@@ -18,6 +20,9 @@ namespace nfcad::plugins {
 ///   a plugin.json is a plugin.
 /// - The nfcad package: $NFCAD_PYTHONPATH, else next to the application (installed), else the
 ///   source tree (development build).
+/// - Signatures (P5, decision D3): only plugins signed with a built-in publisher key are loaded;
+///   they run from a private copy of exactly the signed files. Developer mode (setting
+///   "plugins/developerMode" or $NFCAD_DEVELOPER_MODE=1) also loads unsigned plugins, marked.
 class PluginManager : public QObject {
   Q_OBJECT
  public:
@@ -30,6 +35,13 @@ class PluginManager : public QObject {
   [[nodiscard]] QStringList folders() const;
   void setFolders(const QStringList& folders);
   [[nodiscard]] static QString nfcadPythonPath();
+
+  [[nodiscard]] bool developerMode() const;
+  /// Saved in the settings; reloads the plugins.
+  void setDeveloperMode(bool on);
+  /// Publisher keys whose signatures are accepted (built in; tests may replace them).
+  [[nodiscard]] QStringList trustedKeys() const;
+  void setTrustedKeysForTesting(const QStringList& keys) { trusted_override_ = keys; }
 
   /// Re-reads the plugin folders (stops running plugins).
   void reload();
@@ -51,6 +63,8 @@ class PluginManager : public QObject {
   results::ResultStore* results_;
   std::vector<std::unique_ptr<PluginHost>> hosts_;
   QStringList problems_;
+  std::unique_ptr<QTemporaryDir> runtime_;  ///< checked copies of the signed plugins
+  std::optional<QStringList> trusted_override_;
 };
 
 }  // namespace nfcad::plugins

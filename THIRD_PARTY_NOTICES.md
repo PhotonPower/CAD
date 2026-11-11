@@ -6,4 +6,5 @@ Raytatouille Fusion (MIT, see LICENSE) uses:
 |---|---|---|
 | [Qt 6](https://www.qt.io) | LGPL-3.0 (dynamically linked) | GUI, rendering (RHI), concurrency. The Qt libraries shipped with the Windows installer and the macOS bundle can be replaced by compatible versions; Linux packages use the distribution's Qt. Source: https://download.qt.io |
 | [Nurbforge](https://github.com/PhotonPower/Nurbforge) | MIT | NURBS kernel (statically linked) |
+| [Monocypher](https://monocypher.org) 4.0.2 | CC0-1.0 or BSD-2-Clause (unmodified) | Ed25519 plugin signatures. Source: https://github.com/LoupVaillant/Monocypher |
 | [CDT](https://github.com/artem-ogre/CDT) 1.4.4 | MPL-2.0 (unmodified, header-only) | Constrained Delaunay triangulation of trimmed faces. Source: https://github.com/artem-ogre/CDT |
