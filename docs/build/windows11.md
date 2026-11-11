@@ -29,7 +29,7 @@ choose another one.
 ```powershell
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNFCAD_BUILD_TESTS=OFF
 cmake --build build
-cmake --install build --component app --prefix stage      # runs windeployqt
+cmake --install build --component app --prefix "$PWD\stage"   # runs windeployqt (absolute prefix!)
 & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DSourceDir=$PWD\stage /DOutputDir=$PWD\dist packaging\windows\nurbforge-cad.iss
 ```
 

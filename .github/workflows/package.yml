@@ -37,7 +37,8 @@ jobs:
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNFCAD_BUILD_TESTS=OFF "-DNFCAD_NURBFORGE_TAG=${{ env.NURBFORGE_TAG }}"
           cmake --build build
       - name: Stage (windeployqt)
-        run: cmake --install build --component app --prefix stage
+        # Qt 6.8's deploy support needs an absolute prefix
+        run: cmake --install build --component app --prefix "$PWD\stage"
       - name: Check the staged files
         shell: bash
         run: |
