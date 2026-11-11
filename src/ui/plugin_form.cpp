@@ -34,6 +34,7 @@ Spin* c_locale(Spin* w) {
 QFormLayout* make_form(QWidget* parent = nullptr) {
   auto* f = new QFormLayout(parent);
   f->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);  // macOS default keeps size hints
+  f->setRowWrapPolicy(QFormLayout::WrapLongRows);  // narrow dock: the editor goes below its label
   return f;
 }
 
@@ -152,8 +153,11 @@ QWidget* PluginForm::makeEditor(const QJsonObject& p) {
     auto* row = new QHBoxLayout(box);
     row->setContentsMargins(0, 0, 0, 0);
     auto* edit = new QLineEdit(value.toString(), box);
+    edit->setPlaceholderText(tr("choose a file with …"));
+    edit->setMinimumWidth(80);
     auto* browse = new QPushButton(QStringLiteral("…"), box);
-    browse->setMaximumWidth(32);
+    browse->setFixedWidth(32);
+    browse->setToolTip(tr("Choose a file"));
     row->addWidget(edit);
     row->addWidget(browse);
     connect(edit, &QLineEdit::textChanged, this, [this, name](const QString& t) { set(name, t); });

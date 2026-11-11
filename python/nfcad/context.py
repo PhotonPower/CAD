@@ -12,6 +12,11 @@ class Cancelled(Exception):
     """Raised by :meth:`Context.check_cancel` when the user pressed Cancel."""
 
 
+class UserError(Exception):
+    """A problem the user can fix (missing input, wrong file …). CAD shows the message as it is –
+    no traceback, the plugin log stays closed. Other exceptions are reported as plugin errors."""
+
+
 class Context:
     def __init__(self, host, job: int, params: dict, selection: list[int]):
         self._host = host

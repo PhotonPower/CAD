@@ -92,6 +92,10 @@ document as modified but is not an undo step.
 | `ctx.field(set, name, entity, values, width, height, face=0, colormap=, unit=, value_range=)` | field on a face over its normalised (u, v): `values[j * width + i]` |
 | `ctx.curve(set, name, x, y, x_label=, y_label=)` / `ctx.append(curve, x, y)` | curve in the *Plot* dock, extended live |
 
+Raise `nfcad.UserError("…")` for problems the user can fix (missing input, wrong file): CAD
+shows the message as it is. Any other exception is reported as a plugin error with its
+traceback in the *Plugin log*.
+
 All model changes of one action are **one undo step**, also when the action is cancelled or
 fails. Exceptions are reported in the status bar and the plugin log; the process keeps running.
 

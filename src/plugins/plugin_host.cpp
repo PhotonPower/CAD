@@ -241,7 +241,8 @@ void PluginHost::handle(const QJsonObject& msg) {
   } else if (type == QLatin1String("log")) {
     for (const QString& line : msg["text"].toString().split(QLatin1Char('\n'), Qt::SkipEmptyParts)) emit logLine(line);
   } else if (type == QLatin1String("done")) {
-    endJob(msg["job"].toInt(), msg["ok"].toBool(), msg["cancelled"].toBool(), msg["message"].toString());
+    endJob(msg["job"].toInt(), msg["ok"].toBool(), msg["cancelled"].toBool(), msg["message"].toString(),
+           msg["user_error"].toBool());
   } else if (type == QLatin1String("request") || type == QLatin1String("notify")) {
     const int rid = msg["rid"].toInt();
     try {
@@ -430,7 +431,7 @@ void PluginHost::beginJob(int job) {
   removed_groups_.clear();
 }
 
-void PluginHost::endJob(int job, bool ok, bool cancelled, const QString& message) {
+void PluginHost::endJob(int job, bool ok, bool cancelled, const QString& message, bool user_error) {
   if (!active_job_ || *active_job_ != job) return;
   active_job_.reset();
   // everything the run changed in the model is one undo step (also when cancelled)
@@ -448,7 +449,7 @@ void PluginHost::endJob(int job, bool ok, bool cancelled, const QString& message
   removed_.clear();
   added_groups_.clear();
   removed_groups_.clear();
-  emit finished(job, ok, cancelled, message);
+  emit finished(job, ok, cancelled, message, user_error);
 }
 
 void PluginHost::cancel(int grace_ms) {

@@ -5,6 +5,12 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 
 ## [Unreleased]
 
+### Fixed
+- Plugin panel in a narrow dock: rows wrap (editor below its label), the file chooser button is
+  no longer cut off, an empty file field says what to do.
+- Plugin errors the user can fix (`nfcad.UserError`, e.g. no system file chosen, missing glass
+  catalogue) are shown as a message instead of a Python traceback in the log.
+
 ### Added
 - **Plugin distribution (P7):** `.nfplugin` packages (zip of the plugin folder with its
   signature; `nfcad-plugin pack`), *Plugins → Install plugin…* / *Uninstall plugin* into the

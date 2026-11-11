@@ -25,7 +25,7 @@ from pathlib import Path
 
 import numpy as np
 
-from nfcad import Param, Plugin, action
+from nfcad import Param, Plugin, UserError, action
 
 import rtt_nurbs
 
@@ -39,8 +39,8 @@ TOP_GROUP_PREFIX = "Raytatouille: "
 
 def _require_rt():
     if rt is None:
-        raise RuntimeError("the Python package 'raytatouille' is not installed in the plugin's Python "
-                           "environment (Plugins → Settings…); install it with: pip install <Raytatouille>")
+        raise UserError("The Python package 'raytatouille' is not installed in the plugin's Python "
+                        "environment. Plugins → Settings… → Check environment shows how to install it.")
 
 
 class RaytracerPlugin(Plugin):
@@ -176,11 +176,19 @@ class RaytracerPlugin(Plugin):
         _require_rt()
         path = ctx.params["system"]
         if not path:
-            raise ValueError("choose the system file in the Plugin panel first")
+            raise UserError("Choose the optical system first: Plugin panel → System file → … "
+                            "(a .rtt.json file, e.g. examples/singlet_optim.rtt.json of this plugin).")
+        if not os.path.isfile(path):
+            raise UserError(f"The system file does not exist:\n{path}")
         ctx.progress(0.05, "loading the system …")
         self.library = self._library(ctx, path)
-        system = rt.load(path)
-        compiled = self._compile(system)
+        try:
+            system = rt.load(path)
+            compiled = self._compile(system)
+        except rt.RaytatouilleError as e:
+            hint = ("\n\nGlass catalogues: put the *.agf files next to the system file or list them under "
+                    "Glass catalogues." if "catalog" in str(e) else "")
+            raise UserError(f"{Path(path).name} cannot be used:\n{e}{hint}") from e
         self.loaded_from = path
         self.detector_half = None
         rev = self._new_revision(system)

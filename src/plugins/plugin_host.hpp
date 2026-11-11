@@ -92,7 +92,8 @@ class PluginHost : public QObject {
   void progress(int job, double value, const QString& text);
   void logLine(const QString& text);
   /// A job ended: ok, cancelled, message (result text or error).
-  void finished(int job, bool ok, bool cancelled, const QString& message);
+  /// `user_error`: the plugin raised nfcad.UserError – a message for the user, not a bug.
+  void finished(int job, bool ok, bool cancelled, const QString& message, bool user_error = false);
   /// The process ended unexpectedly or could not start.
   void failed(const QString& message);
 
@@ -104,7 +105,7 @@ class PluginHost : public QObject {
   QJsonValue request(const QString& method, const QJsonObject& args);  // throws std::runtime_error
   void send(const QJsonObject& msg);
   void beginJob(int job);
-  void endJob(int job, bool ok, bool cancelled, const QString& message);
+  void endJob(int job, bool ok, bool cancelled, const QString& message, bool user_error = false);
   void onProcessFinished(int code, QProcess::ExitStatus status);
   [[nodiscard]] QString arrayDir() const;
 

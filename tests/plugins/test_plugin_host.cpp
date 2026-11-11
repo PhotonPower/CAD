@@ -50,7 +50,7 @@ class TestPluginHost : public QObject {
     host_->start(python_, plugins::PluginManager::nfcadPythonPath());
     QVERIFY2(ready.wait(20000), qPrintable(failed.isEmpty() ? QStringLiteral("timeout")
                                                             : failed.first().at(0).toString()));
-    QCOMPARE(host_->actions().size(), std::size_t{6});
+    QCOMPARE(host_->actions().size(), std::size_t{7});
     QCOMPARE(host_->paramsSchema().size(), 5);
     QCOMPARE(host_->paramsSchema()[0].toObject()["name"].toString(), QStringLiteral("count"));  // order kept
   }
@@ -158,6 +158,17 @@ class TestPluginHost : public QObject {
     QVERIFY(!finished.first().at(1).toBool());
     QVERIFY(finished.first().at(2).toBool());  // cancelled
     QVERIFY(host_->running());                 // the process survives a cancelled job
+  }
+
+  void userErrorIsAMessage() {
+    QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
+    QSignalSpy log(host_.get(), &plugins::PluginHost::logLine);
+    QVERIFY(host_->run(QStringLiteral("needs_input")) > 0);
+    QVERIFY(waitFinished(finished));
+    QCOMPARE(finished.first().at(1).toBool(), false);
+    QCOMPARE(finished.first().at(3).toString(), QStringLiteral("Choose a file first."));  // no type name
+    QCOMPARE(finished.first().at(4).toBool(), true);
+    for (const auto& l : log) QVERIFY(!l.at(0).toString().contains(QStringLiteral("Traceback")));
   }
 
   void pythonError() {

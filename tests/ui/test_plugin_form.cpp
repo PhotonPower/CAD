@@ -102,6 +102,27 @@ class TestPluginForm : public QObject {
     }
   }
 
+  void narrowPanel() {
+    // a dock of ~300 px: the file editor and its button stay usable (rows wrap)
+    const QJsonArray s{QJsonObject{{"name", "system"}, {"type", "file"}, {"default", ""}, {"label", "System file"},
+                                   {"group", "System"}},
+                       QJsonObject{{"name", "tolerance"}, {"type", "number"}, {"default", 1e-4}, {"decimals", 7},
+                                   {"unit", "mm"}, {"label", "Drawing tolerance"}, {"group", "System"}}};
+    PluginForm f(s, {}, {});
+    f.resize(300, 200);
+    f.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&f) || true);
+    auto* edit = f.findChild<QLineEdit*>();
+    QVERIFY(edit->width() >= 150);
+    QPushButton* browse = nullptr;
+    for (auto* b : f.findChildren<QPushButton*>()) browse = b->text() == QStringLiteral("…") ? b : browse;
+    QVERIFY(browse != nullptr);
+    QVERIFY(browse->geometry().right() <= browse->parentWidget()->width());  // not cut off
+    if (const QByteArray dir = qgetenv("NFCAD_SNAPSHOT_DIR"); !dir.isEmpty()) {
+      f.grab().save(QString::fromLocal8Bit(dir) + QStringLiteral("/plugin_form_narrow.png"));
+    }
+  }
+
   void parametersAreSavedWithTheDocument() {
     nfcad::document::Document doc;
     QSignalSpy modified(&doc, &nfcad::document::Document::modificationChanged);

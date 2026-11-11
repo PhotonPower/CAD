@@ -13,7 +13,7 @@ import threading
 import traceback
 from pathlib import Path
 
-from .context import Cancelled, Context
+from .context import Cancelled, Context, UserError
 from .plugin import API_VERSION, Plugin
 from .transport import Transport
 
@@ -82,6 +82,8 @@ class Host:
             self.send({"type": "done", "job": ctx.job, "ok": True, "message": message or ""})
         except Cancelled:
             self.send({"type": "done", "job": ctx.job, "ok": False, "cancelled": True, "message": "cancelled"})
+        except UserError as e:  # the user can fix it: the message only
+            self.send({"type": "done", "job": ctx.job, "ok": False, "user_error": True, "message": str(e)})
         except Exception as e:  # report to CAD instead of dying
             self.send({"type": "log", "job": ctx.job, "text": traceback.format_exc()})
             self.send({"type": "done", "job": ctx.job, "ok": False, "message": f"{type(e).__name__}: {e}"})
