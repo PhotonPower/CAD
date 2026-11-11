@@ -35,6 +35,33 @@ all, in the library.
 | Optimise mirror | live merit plot, mirror updates every few iterations | optimiser on NURBS control points, merit function | **live geometry replacement** (throttled, one undo step at the end), **plot dock** (convergence) | free variables, merit settings, callback per iteration |
 | Compare | before / after, runs side by side | – | **result sets** per run (show / hide / delete, saved with the document) | names the runs |
 
+## 2a. What Raytatouille already provides (v0.9.0) and what is missing
+
+Read from the repository (`PhotonPower/Raytatouille`, `docs/architecture.md`,
+`docs/feedback/gui-anforderungen.md`) and the Streamlit explorer `GUI-Raytatouille`.
+
+| Need of the plugin | Raytatouille today | Consequence |
+|---|---|---|
+| Optical model | `.rtt.json` system file (JSON schema), typed read-only copies in Python | the optical model is the **source of truth**; the CAD geometry is derived from it |
+| Editing with undo | `rt.Editor`: JSON Patch (RFC 6902) with inverse patches, replayable history | CAD undo steps for plugin edits store the inverse patch and call back into the plugin |
+| 3D geometry | 2D only: sag / normals, profiles in planes containing the local axis, lens outlines; "tessellable 3D mesh" is still open (G2) | **bridge rtt → Nurbforge**: Nurbforge builds conics, aspheres, Zernike and XY surfaces exactly as NURBS with circular apertures; edges (cylinders) and solids from that; placed with `rt.layout.node_frames` (4×4) |
+| Rays | `rt.trace.trace(record_path=True)` → `RayPaths`: positions (N, S, 3), status, weight, OPL as NumPy views; default 10 000 rays | directly a coloured line set in the ray layer (one segment per slot pair, lost rays end at `lost_at`) |
+| Progress / cancel | `progress` and `cancel` in trace, optimise, tolerancing; cancel ends with status `CANCELLED`, no exception | maps 1:1 onto the CAD job runner |
+| Optimisation | `rt.optim.optimize` → new `System` + patch; progress reports stages | the final result is easy; **live** updates per iteration need an iteration callback with the current system (library feature) |
+| Detector image | sequential: final ray positions on the image surface (spot, PSF, MTF); detectors with irradiance come with M9 (non-sequential) | until M9: the plugin bins the hits on the image surface into a grid → face field; later the library's detector grid |
+| Parameters | fields, wavelengths, aperture, paths, configurations, parameter table, material library | parameter panel schema generated from these (enums from the material library) |
+| Own GUI | planned M10: PySide6 + pyvista/VTK on the public API (ADR 0012) | ❓ D9: the CAD plugin could take over the 3D part of M10 |
+
+Hierarchy applied:
+
+| Feature | Goes to |
+|---|---|
+| rtt surface → exact NURBS (conic, asphere, Zernike, XY, grid), apertures, lens bodies as solids | **library level**, because it is useful without a GUI too (STEP export of optical systems for the mechanics) – as an optional bridge module (`raytatouille.nurbs`, depends on `nurbforge`) or first in the plugin and moved later (❓ D10) |
+| Iteration callback with the current system in `rt.optim.optimize` | **Raytatouille** |
+| Binning hits on a surface into an irradiance grid | **Raytatouille** (`rt.analysis`), generally useful |
+| Ray layer, face fields, colour maps, plot dock, model tree, job runner, parameter panel | **CAD core** |
+| Mapping CAD entities ↔ rtt JSON pointers, scene building, actions Trace / Optimise | **plugin** |
+
 ## 3. Architecture
 
 ```
@@ -124,7 +151,7 @@ class Raytracer(plugin.Plugin):
 | **P3** | Plugin host: process start / stop, `nfcad` client package, socket + shared memory, model access, geometry exchange, results API, job runner (progress, cancel, log) | yes, with a test plugin |
 | **P4** | Parameter panel from the schema (numbers + units, enums, lists, files, entity pick, point pick with snaps), parameter sets saved in the document | yes |
 | **P5** | Signing: manifest, `nfcad-plugin sign / verify`, trusted keys, developer mode, CI check | yes |
-| **P6** | Reference plugin *Raytracer*: roles, trace, rays, detector texture, optimise mirror live, convergence plot | needs Raytatouille |
+| **P6** | Reference plugin *Raytracer*: load / edit `.rtt.json`, bridge to Nurbforge geometry, model tree from the rtt node tree, trace with rays, image-surface irradiance as face field, optimise (final result; live once rtt has the iteration callback), convergence plot, undo via inverse patches | needs Raytatouille + the library items of section 2a |
 | **P7** | Distribution: Python runtime for the plugins (❓ D5), plugin installation from a file, update check | – |
 
 Each milestone is one PR with tests, like M0–M7. P1 and P2 also help without plugins (model
@@ -134,7 +161,7 @@ tree, attributes, result display from scripts).
 
 | | Question | Proposal |
 |---|---|---|
-| D1 | Raytatouille interface: Python bindings (pybind11 like Nurbforge)? How does it take geometry (Nurbforge objects?) and what does it return (numpy arrays of segments, detector grids)? | bindings with numpy results; geometry as Nurbforge objects |
+| D1 | ~~Raytatouille interface~~ – answered by the repository (section 2a): Python package `raytatouille`, NumPy results, `.rtt.json` model, JSON Patch editing | – |
 | D2 | Plugins in a separate process or in the CAD process (embedded Python)? | separate process (crash isolation, cancel, own environments) |
 | D3 | Who signs – only you, or several publishers? Load unsigned plugins at all? | one key (yours) built in, more can be added; unsigned only in developer mode |
 | D4 | Panel position | right dock, as a tab next to Properties / Layers; the tool column gets one group per plugin for its actions |
@@ -142,3 +169,7 @@ tree, attributes, result display from scripts).
 | D6 | Rays: display-only result layer or real CAD curves? | display layer (millions of rays) + *promote selected rays* to curves |
 | D7 | What do the other kernels need? (fields on surfaces, vector glyphs, volume slices, time series, meshes) | collect now so that P2 covers them |
 | D8 | Order: plugins before release 1.0 (M8), or M8 first? | M8 (unsigned, small) first, then P1–P7 |
+| D9 | Should the CAD plugin replace the 3D part of Raytatouille's planned own GUI (M10, PySide6 / pyvista)? | yes for 3D model, rays, results on surfaces; 2D analysis plots (spot, MTF, …) via the plot dock or matplotlib images |
+| D10 | Where does the bridge rtt → Nurbforge live? | optional module in Raytatouille (`raytatouille.nurbs`), so that scripts and STEP export can use it too; prototype in the plugin |
+| D11 | "Switch parts on / off": only hide in the view, or also exclude from the trace? | both, separately: visibility in the CAD model tree; "inactive in the simulation" as a plugin attribute (needs Raytatouille support, e.g. via configurations) |
+| D12 | Mechanical parts (housings, mounts from STEP) together with the optics: should the tracer see them (vignetting, stray light)? | display only in sequential mode; as obstacles once the non-sequential mode (rtt M9) exists |
