@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QJsonObject>
 #include <QObject>
 #include <QUndoStack>
 #include <map>
@@ -87,7 +88,17 @@ class Document : public QObject {
   [[nodiscard]] QUndoStack* undoStack() { return &undo_; }
   [[nodiscard]] QString filePath() const { return file_path_; }
   void setFilePath(const QString& path) { file_path_ = path; }
-  [[nodiscard]] bool isModified() const { return !undo_.isClean(); }
+  [[nodiscard]] bool isModified() const { return !undo_.isClean() || settings_dirty_; }
+  /// After saving: the document counts as unmodified.
+  void markSaved();
+
+  // ---- plugin parameters (P4): values of a plugin's parameter panel, saved with the document
+  [[nodiscard]] QJsonObject pluginParameters(const QString& plugin) const {
+    return plugin_parameters_.value(plugin).toObject();
+  }
+  [[nodiscard]] const QJsonObject& allPluginParameters() const { return plugin_parameters_; }
+  void setPluginParameters(const QString& plugin, const QJsonObject& values);
+  void setAllPluginParameters(const QJsonObject& all);  ///< loading
 
   // ---- user operations (undoable)
   /// Adds entities in one undo step; returns their ids.
@@ -124,6 +135,8 @@ class Document : public QObject {
   void layersChanged();
   /// Groups were added, removed, renamed or changed visibility.
   void groupsChanged();
+  /// The modified state changed without an undo step (plugin parameters, saving).
+  void modificationChanged(bool modified);
   /// Everything changed (clear / load): views rebuild from scratch.
   void documentReset();
 
@@ -134,6 +147,8 @@ class Document : public QObject {
   std::map<EntityId, Entity> entities_;
   std::vector<Layer> layers_;
   std::vector<Group> groups_;
+  QJsonObject plugin_parameters_;
+  bool settings_dirty_ = false;
   EntityId next_id_ = 1;
   QUndoStack undo_;
   QString file_path_;

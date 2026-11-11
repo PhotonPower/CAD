@@ -165,7 +165,7 @@ CAD curves* for rays). Colour maps: viridis, inferno, plasma, coolwarm, grey. No
 | **P1** ✅ | CAD core, part 1: model tree (groups, visibility, isolate), entity attributes (saved in `.nfcad`, edited in the property panel), (u, v) in display meshes | yes |
 | **P2** ✅ | CAD core, part 2: result sets and layers – line sets with per-vertex colour, face fields / images with colour maps and legend, plot dock (curves), promote rays to CAD curves; *Help → Demo results* | yes, with generated demo data |
 | **P3** ✅ | Plugin host: process start / stop, `nfcad` client package, channel (TCP on 127.0.0.1 with a token; arrays as mapped temporary files), model access, geometry exchange, results API, job runner (progress, cancel, log), one undo step per run – see [plugin-api.md](plugin-api.md) | yes, with a test plugin |
-| **P4** | Parameter panel from the schema (numbers + units, enums, lists, files, entity pick, point pick with snaps), parameter sets saved in the document | yes |
+| **P4** ✅ | Parameter panel from the schema (numbers + units, enums, lists, files, entity pick, point pick with snaps), parameter sets saved in the document | yes |
 | **P5** | Signing: manifest, `nfcad-plugin sign / verify`, trusted keys, developer mode, CI check | yes |
 | **P6** | Reference plugin *Raytracer*: load / edit `.rtt.json`, bridge to Nurbforge geometry, model tree from the rtt node tree, trace with rays, image-surface irradiance as face field, optimise (final result; live once rtt has the iteration callback), convergence plot, undo via inverse patches | needs Raytatouille + the library items of section 2a |
 | **P7** | Distribution: Python runtime for the plugins (❓ D5), plugin installation from a file, update check | – |

@@ -173,7 +173,7 @@ bool MainWindow::saveTo(const QString& path) {
     return false;
   }
   doc_->setFilePath(path);
-  doc_->undoStack()->setClean();
+  doc_->markSaved();
   updateTitle();
   statusBar()->showMessage(tr("Saved %1").arg(QFileInfo(path).fileName()), 4000);
   return true;

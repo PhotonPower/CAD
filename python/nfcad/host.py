@@ -56,7 +56,7 @@ class Host:
         self.send({"type": "hello", "api": API_VERSION, "id": self.manifest["id"],
                    "name": self.manifest.get("name", self.manifest["id"]),
                    "version": self.manifest.get("version", ""), "actions": actions,
-                   "params": getattr(self.plugin, "params", {})})
+                   "params": self.plugin.params_schema()})
         while True:
             msg = self.transport.receive()
             if msg is None or msg.get("type") == "shutdown":
@@ -67,7 +67,8 @@ class Host:
                 self._pending[rid] = msg
                 self._events.pop(rid).set()
             elif kind == "run":
-                ctx = Context(self, msg["job"], msg.get("params", {}), msg.get("selection", []))
+                params = self.plugin.convert_params(msg.get("params", {}))
+                ctx = Context(self, msg["job"], params, msg.get("selection", []))
                 self._jobs[ctx.job] = ctx
                 threading.Thread(target=self._run_job, args=(ctx, msg["action"]), daemon=True).start()
             elif kind == "cancel":

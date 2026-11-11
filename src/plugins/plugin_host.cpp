@@ -219,7 +219,7 @@ void PluginHost::handle(const QJsonObject& msg) {
       const QJsonObject o = a.toObject();
       actions_.push_back({o["id"].toString(), o["label"].toString(), o["description"].toString()});
     }
-    params_ = msg["params"].toObject();
+    params_ = msg["params"].toArray();
     ready_ = true;
     emit readyChanged(true);
     if (queued_) {

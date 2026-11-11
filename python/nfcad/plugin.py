@@ -18,10 +18,18 @@ def action(label: str, *, description: str = "") -> Callable:
 
 
 class Plugin:
-    """Base class. Subclasses define actions with :func:`action`; ``params`` (P4) describes the
-    parameters CAD shows in the plugin panel."""
+    """Base class. Subclasses define actions with :func:`action`; ``params`` (a dict of
+    :class:`nfcad.Param`, in display order) describes the parameters CAD shows in the plugin
+    panel."""
 
     params: dict = {}
+
+    def params_schema(self) -> list[dict]:
+        return [p.to_json(name) for name, p in self.params.items()]
+
+    def convert_params(self, values: dict) -> dict:
+        """Values from CAD as Python types; missing ones get their defaults."""
+        return {name: p.convert(values.get(name)) for name, p in self.params.items()}
 
     def actions(self) -> dict[str, dict]:
         out = {}

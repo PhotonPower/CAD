@@ -39,7 +39,36 @@ CommandController::CommandController(document::Document* doc, document::Selectio
   });
 }
 
+namespace {
+/// A single point for a callback (not repeated with Enter).
+class PickPointCommand : public Command {
+ public:
+  PickPointCommand(QString prompt, std::function<void(const Point3&)> done)
+      : prompt_(std::move(prompt)), done_(std::move(done)) {}
+  QString id() const override { return QStringLiteral("pick_point"); }
+  QString title() const override { return QObject::tr("Pick point"); }
+  QString prompt() const override { return prompt_; }
+  Result point(const Point3& p, const commands::PlaneFrame&) override {
+    if (done_) done_(p);
+    return Result::Done;
+  }
+
+ private:
+  QString prompt_;
+  std::function<void(const Point3&)> done_;
+};
+}  // namespace
+
 CommandController::~CommandController() = default;
+
+void CommandController::pickPoint(const QString& prompt, std::function<void(const Point3&)> done) {
+  if (command_) cancel();
+  command_ = std::make_unique<PickPointCommand>(prompt, std::move(done));  // last_name_ unchanged
+  grid_->setPointInput(true);
+  if (grid_->activeView() != nullptr) grid_->activeView()->setFocus();
+  emit activeChanged(true);
+  refresh();
+}
 
 QString CommandController::activeId() const { return command_ ? command_->id() : QString(); }
 

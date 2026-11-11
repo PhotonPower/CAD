@@ -427,6 +427,25 @@ std::vector<EntityId> Document::apply(Edit edit, const QString& text) {
   return cmd->added();
 }
 
+void Document::markSaved() {
+  undo_.setClean();
+  if (settings_dirty_) {
+    settings_dirty_ = false;
+    emit modificationChanged(isModified());
+  }
+}
+
+void Document::setPluginParameters(const QString& plugin, const QJsonObject& values) {
+  if (plugin_parameters_.value(plugin).toObject() == values) return;
+  plugin_parameters_.insert(plugin, values);
+  if (!settings_dirty_) {
+    settings_dirty_ = true;
+    emit modificationChanged(true);
+  }
+}
+
+void Document::setAllPluginParameters(const QJsonObject& all) { plugin_parameters_ = all; }
+
 void Document::recordApplied(const QString& text, const std::vector<EntityId>& added,
                              const std::vector<std::pair<EntityId, GeometryPtr>>& old_geometry,
                              const std::vector<std::pair<EntityId, QVariantMap>>& old_attributes) {
@@ -521,6 +540,8 @@ void Document::reset(std::vector<Layer> layers, std::vector<Entity> entities,
                      std::vector<Group> groups) {
   undo_.clear();
   entities_.clear();
+  plugin_parameters_ = {};
+  settings_dirty_ = false;
   groups_ = std::move(groups);
   layers_ = std::move(layers);
   if (layer(0) == nullptr) layers_.insert(layers_.begin(), default_layer());

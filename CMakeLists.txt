@@ -81,6 +81,8 @@ add_library(nfcad_gui STATIC
   src/ui/tool_box.cpp
   src/ui/layer_panel.cpp
   src/ui/model_tree_panel.cpp
+  src/ui/plugin_form.cpp
+  src/ui/plugin_panel.cpp
   src/ui/plugin_settings_dialog.cpp
   src/ui/property_panel.cpp
   src/ui/results_panel.cpp

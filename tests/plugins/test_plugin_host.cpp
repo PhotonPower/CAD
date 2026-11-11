@@ -1,3 +1,5 @@
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTcpSocket>
@@ -48,7 +50,9 @@ class TestPluginHost : public QObject {
     host_->start(python_, plugins::PluginManager::nfcadPythonPath());
     QVERIFY2(ready.wait(20000), qPrintable(failed.isEmpty() ? QStringLiteral("timeout")
                                                             : failed.first().at(0).toString()));
-    QCOMPARE(host_->actions().size(), std::size_t{4});
+    QCOMPARE(host_->actions().size(), std::size_t{5});
+    QCOMPARE(host_->paramsSchema().size(), 5);
+    QCOMPARE(host_->paramsSchema()[0].toObject()["name"].toString(), QStringLiteral("count"));  // order kept
   }
 
   void foreignConnectionsAreRejected() {
@@ -102,6 +106,14 @@ class TestPluginHost : public QObject {
     QVERIFY(doc_.entity(ids[0])->attributes.isEmpty());
     doc_.undoStack()->redo();
     QCOMPARE(doc_.entities().size(), std::size_t{2});
+  }
+
+  void parametersReachThePlugin() {
+    QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
+    // count from CAD as a JSON number, the rest defaults; types converted by nfcad.Param
+    host_->run(QStringLiteral("echo"), QJsonObject{{"count", 7}, {"target", QJsonArray{42}}});
+    QVERIFY(waitFinished(finished));
+    QCOMPARE(finished.first().at(3).toString(), QStringLiteral("7|1.5|(1.0, 2.0, 3.0)|42|[1.0, 2.0]"));
   }
 
   void cancel() {

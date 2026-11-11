@@ -1,11 +1,24 @@
 import os
 import time
 
-from nfcad import Plugin, action
+from nfcad import Param, Plugin, action
 from nfcad import geometry as g
 
 
 class TestPlugin(Plugin):
+    params = {
+        "count": Param.integer(3, min=1),
+        "scale": Param.number(1.5, unit="mm"),
+        "where": Param.point((1, 2, 3)),
+        "target": Param.entity(kinds=["curve"]),
+        "list": Param.numbers([1, 2]),
+    }
+
+    @action("Echo parameters")
+    def echo(self, ctx):
+        p = ctx.params
+        return f"{p['count']}|{p['scale']}|{p['where']}|{p['target']}|{p['list']}"
+
     @action("Model and results")
     def model(self, ctx):
         sel = ctx.entities(selection=True)

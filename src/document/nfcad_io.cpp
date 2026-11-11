@@ -199,12 +199,19 @@ QString save_nfcad(const Document& doc, const QString& path) {
     if (!e.attributes.isEmpty()) o["attributes"] = QJsonObject::fromVariantMap(e.attributes);
     entities.append(o);
   }
-  const QJsonObject root{{"format", "nfcad"},
+  QJsonObject root{{"format", "nfcad"},
                          {"version", kNfcadFormatVersion},
                          {"units", "mm"},
                          {"layers", layers},
                          {"groups", groups},
                          {"entities", entities}};
+  if (!doc.allPluginParameters().isEmpty()) {
+    QJsonObject plugins;
+    for (auto it = doc.allPluginParameters().begin(); it != doc.allPluginParameters().end(); ++it) {
+      plugins.insert(it.key(), QJsonObject{{"params", it.value()}});
+    }
+    root.insert("plugins", plugins);  // v2, optional: parameter values per plugin (P4)
+  }
 
   QSaveFile file(path);
   if (!file.open(QIODevice::WriteOnly)) return file.errorString();
@@ -258,6 +265,10 @@ QString load_nfcad(Document& doc, const QString& path) {
     return QObject::tr("invalid geometry: %1").arg(QString::fromUtf8(ex.what()));
   }
   doc.reset(std::move(layers), std::move(entities), std::move(groups));
+  QJsonObject params;
+  const QJsonObject plugins = root["plugins"].toObject();
+  for (auto it = plugins.begin(); it != plugins.end(); ++it) params.insert(it.key(), it.value().toObject()["params"]);
+  doc.setAllPluginParameters(params);
   doc.setFilePath(path);
   return {};
 }

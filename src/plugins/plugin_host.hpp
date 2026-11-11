@@ -62,7 +62,8 @@ class PluginHost : public QObject {
   [[nodiscard]] bool running() const;
   [[nodiscard]] bool ready() const { return ready_; }
   [[nodiscard]] const std::vector<Action>& actions() const { return actions_; }
-  [[nodiscard]] QJsonObject paramsSchema() const { return params_; }
+  /// Parameter descriptions from the plugin (nfcad.Param, in display order).
+  [[nodiscard]] QJsonArray paramsSchema() const { return params_; }
   [[nodiscard]] std::optional<int> activeJob() const { return active_job_; }
   /// TCP port of the plugin channel on 127.0.0.1 (0 if not listening; for tests).
   [[nodiscard]] quint16 channelPort() const;
@@ -110,7 +111,7 @@ class PluginHost : public QObject {
   bool authenticated_ = false;
   bool ready_ = false;
   std::vector<Action> actions_;
-  QJsonObject params_;
+  QJsonArray params_;
   std::optional<std::pair<QString, QJsonObject>> queued_;  // run requested before ready
   std::optional<int> active_job_;
   int next_job_ = 1;

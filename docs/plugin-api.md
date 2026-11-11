@@ -37,6 +37,41 @@ class Raytracer(Plugin):
 Every method marked with `@action` appears in the *Plugins* menu and as a button in the
 plugin's group of the tool column. A complete example: `python/examples/demo_plugin/`.
 
+## Parameters
+
+`params` describes what the user enters in the **Plugin** dock (right side, tab next to
+*Results*). CAD builds the form from it; the values are saved **with the document**
+(`.nfcad`, per plugin) and passed to every action as `ctx.params`:
+
+```python
+from nfcad import Param, Plugin, action
+
+class Raytracer(Plugin):
+    params = {                                   # display order = dict order
+        "rays":     Param.integer(10_000, min=1, label="Number of rays", group="Source"),
+        "wl":       Param.numbers([486.1, 587.6, 656.3], unit="nm", group="Source"),
+        "origin":   Param.point((0, 0, -100), group="Source"),
+        "detector": Param.entity(kinds=["surface", "trimmed_surface", "shell"]),
+        "method":   Param.choice(["sequential", "non-sequential"]),
+    }
+```
+
+| Builder | Editor | `ctx.params[...]` |
+|---|---|---|
+| `Param.number(default, min=, max=, step=, decimals=, unit=)` | spin box with unit | `float` |
+| `Param.integer(default, min=, max=, unit=)` | spin box | `int` |
+| `Param.boolean(default)` | check box | `bool` |
+| `Param.choice(options, default)` | combo box | `str` |
+| `Param.text(default)` | line edit | `str` |
+| `Param.file(default, filter=, save=)` | path + file dialog | `str` |
+| `Param.numbers(default, unit=)` | comma-separated list (decimal point); invalid input is marked red and blocks the actions | `list[float]` |
+| `Param.point(default)` | x, y, z + **Pick** (click in a view, with object snaps; Esc cancels) | `(x, y, z)` |
+| `Param.entity(kinds=, multiple=)` | **Use selection** takes the selected objects of the given kinds (`point`, `curve`, `surface`, `trimmed_surface`, `shell`) | id, or a list with `multiple=True`; `None` if empty |
+
+All builders also take `label=`, `group=` (a box in the panel) and `description=` (tooltip).
+*Reset parameters* in the panel goes back to the defaults. Changing a parameter marks the
+document as modified but is not an undo step.
+
 ## The context (`ctx`)
 
 | Call | Effect |
@@ -45,7 +80,7 @@ plugin's group of the tool column. A complete example: `python/examples/demo_plu
 | `ctx.log(text)` | *Plugin log* dock |
 | `ctx.cancelled()` / `ctx.check_cancel()` | the user pressed Cancel (or Esc); `check_cancel` raises `Cancelled` |
 | `ctx.selection` | ids of the selected objects when the action started |
-| `ctx.params` | parameter values (from P4 on: the plugin panel) |
+| `ctx.params` | parameter values from the *Plugin* panel, converted to Python types (see below) |
 | `ctx.entities(ids=None, selection=False)` | objects as dicts; `geometry` in the [.nfcad format](file-format.md) |
 | `ctx.add(geometry, name, attributes)` | new object, returns its id |
 | `ctx.replace(id, geometry)` | new geometry for an object – shown immediately (live optimisation) |
@@ -84,5 +119,5 @@ large arrays travel as temporary files that CAD maps and deletes. Actions run in
 thread of the plugin process, so Cancel is always received; a plugin that does not stop within
 5 s is terminated. A crash of the plugin process ends only that action.
 
-Not yet (later milestones): the parameter panel (P4), signatures and the developer mode (P5) –
+Not yet (later milestones): signatures and the developer mode (P5) –
 until then CAD loads every plugin found in the plugin folders, so only add folders you trust.

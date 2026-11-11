@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <functional>
 #include <memory>
 
 #include "commands/command.hpp"
@@ -32,6 +33,9 @@ class CommandController : public QObject {
 
   /// Starts a command by id or alias; false if unknown.
   bool start(const QString& name);
+  /// One point with snaps for someone else (e.g. a "point" parameter of a plugin, P4); the
+  /// callback receives it. Esc cancels without calling it.
+  void pickPoint(const QString& prompt, std::function<void(const commands::Point3&)> done);
   [[nodiscard]] bool active() const { return command_ != nullptr; }
   [[nodiscard]] QString activeId() const;
   void cancel();

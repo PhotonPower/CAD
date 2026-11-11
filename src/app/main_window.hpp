@@ -38,6 +38,7 @@ struct SnapPoint;
 
 namespace nfcad::ui {
 class ModelTreePanel;
+class PluginPanel;
 class SnapBar;
 class ToolBox;
 }  // namespace nfcad::ui
@@ -116,6 +117,7 @@ class MainWindow : public QMainWindow {
   QProgressBar* job_progress_ = nullptr;
   QToolButton* job_cancel_ = nullptr;
   QPlainTextEdit* plugin_log_ = nullptr;
+  ui::PluginPanel* plugin_panel_ = nullptr;
   snap::SnapEngine* snap_engine_ = nullptr;
   class CommandController* commands_ = nullptr;
   QLineEdit* command_line_ = nullptr;
