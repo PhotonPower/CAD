@@ -17,6 +17,14 @@ struct Edit {
   [[nodiscard]] bool empty() const { return add.empty() && remove.empty() && replace.empty(); }
 };
 
+/// Node of the model tree; groups nest (parent 0 = top level).
+struct Group {
+  GroupId id = 0;
+  QString name;
+  GroupId parent = 0;
+  bool visible = true;
+};
+
 struct Layer {
   LayerId id = 0;
   QString name;
@@ -39,8 +47,36 @@ class Document : public QObject {
   [[nodiscard]] const Layer* layer(LayerId id) const;
   /// Effective display colour: entity colour or its layer's colour.
   [[nodiscard]] QColor displayColor(const Entity& e) const;
-  /// Visible if the entity and its layer are visible.
+  /// Visible if the entity, its layer and all its groups are visible.
   [[nodiscard]] bool isDisplayed(const Entity& e) const;
+
+  // ---- model tree (groups)
+  [[nodiscard]] const std::vector<Group>& groups() const { return groups_; }
+  [[nodiscard]] const Group* group(GroupId id) const;
+  /// True if `id` or one of its ancestors is hidden.
+  [[nodiscard]] bool groupHidden(GroupId id) const;
+  /// Entities directly or indirectly in a group.
+  [[nodiscard]] std::vector<EntityId> entitiesInGroup(GroupId id) const;
+  /// Creates a group (one undo step) and moves the entities into it; returns its id.
+  GroupId groupEntities(const std::vector<EntityId>& ids, const QString& name, GroupId parent = 0);
+  /// Removes a group (one undo step); its entities and subgroups move to its parent.
+  void ungroup(GroupId id);
+  void renameGroup(GroupId id, const QString& name);
+  /// Visibility of entities and groups (view state, not undoable – like layer visibility).
+  void setEntityVisible(EntityId id, bool visible);
+  void setGroupVisible(GroupId id, bool visible);
+  /// Hides everything except the given entities (and shows them and their groups).
+  void isolate(const std::vector<EntityId>& ids);
+  void showAll();
+
+  // ---- attributes (undoable)
+  void setAttribute(EntityId id, const QString& key, const QVariant& value);  ///< null: remove
+
+  // ---- low level (undo commands, loading)
+  GroupId insertGroup(Group g);  ///< keeps g.id if free, else assigns one
+  void eraseGroup(GroupId id);
+  void setEntityGroup(EntityId id, GroupId group);
+  void setEntityAttributes(EntityId id, QVariantMap attributes);
 
   [[nodiscard]] QUndoStack* undoStack() { return &undo_; }
   [[nodiscard]] QString filePath() const { return file_path_; }
@@ -72,21 +108,26 @@ class Document : public QObject {
   /// Removes everything, keeps the default layer, clears the undo stack.
   void clear();
   /// Replaces the content (after loading a file); clears the undo stack.
-  void reset(std::vector<Layer> layers, std::vector<Entity> entities);
+  void reset(std::vector<Layer> layers, std::vector<Entity> entities,
+             std::vector<Group> groups = {});
 
  signals:
   void entityAdded(nfcad::document::EntityId id);
   void entityRemoved(nfcad::document::EntityId id);
   void entityChanged(nfcad::document::EntityId id);
   void layersChanged();
+  /// Groups were added, removed, renamed or changed visibility.
+  void groupsChanged();
   /// Everything changed (clear / load): views rebuild from scratch.
   void documentReset();
 
  private:
   void touchLayer(LayerId id);
+  void touchEntities(const std::vector<EntityId>& ids);
 
   std::map<EntityId, Entity> entities_;
   std::vector<Layer> layers_;
+  std::vector<Group> groups_;
   EntityId next_id_ = 1;
   QUndoStack undo_;
   QString file_path_;

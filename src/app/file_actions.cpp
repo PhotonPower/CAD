@@ -120,10 +120,16 @@ void MainWindow::importStep(const QString& path, bool replace, bool quiet) {
             std::fprintf(stdout, "read %s: %zu shells, %zu faces in %.2f s\n",
                          qPrintable(QFileInfo(path).fileName()), entities.size(),
                          face_count, load_timer_.elapsed() / 1000.0);
+            // the shells of a file form one group in the model tree
+            const QString group_name = QFileInfo(path).completeBaseName();
             if (replace) {
-              doc_->reset({}, std::move(entities));
+              for (document::Entity& e : entities) e.group = 1;
+              doc_->reset({}, std::move(entities), {{1, group_name, 0, true}});
             } else {
-              doc_->addEntities(std::move(entities), tr("Import STEP"));
+              doc_->undoStack()->beginMacro(tr("Import STEP"));
+              const auto ids = doc_->addEntities(std::move(entities), tr("Import STEP"));
+              doc_->groupEntities(ids, group_name);
+              doc_->undoStack()->endMacro();
             }
             updateTitle();
             if (!result.warnings.isEmpty() && !quiet) {

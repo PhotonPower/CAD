@@ -9,6 +9,7 @@
 | View toolbar (top) | `QToolBar` | display mode (wireframe / surfaces / shaded), standard views, zoom extents, grid on/off |
 | Property panel (right) | `QDockWidget` → `PropertyPanel` | properties of the selection (type, degrees, knots, length / area / volume) |
 | Layer panel (right) | `QDockWidget` → `LayerPanel` | visibility, colour, name, new layer, move selection to a layer |
+| Model tree (right, tab next to Layers) | `QDockWidget` → `ModelTreePanel` | groups and objects, visibility check boxes, selection in both directions, context menu: group, ungroup, hide, isolate, show all; STEP files are imported as one group |
 | Command line (bottom) | `QLineEdit` + `CommandController` | prompt, typed commands, coordinates and numbers ([commands.md](commands.md)) |
 | Status bar | `QStatusBar` + `SnapBar` | cursor coordinates, active view, snap toggles |
 

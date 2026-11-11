@@ -23,6 +23,7 @@
 #include "app/command_controller.hpp"
 #include "snap/snap_engine.hpp"
 #include "ui/layer_panel.hpp"
+#include "ui/model_tree_panel.hpp"
 #include "ui/property_panel.hpp"
 #include "kernel/kernel_info.hpp"
 #include "render/scene.hpp"
@@ -35,6 +36,10 @@
 namespace nfcad::app {
 
 using render::DisplayMode;
+
+namespace {
+constexpr int kWindowStateVersion = 2;  // 2: model tree dock (P1)
+}
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   // No setUnifiedTitleAndToolBarOnMac(true): with it QRhiWidget gets no QRhi (Qt 6.12, macOS).
@@ -104,7 +109,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
   } else {
     first_show_ = false;  // keep the user's dock width
   }
-  restoreState(settings.value(QStringLiteral("window/state")).toByteArray());
+  // the version changes whenever docks are added, so that an old layout does not hide them
+  restoreState(settings.value(QStringLiteral("window/state")).toByteArray(), kWindowStateVersion);
 }
 
 MainWindow::~MainWindow() { delete snap_engine_; }
@@ -137,6 +143,15 @@ void MainWindow::createMenus() {
   QAction* del = edit->addAction(tr("&Delete"), this, &MainWindow::deleteSelection);
   del->setShortcuts({QKeySequence::Delete, QKeySequence(Qt::Key_Backspace)});
   edit->addAction(tr("Select &All"), QKeySequence::SelectAll, this, &MainWindow::selectAll);
+  edit->addSeparator();
+  edit->addAction(tr("&Group…"), QKeySequence(Qt::CTRL | Qt::Key_G), this,
+                  [this] { model_tree_->groupSelection(); });
+  edit->addAction(tr("U&ngroup"), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G), this,
+                  [this] { model_tree_->ungroupSelection(); });
+  edit->addAction(tr("&Hide selected"), this, [this] { model_tree_->hideSelection(); });
+  edit->addAction(tr("&Isolate selected"), this, [this] { model_tree_->isolateSelection(); });
+  edit->addAction(tr("Show &all"), this, [this] { doc_->showAll(); });
+  edit->addSeparator();
   QAction* none = edit->addAction(tr("Select &None / Cancel"), this, [this] {
     if (commands_->active()) {
       commands_->cancel();
@@ -259,7 +274,7 @@ void MainWindow::closeEvent(QCloseEvent* event) {
   }
   QSettings settings;
   settings.setValue(QStringLiteral("window/geometry"), saveGeometry());
-  settings.setValue(QStringLiteral("window/state"), saveState());
+  settings.setValue(QStringLiteral("window/state"), saveState(kWindowStateVersion));
   QMainWindow::closeEvent(event);
 }
 
@@ -291,6 +306,14 @@ void MainWindow::createPanels() {
   layers->setWidget(new ui::LayerPanel(doc_, selection_, layers));
   addDockWidget(Qt::RightDockWidgetArea, layers);
   splitDockWidget(props, layers, Qt::Vertical);
+  auto* model = new QDockWidget(tr("Model"), this);
+  model->setObjectName(QStringLiteral("modelDock"));
+  model_tree_ = new ui::ModelTreePanel(doc_, selection_, model);
+  model->setWidget(model_tree_);
+  addDockWidget(Qt::RightDockWidgetArea, model);
+  tabifyDockWidget(layers, model);
+  model->raise();
+  view_menu_->addAction(model->toggleViewAction());
   view_menu_->addAction(props->toggleViewAction());
   view_menu_->addAction(layers->toggleViewAction());
 }

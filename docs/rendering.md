@@ -24,6 +24,9 @@ line widths and snap glyph sizes are given in device-independent pixels.
 The kernel delivers exact NURBS; the GUI tessellates for display only
 ([ADR 0004](adr/0004-display-tessellation.md)).
 
+Every mesh vertex carries position, normal and the surface parameters (u, v) normalised to
+[0, 1] over the face's surface domain – the texture coordinates for fields and images on faces.
+
 | Entity | Display data | Tolerance |
 |---|---|---|
 | Curve | polyline, adaptive refinement on chord height and angle | chordal 0.1 % of the model size, angle 5° (setting) |

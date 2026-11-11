@@ -147,7 +147,7 @@ class Raytracer(plugin.Plugin):
 
 | # | Content | Testable without a kernel? |
 |---|---|---|
-| **P1** | CAD core, part 1: model tree (groups, visibility, isolate), entity attributes (saved in `.nfcad`, edited in the property panel), (u, v) in display meshes | yes |
+| **P1** ✅ | CAD core, part 1: model tree (groups, visibility, isolate), entity attributes (saved in `.nfcad`, edited in the property panel), (u, v) in display meshes | yes |
 | **P2** | CAD core, part 2: result sets and layers – line sets with per-vertex colour (millions of segments), face fields / images with colour maps and legend, plot dock (curves, 2D images), promote results to entities | yes, with generated demo data |
 | **P3** | Plugin host: process start / stop, `nfcad` client package, socket + shared memory, model access, geometry exchange, results API, job runner (progress, cancel, log) | yes, with a test plugin |
 | **P4** | Parameter panel from the schema (numbers + units, enums, lists, files, entity pick, point pick with snaps), parameter sets saved in the document | yes |

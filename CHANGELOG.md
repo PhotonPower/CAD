@@ -6,6 +6,11 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- P1 – model tree and attributes (docs/plugins.md): groups (nested, undoable group / ungroup),
+  visibility of objects and groups (inherited), isolate, show all; Model dock with selection
+  in both directions; entity attributes (key / value, undoable, edited in the property panel,
+  `sim.inactive`); `.nfcad` version 2 (groups, attributes; version 1 still read); STEP files
+  import as one group; (u, v) texture coordinates in the display meshes
 - M7 – Windows 11 and AlmaLinux / RHEL 10: CI jobs required; `Packages` workflow with Inno
   Setup installer (`.nfcad` association), RPM (desktop entry, icon, AppStream metadata) and
   unsigned macOS DMG; install component `app` with Qt deployment (windeployqt / macdeployqt);

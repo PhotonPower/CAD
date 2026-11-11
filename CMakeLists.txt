@@ -74,6 +74,7 @@ add_library(nfcad_gui STATIC
   src/ui/tool_catalog.cpp
   src/ui/tool_box.cpp
   src/ui/layer_panel.cpp
+  src/ui/model_tree_panel.cpp
   src/ui/property_panel.cpp
   src/ui/snap_bar.cpp
   src/render/line_renderer.cpp
