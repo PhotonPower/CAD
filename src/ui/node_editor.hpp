@@ -29,8 +29,14 @@ class NodeEditor : public QGraphicsView {
 
   void setWorkflow(const QJsonObject& workflow);
   [[nodiscard]] const QJsonObject& workflow() const { return workflow_; }
-  /// Shows the whole graph.
+  /// Shows the whole graph (zoom extents).
   void fitAll();
+  /// Zooms by `factor` (> 1 = closer) keeping the scene point under `view_pos` in place.
+  void zoomAt(const QPointF& view_pos, double factor);
+  /// Moves the view content by `delta` pixels.
+  void pan(const QPointF& delta);
+  /// Current zoom (1 = one scene unit per pixel).
+  [[nodiscard]] double zoom() const;
   /// Arranges the blocks in columns along the light (where light first arrives) and emits `edited`.
   void arrange();
 
@@ -53,8 +59,11 @@ class NodeEditor : public QGraphicsView {
   void mousePressEvent(QMouseEvent* event) override;
   void mouseMoveEvent(QMouseEvent* event) override;
   void mouseReleaseEvent(QMouseEvent* event) override;
+  void mouseDoubleClickEvent(QMouseEvent* event) override;
   void wheelEvent(QWheelEvent* event) override;
+  void keyPressEvent(QKeyEvent* event) override;
   void contextMenuEvent(QContextMenuEvent* event) override;
+  bool viewportEvent(QEvent* event) override;
 
  private:
   friend class NodeItem;
@@ -65,6 +74,7 @@ class NodeEditor : public QGraphicsView {
   [[nodiscard]] QJsonObject graph() const { return workflow_["graph"].toObject(); }
   void setGraph(const QJsonObject& graph);
   void nodeMoved();
+  void showMenu(const QPoint& view_pos, const QPoint& global_pos);
   /// Column layout of a graph (positions per node id); used for graphs without positions.
   [[nodiscard]] QHash<QString, QPointF> layoutColumns(const QJsonObject& graph) const;
   [[nodiscard]] static bool hasPositions(const QJsonObject& graph);
@@ -75,8 +85,13 @@ class NodeEditor : public QGraphicsView {
   SocketItem* drag_from_ = nullptr;
   QGraphicsPathItem* drag_line_ = nullptr;
   bool moved_ = false;
-  QPoint pan_from_;
+  QPointF pan_from_;
   bool panning_ = false;
+  // right button: a drag pans (as in the 2D CAD views), a click opens the context menu
+  bool right_down_ = false;
+  bool right_dragged_ = false;
+  QPointF right_from_;
+  bool z_pressed_ = false;  ///< first key of the zoom-extents sequence Z E
 };
 
 }  // namespace nfcad::ui
