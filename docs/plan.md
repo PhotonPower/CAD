@@ -156,7 +156,7 @@ jobs build from M0 on but are allowed to fail until M7.
   and started in the container), unsigned DMG; `NFCAD_RHI_BACKEND` selects the graphics API.
   Not verified on real Windows / RHEL desktops yet (only CI) – manual check before 1.0.
 
-### P1–P7 – Plugins for computation kernels (proposal)
+### P1–P7 – Plugins for computation kernels (next, before M8)
 See [plugins.md](plugins.md): model tree, attributes, result layers and face fields, plugin
 host, parameter panel, signing, reference plugin *Raytracer*, distribution.
 

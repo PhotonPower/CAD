@@ -1,7 +1,6 @@
 # Plugin plan: computation kernels in Nurbforge CAD
 
-Status: **accepted in principle** (2026-11-11: separate process, single signing key); the
-remaining decisions marked ❓ use the proposal until decided otherwise (see the end).
+Status: **accepted** (decisions of 2026-11-11 in section 5; D10 still open).
 
 Several computation kernels build on Nurbforge – a ray tracer (Raytatouille), field solvers
 (BEM / FEM / FMM), grating and writing-path tools. Nurbforge CAD becomes their common
@@ -61,6 +60,7 @@ Hierarchy applied:
 | Iteration callback with the current system in `rt.optim.optimize` | **Raytatouille** |
 | Binning hits on a surface into an irradiance grid | **Raytatouille** (`rt.analysis`), generally useful |
 | Ray layer, face fields, colour maps, plot dock, model tree, job runner, parameter panel | **CAD core** |
+| Excluding elements from a trace without deleting them ("inactive") | **Raytatouille** (e.g. a flag per element or via configurations) |
 | Mapping CAD entities ↔ rtt JSON pointers, scene building, actions Trace / Optimise | **plugin** |
 
 ## 3. Architecture
@@ -158,19 +158,19 @@ class Raytracer(plugin.Plugin):
 Each milestone is one PR with tests, like M0–M7. P1 and P2 also help without plugins (model
 tree, attributes, result display from scripts).
 
-## 5. Open decisions
+## 5. Decisions
 
-| | Question | Proposal |
+| | Question | Decision (2026-11-11) |
 |---|---|---|
-| D1 | ~~Raytatouille interface~~ – answered by the repository (section 2a): Python package `raytatouille`, NumPy results, `.rtt.json` model, JSON Patch editing | – |
-| D2 | ✅ decided: separate process per plugin | – |
-| D3 | ✅ decided: only the project owner signs (one built-in key); unsigned plugins only in the explicit developer mode | – |
-| D4 | Panel position | right dock, as a tab next to Properties / Layers; the tool column gets one group per plugin for its actions |
-| D5 | Python for plugins: bundled with the installer or a user-selected environment (venv / conda with your libraries)? | user-selected environment first (scientific stack, your wheels); bundling later |
-| D6 | Rays: display-only result layer or real CAD curves? | display layer (millions of rays) + *promote selected rays* to curves |
-| D7 | What do the other kernels need? (fields on surfaces, vector glyphs, volume slices, time series, meshes) | collect now so that P2 covers them |
-| D8 | Order: plugins before release 1.0 (M8), or M8 first? | M8 (unsigned, small) first, then P1–P7 |
-| D9 | Should the CAD plugin replace the 3D part of Raytatouille's planned own GUI (M10, PySide6 / pyvista)? | yes for 3D model, rays, results on surfaces; 2D analysis plots (spot, MTF, …) via the plot dock or matplotlib images |
-| D10 | Where does the bridge rtt → Nurbforge live? | optional module in Raytatouille (`raytatouille.nurbs`), so that scripts and STEP export can use it too; prototype in the plugin |
-| D11 | "Switch parts on / off": only hide in the view, or also exclude from the trace? | both, separately: visibility in the CAD model tree; "inactive in the simulation" as a plugin attribute (needs Raytatouille support, e.g. via configurations) |
-| D12 | Mechanical parts (housings, mounts from STEP) together with the optics: should the tracer see them (vignetting, stray light)? | display only in sequential mode; as obstacles once the non-sequential mode (rtt M9) exists |
+| D1 | Raytatouille interface | from the repository (section 2a): Python package `raytatouille`, NumPy results, `.rtt.json` model, JSON Patch editing |
+| D2 | Separate process or embedded Python? | **separate process per plugin** |
+| D3 | Who signs? | **only the project owner** (one built-in key); unsigned plugins only in the explicit developer mode |
+| D4 | Panel position | right dock, tab next to Properties / Layers; one group per plugin in the tool column |
+| D5 | Python for plugins | **user-selected environment** (venv / conda with the kernel libraries); bundling later if needed |
+| D6 | Rays | **display layer** (millions of rays) + *promote selected rays* to CAD curves |
+| D7 | What do the other kernels need? | step by step; essentially **textures on geometry** (scalar fields and images on faces) – P2 makes that the central result type |
+| D8 | Order | **plugins first** (P1 starts now), release 1.0 later |
+| D9 | Replace the 3D part of Raytatouille's own GUI (M10)? | **yes** |
+| D10 | Where does the bridge rtt → Nurbforge live? | ❓ open – first in the plugin, later possibly an optional module `raytatouille.nurbs` |
+| D11 | Switch parts on / off | **both**: hide in the CAD view, and exclude from the computation ("inactive" attribute) – the exclusion needs support in Raytatouille (library item) |
+| D12 | Mechanical parts in the trace | display only in sequential mode; obstacles once non-sequential tracing (rtt M9) exists |
