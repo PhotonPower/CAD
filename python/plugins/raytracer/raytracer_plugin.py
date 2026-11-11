@@ -254,12 +254,16 @@ class RaytracerPlugin(Plugin):
         run = ctx.result_set(f"Trace {Path(self.loaded_from or 'system').name.split('.')[0]}")
         points, starts, values = [], [0], []
         n_ok = n_total = 0
+        last_surface = None  # the last surface of the path (where the irradiance is computed)
         for w in wls:
             ctx.check_cancel()
             rays = rt.trace.make_rays(compiled, rt.trace.HexapolarPupil(rings=p["rings"]), path=path,
                                       fields=fields, wavelength=w)
             stats, rec = rt.trace.trace(compiled, rays, path=path, record_path=True,
                                         max_recorded_rays=max(rays.size, 1))
+            events = np.asarray(rec.event_surfaces)
+            if events.size:
+                last_surface = int(events[-1])
             pos = np.asarray(rec.position, dtype=float)  # (N, slots, 3); NaN after a loss
             idx = np.asarray(rec.ray_indices)
             wl_um = compiled.wavelengths_um[compiled.reference_wavelength if w is None else w]
@@ -279,24 +283,26 @@ class RaytracerPlugin(Plugin):
 
         message = f"{n_ok} of {n_total} drawn rays reach the end of the path"
         if p["irradiance"]:
-            message += "; " + self._irradiance(ctx, compiled, run, path, fields, wls)
+            message += "; " + self._irradiance(ctx, compiled, run, path, fields, wls, last_surface)
         return message
 
-    def _irradiance(self, ctx, compiled, run, path, fields, wls) -> str:
-        """Hits on the image surface binned into a grid over its face (Raytatouille #379 will
-        provide this in rt.analysis; until then the plugin bins the final ray positions)."""
+    def _irradiance(self, ctx, compiled, run, path, fields, wls, last_surface: int | None) -> str:
+        """Irradiance on the last surface of the path (Raytatouille #379, rt.analysis.irradiance_map)
+        over the parameter domain of its drawn face, so the field covers the face exactly."""
+        if not hasattr(rt.analysis, "irradiance_map"):
+            raise RuntimeError("the irradiance needs a newer Raytatouille (rt.analysis.irradiance_map, #379)")
         p = ctx.params
-        det = self._detector_index(compiled)
+        det = self._detector_index(compiled) if last_surface is None else last_surface
         L = rt.layout.surfaces(compiled)[det]
         entity = next((e for e in self._entities(ctx) if e["attributes"].get("rtt.surface") == L.id), None)
         if entity is None:
-            return "no image surface drawn"
-        # the face's parameter domain = the binning range (the field covers the face's (u, v))
+            return f"{L.id} is not drawn"
         knots_u = entity["geometry"]["surface"]["knots_u"]
         knots_v = entity["geometry"]["surface"]["knots_v"]
-        (u0, u1), (v0, v1) = (knots_u[0], knots_u[-1]), (knots_v[0], knots_v[-1])
+        extent = (knots_u[0], knots_u[-1], knots_v[0], knots_v[-1])  # local x, y = face (u, v)
         n = p["grid"]
         grid = np.zeros((n, n))
+        lost = {"outside the grid": 0, "vignetted": 0, "not reached": 0}
         token = rt.CancelToken()
 
         def progress(done, total, stage):
@@ -306,19 +312,30 @@ class RaytracerPlugin(Plugin):
 
         weights = compiled.wavelength_weights
         for w in wls:
-            rays = rt.trace.make_rays(compiled, rt.trace.HexapolarPupil(rings=p["irradiance_rings"]), path=path,
-                                      fields=fields, wavelength=w, cancel=token, progress=progress)
+            sampling = rt.trace.HexapolarPupil(rings=p["irradiance_rings"])
+            rays = rt.trace.make_rays(compiled, sampling, path=path, fields=fields, wavelength=w,
+                                      cancel=token, progress=progress)
             rt.trace.trace(compiled, rays, path=path, cancel=token, progress=progress)
-            ok = (np.asarray(rays.status) == 0) & (np.asarray(rays.last_surface) == det)
-            pos = np.stack([np.asarray(rays.pos_x), np.asarray(rays.pos_y), np.asarray(rays.pos_z)], -1)[ok]
-            local = (pos - np.asarray(L.translation)) @ np.asarray(L.rotation)
+            try:
+                # batch form: any number of rays, if the last event cannot change the weight
+                im = rt.analysis.irradiance_map(compiled, rays, path=path, nx=n, ny=n, extent=extent)
+            except ValueError:
+                # e.g. a reflecting or absorbing last surface: the form with recorded paths
+                rays = rt.trace.make_rays(compiled, sampling, path=path, fields=fields, wavelength=w)
+                _, rec = rt.trace.trace(compiled, rays, path=path, record_path=True,
+                                        max_recorded_rays=max(rays.size, 1))
+                im = rt.analysis.irradiance_map(compiled, rec, surface=L.id, path=path, nx=n, ny=n,
+                                                extent=extent, wavelength=w)
             wl_weight = weights[compiled.reference_wavelength if w is None else w]
-            h, _, _ = np.histogram2d(local[:, 0], local[:, 1], bins=n, range=[[u0, u1], [v0, v1]],
-                                     weights=np.asarray(rays.weight)[ok] * wl_weight)
-            grid += h
-        area = (u1 - u0) * (v1 - v0) / (n * n)
-        values = (grid / area).T.reshape(-1)  # values[j * width + i]: i along u (x), j along v (y)
+            grid += np.asarray(im.values, dtype=float) * wl_weight  # (ny, nx): row j along v
+            for key, attr in (("outside the grid", "outside_grid"), ("vignetted", "vignetted"),
+                              ("not reached", "not_reached")):
+                lost[key] += int(getattr(im, attr).count)
+        values = grid.reshape(-1)  # values[j * width + i]: i along u (x), j along v (y)
         ctx.field(run, "Irradiance", entity["id"], values, n, n, unit="W/mm² (rel.)")
+        missing = ", ".join(f"{k}: {v}" for k, v in lost.items() if v)
+        if missing:
+            ctx.log(f"irradiance on {L.id}: rays not counted – {missing}")
         peak = float(values.max()) if values.size else 0.0
         return f"irradiance on {L.id} (peak {peak:.3g})"
 

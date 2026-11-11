@@ -5,6 +5,11 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 
 ## [Unreleased]
 
+### Changed
+- Raytracer plugin: the irradiance comes from Raytatouille (`rt.analysis.irradiance_map`, #379)
+  on the last surface of the path – incident weight per projected cell area, uncounted rays
+  in the plugin log – instead of the plugin's own binning; it needs a Raytatouille with #379.
+
 ### Added
 - **Plugin distribution (P7):** `.nfplugin` packages (zip of the plugin folder with its
   signature; `nfcad-plugin pack`), *Plugins → Install plugin…* / *Uninstall plugin* into the

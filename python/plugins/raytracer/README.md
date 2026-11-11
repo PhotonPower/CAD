@@ -5,7 +5,8 @@ Raytatouille Fusion – milestone P6 of the [plugin plan](../../../docs/plugins.
 
 ## Setup
 
-1. Install Raytatouille into the Python environment of the plugins (*Plugins → Settings…*), e.g.
+1. Install Raytatouille (with `rt.analysis.irradiance_map`, i.e. #379 – `main` from 2026-11-11 on)
+   into the Python environment of the plugins (*Plugins → Settings…*), e.g.
    the repository's `.venv`:
    ```bash
    MACOSX_DEPLOYMENT_TARGET=26.0 .venv/bin/pip install ../Raytatouille   # macOS; elsewhere without the variable
@@ -18,7 +19,7 @@ Raytatouille Fusion – milestone P6 of the [plugin plan](../../../docs/plugins.
 | Action | What happens |
 |---|---|
 | **Load system** | reads the `.rtt.json` (*System file*), compiles it with the glass catalogues and draws every surface as a NURBS face – lenses with their rims, the aperture stop as a ring, the image surface sized to the spot. The model tree follows the rtt node tree. Loading again replaces the drawing. |
-| **Trace rays** | rays along the path (*Path*, *Field*, *Wavelengths*, *Pupil rings*) as a line set in *Results*, coloured by wavelength or field; with *Irradiance on the image* the hits on the image surface as a field (*Irradiance grid*, *Pupil rings (irradiance)*). |
+| **Trace rays** | rays along the path (*Path*, *Field*, *Wavelengths*, *Pupil rings*) as a line set in *Results*, coloured by wavelength or field; with *Irradiance on the image* the irradiance on the last surface of the path as a field on its face (*Irradiance grid*, *Pupil rings (irradiance)*), computed by Raytatouille (`rt.analysis.irradiance_map`, #379: incident weight per projected cell area). Rays that are not counted (outside the face, vignetted, not reached) are listed in the plugin log. |
 | **Optimise** | Raytatouille's optimiser on the system's variables and merit function; the changed surfaces are redrawn after every accepted iteration, the merit function grows in the *Plot* dock. Cancel (Esc) ends with the last accepted state. |
 | **Save system** | writes the current system (*Save as*, default `<system>.optimised.rtt.json`). |
 
@@ -38,8 +39,6 @@ attribute `rtt.nurbs_error_mm`.
 
 ## Not yet
 
-- Irradiance computed by Raytatouille ([#379](https://github.com/PhotonPower/Raytatouille/issues/379));
-  until then the plugin bins the final ray positions itself.
 - Switching elements off for the computation (attribute `sim.inactive`, needs
   [#380](https://github.com/PhotonPower/Raytatouille/issues/380)); the plugin only logs them.
 - Editing optical parameters in CAD (radii, thicknesses) and the conversion to
