@@ -90,10 +90,11 @@ jobs:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
     steps:
       - uses: actions/checkout@v5
-      # Qt from qt.io: universal (arm64 + x86_64) binaries; Homebrew's Qt is arm64 only
+      # Qt from qt.io: universal (arm64 + x86_64) binaries; Homebrew's Qt is arm64 only. Qt 6.8's
+      # CMake files still link the AGL framework, which current macOS SDKs no longer have.
       - uses: jurplel/install-qt-action@v4
         with:
-          version: "6.8.*"
+          version: "6.10.*"
           host: mac
           target: desktop
           arch: clang_64
