@@ -1,5 +1,6 @@
 // Plugins in the main window (docs/plugin-api.md): menu, tool-column groups, job progress, log.
 #include <QDockWidget>
+#include <QLabel>
 #include <QMenuBar>
 #include <QPlainTextEdit>
 #include <QProgressBar>
@@ -115,7 +116,7 @@ void MainWindow::connectPlugin(plugins::PluginHost* host) {
             plugin_panel_->setBusy(false);
             job_progress_->hide();
             job_cancel_->hide();
-            const QString what = host->manifest().name;
+            const QString what = host->manifest().displayName();
             statusBar()->showMessage(cancelled ? tr("%1: cancelled").arg(what)
                                      : ok      ? tr("%1: %2").arg(what, message.isEmpty() ? tr("done") : message)
                                                : tr("%1 failed: %2").arg(what, message),
@@ -145,9 +146,9 @@ void MainWindow::rebuildPluginUi() {
   std::vector<ui::ToolGroupDef> groups;
   for (const auto& h : plugins_->plugins()) {
     const auto& m = h->manifest();
-    QMenu* sub = plugins_menu_->addMenu(m.name);
+    QMenu* sub = plugins_menu_->addMenu(m.displayName());
     sub->setToolTip(m.description);
-    ui::ToolGroupDef group{QStringLiteral("plugin_") + m.id, m.name, true, {}};
+    ui::ToolGroupDef group{QStringLiteral("plugin_") + m.id, m.displayName(), true, {}};
     if (!h->ready()) {
       sub->addAction(h->running() ? tr("(starting …)") : tr("(not running – see the plugin log)"))->setEnabled(false);
     }
@@ -161,8 +162,16 @@ void MainWindow::rebuildPluginUi() {
     if (!group.tools.empty()) groups.push_back(std::move(group));
   }
   if (plugins_->plugins().empty()) {
-    plugins_menu_->addAction(tr("(no plugins found – see Settings)"))->setEnabled(false);
+    plugins_menu_->addAction(tr("(no plugins loaded – see Settings)"))->setEnabled(false);
   }
+  // developer mode (P5): unsigned plugins are loaded – always visible
+  if (developer_banner_ == nullptr) {
+    developer_banner_ = new QLabel(tr(" DEVELOPER MODE – unsigned plugins allowed "), this);
+    developer_banner_->setStyleSheet(QStringLiteral("background: #b02a2a; color: white; font-weight: bold;"));
+    developer_banner_->setToolTip(tr("Plugins → Settings… → Developer mode"));
+    statusBar()->addPermanentWidget(developer_banner_);
+  }
+  developer_banner_->setVisible(plugins_->developerMode());
   toolbox_->setExtraGroups(groups);
 }
 
@@ -177,7 +186,7 @@ void MainWindow::runPluginAction(plugins::PluginHost* host, const QString& actio
   job_progress_->setValue(0);
   job_progress_->show();
   job_cancel_->show();
-  statusBar()->showMessage(tr("%1: %2 …").arg(host->manifest().name, action));
+  statusBar()->showMessage(tr("%1: %2 …").arg(host->manifest().displayName(), action));
 }
 
 }  // namespace nfcad::app

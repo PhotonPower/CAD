@@ -42,7 +42,7 @@ void PluginPanel::rebuild() {
   chooser_->blockSignals(true);
   chooser_->clear();
   for (const auto& h : manager_->plugins()) {
-    chooser_->addItem(h->manifest().name, h->manifest().id);
+    chooser_->addItem(h->manifest().displayName(), h->manifest().id);
     // the parameters are known once the plugin said hello
     connect(h.get(), &plugins::PluginHost::readyChanged, this, &PluginPanel::showPlugin, Qt::UniqueConnection);
   }

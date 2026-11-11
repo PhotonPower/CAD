@@ -12,7 +12,7 @@ signed Python plugins ([plugin plan](docs/plugins.md)). C++20, Qt 6, native rend
 > Formerly *Nurbforge CAD* (renamed 2026-11-11). Internal identifiers stay: the C++ namespace and
 > the Python package `nfcad`, the document format `.nfcad`, the `NFCAD_*` environment variables.
 
-> **Status: 0.0 – milestones M0–M7 and plugin milestones P1–P4.** STEP files and `.nfcad` documents open and display in four
+> **Status: 0.0 – milestones M0–M7 and plugin milestones P1–P5.** STEP files and `.nfcad` documents open and display in four
 > navigable views (wireframe / surfaces / shaded); objects, faces, edges and vertices can be
 > selected, with property and layer panels; the magnetic cursor snaps to points, ends, mids,
 > centres, axis cut points, intersections, face corners and edges; curves are drawn with

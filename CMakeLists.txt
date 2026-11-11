@@ -4,7 +4,7 @@ project(RaytatouilleFusion
   VERSION 0.0.1
   DESCRIPTION "Desktop CAD front end for the Nurbforge NURBS kernel"
   HOMEPAGE_URL "https://github.com/PhotonPower/Raytatouille-Fusion"
-  LANGUAGES CXX)
+  LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -28,6 +28,7 @@ if(Qt6_VERSION VERSION_GREATER_EQUAL 6.9)
 endif()
 include(FindOrFetchNurbforge)   # -> Nurbforge::core (before AUTOMOC is switched on)
 include(FetchCDT)               # -> CDT::headers
+include(FetchMonocypher)        # -> nfcad_monocypher (plugin signatures)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -52,6 +53,8 @@ add_library(nfcad_core STATIC
   src/pick/picking.cpp
   src/plugins/plugin_host.cpp
   src/plugins/plugin_manager.cpp
+  src/plugins/signature.cpp
+  ${CMAKE_CURRENT_BINARY_DIR}/generated/trusted_keys.cpp
   src/results/colormap.cpp
   src/results/result_store.cpp
   src/snap/snap_engine.cpp
@@ -67,7 +70,7 @@ target_include_directories(nfcad_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 # Nurbforge value types appear in document/ headers (ADR 0003), hence PUBLIC.
 target_link_libraries(nfcad_core
   PUBLIC Qt6::Core Qt6::Gui Qt6::Concurrent Qt6::Network Nurbforge::core
-  PRIVATE CDT::headers)
+  PRIVATE CDT::headers nfcad_monocypher)
 nfcad_set_warnings(nfcad_core)
 
 # ---------------------------------------------------------------- GUI library
@@ -128,7 +131,19 @@ set_target_properties(RaytatouilleFusion PROPERTIES
 target_compile_definitions(nfcad_core PUBLIC NFCAD_VERSION="${PROJECT_VERSION}"
                            PRIVATE NFCAD_PYTHON_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/python")
 
+# Trusted plugin publisher keys (keys/trusted-publishers.txt, comments removed) are compiled in.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS keys/trusted-publishers.txt)
+file(STRINGS keys/trusted-publishers.txt _nfcad_key_lines REGEX "^ed25519:")
+list(JOIN _nfcad_key_lines "\n" NFCAD_TRUSTED_KEYS)
+configure_file(src/plugins/trusted_keys.cpp.in generated/trusted_keys.cpp @ONLY)
+
 # ---------------------------------------------------------------- tools
+# Plugin keys and signatures: build/<preset>/tools/nfcad-plugin keygen | pubkey | sign | verify
+add_executable(nfcad-plugin tools/nfcad_plugin.cpp)
+target_link_libraries(nfcad-plugin PRIVATE nfcad_core)
+nfcad_set_warnings(nfcad-plugin)
+set_target_properties(nfcad-plugin PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tools)
+
 # Demo / benchmark model: build/<preset>/tools/make_demo_model out.step [nx ny]
 add_executable(make_demo_model tools/make_demo_model.cpp)
 target_link_libraries(make_demo_model PRIVATE Nurbforge::core)

@@ -105,6 +105,7 @@ points, weights)`; with the `nurbforge` package installed `to_nurbforge(dict)` a
 - Environment variables: `NFCAD_PYTHON`, `NFCAD_PLUGIN_PATH` (list), `NFCAD_PYTHONPATH`
   (location of the `nfcad` package; normally found next to the application).
 - Development builds use the repository's `.venv` and `python/examples` when nothing is set.
+  The example plugins are not signed: switch on the developer mode (see *Signing*) to load them.
   Create the venv with:
   ```bash
   python3.11 -m venv .venv && .venv/bin/pip install numpy ../Nurbforge
@@ -119,5 +120,24 @@ large arrays travel as temporary files that CAD maps and deletes. Actions run in
 thread of the plugin process, so Cancel is always received; a plugin that does not stop within
 5 s is terminated. A crash of the plugin process ends only that action.
 
-Not yet (later milestones): signatures and the developer mode (P5) –
-until then CAD loads every plugin found in the plugin folders, so only add folders you trust.
+## Signing
+
+CAD loads only plugins **signed by the publisher** whose public key is built into the
+application (`keys/trusted-publishers.txt`, decision D3; [ADR 0009](adr/0009-plugin-signatures.md)).
+A signed plugin runs from a private copy of exactly the signed files.
+
+```bash
+T=build/release/tools/nfcad-plugin
+$T keygen ~/.raytatouille-fusion/publisher.key   # once; prints "ed25519:…" for keys/trusted-publishers.txt
+$T sign   path/to/my_plugin ~/.raytatouille-fusion/publisher.key   # writes my_plugin/SIGNATURE
+$T verify path/to/my_plugin                      # against the built-in keys
+```
+
+Sign again after every change – a modified file invalidates the signature. Keep the secret
+key out of the repository and back it up; whoever has it can publish plugins that CAD runs.
+Signed plugins inside the repository are checked by the `signed_plugins` test.
+
+**Developer mode** (*Plugins → Settings… → Developer mode*, or `NFCAD_DEVELOPER_MODE=1`)
+also loads unsigned plugins – e.g. the one you are writing – from their folder. They appear as
+*Name [unsigned]*, and a red *DEVELOPER MODE* banner stays in the status bar. A signature proves
+who wrote a plugin and that it is unchanged; it is not a sandbox.

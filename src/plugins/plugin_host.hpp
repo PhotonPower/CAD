@@ -32,7 +32,15 @@ struct Manifest {
   int api = 0;
   QString entry;        ///< "module:Class"
   QString description;
-  QString directory;    ///< absolute path of the plugin directory
+  QString directory;    ///< directory the plugin runs from (for signed plugins a private, checked copy)
+  QString source_directory;  ///< the plugin's folder as installed
+  bool trusted = false;      ///< signature valid with a built-in publisher key (P5)
+  QString trust_note;        ///< why it is not trusted ("not signed", …); developer mode only
+
+  /// Name for menus and panels; untrusted plugins (developer mode) are marked.
+  [[nodiscard]] QString displayName() const {
+    return trusted ? name : QStringLiteral("%1 [%2]").arg(name, trust_note);
+  }
 };
 
 /// Reads <dir>/plugin.json; empty on errors (message in `error`).

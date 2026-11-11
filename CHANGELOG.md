@@ -6,6 +6,10 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- **Plugin signatures (P5):** only plugins signed with the built-in publisher key load
+  (Ed25519 via Monocypher; file `SIGNATURE`); they run from a private, checked copy. Developer
+  mode loads unsigned plugins, marked, with a red banner. Tool `nfcad-plugin` (keygen, sign,
+  verify); test `signed_plugins` checks signed plugins in the repository. ADR 0009.
 - **Plugin parameter panel (P4):** plugins describe their parameters with `nfcad.Param`
   (number with unit and limits, integer, boolean, choice, text, file, number list, point,
   model object); CAD builds a form in the new *Plugin* dock with the plugin's action buttons.

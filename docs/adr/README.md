@@ -13,3 +13,4 @@ New ADRs get the next number; superseded ADRs stay and are marked as such.
 | [0006](0006-cdt-for-trimmed-faces.md) | Constrained Delaunay triangulation (CDT) for trimmed faces | accepted |
 | [0007](0007-cpu-picking.md) | Picking on the CPU with BVHs over the display meshes | accepted |
 | [0008](0008-plugin-architecture.md) | Plugin architecture: library / CAD core / signed Python plugins | accepted |
+| [0009](0009-plugin-signatures.md) | Plugin signatures: Ed25519 with Monocypher, checked private copy | accepted |
