@@ -170,7 +170,7 @@ CAD curves* for rays). Colour maps: viridis, inferno, plasma, coolwarm, grey. No
 | **P4** ✅ | Parameter panel from the schema (numbers + units, enums, lists, files, entity pick, point pick with snaps), parameter sets saved in the document | yes |
 | **P5** ✅ | Signing: manifest, `nfcad-plugin sign / verify`, trusted keys, developer mode, CI check | yes |
 | **P6** ✅ | Reference plugin *Raytracer*: load / edit `.rtt.json`, bridge to Nurbforge geometry, model tree from the rtt node tree, trace with rays, image-surface irradiance as face field, optimise (final result; live once rtt has the iteration callback), convergence plot, undo via inverse patches | needs Raytatouille + the library items of section 2a |
-| | P6 as built: [python/plugins/raytracer](../python/plugins/raytracer/README.md) – load (bridge rtt → NURBS in the plugin, D10), trace (rays, irradiance binned by the plugin until #379), optimise live (#378), save; undo follows the system revision (`rtt.revision`). Open: inactive elements (#380), editing optical parameters in CAD | |
+| | P6 as built: [python/plugins/raytracer](../python/plugins/raytracer/README.md) – load (bridge rtt → NURBS in the plugin, D10), trace (rays; irradiance from `rt.analysis.irradiance_map`, #379), optimise live (#378), save; undo follows the system revision (`rtt.revision`). Open: inactive elements (#380), editing optical parameters in CAD | |
 | **P7** ✅ | Distribution: Python environment check / venv (D5: no bundled Python), `.nfplugin` packages with install / uninstall, manual update check | yes |
 
 Each milestone is one PR with tests, like M0–M7. P1 and P2 also help without plugins (model
