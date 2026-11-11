@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.photonpower.NurbforgeCAD</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Nurbforge CAD</name>
+  <summary>NURBS CAD front end for the Nurbforge kernel</summary>
+  <description>
+    <p>Desktop CAD with four views, object snaps, drawing and modelling commands on exact
+    NURBS geometry (Nurbforge kernel), STEP import and export.</p>
+  </description>
+  <launchable type="desktop-id">io.github.photonpower.NurbforgeCAD.desktop</launchable>
+  <url type="homepage">https://github.com/PhotonPower/CAD</url>
+  <provides>
+    <binary>NurbforgeCAD</binary>
+  </provides>
+</component>

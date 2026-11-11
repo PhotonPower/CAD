@@ -6,14 +6,15 @@
 **Desktop CAD front end for the [Nurbforge](https://github.com/PhotonPower/Nurbforge) NURBS kernel** –
 C++20, Qt 6, native rendering (Metal / Direct3D / OpenGL·Vulkan via Qt RHI).
 
-> **Status: 0.0 – milestone M6 (a–c).** STEP files and `.nfcad` documents open and display in four
+> **Status: 0.0 – milestone M7.** STEP files and `.nfcad` documents open and display in four
 > navigable views (wireframe / surfaces / shaded); objects, faces, edges and vertices can be
 > selected, with property and layer panels; the magnetic cursor snaps to points, ends, mids,
 > centres, axis cut points, intersections, face corners and edges; curves are drawn with
 > commands, snaps and typed coordinates ([commands](docs/commands.md)); solids, Booleans,
 > transforms, arrays, surfaces from curves (extrude, revolve, loft, sweep, Coons, Gordon,
 > offsets, fillets), editing (join, explode, cap, split, trim, intersect), analysis and STEP /
-> STL export work. Next: Windows 11 and RHEL 10 packages ([project plan](docs/plan.md)).
+> STL export work, on macOS, Windows 11 (installer) and AlmaLinux / RHEL 10 (RPM).
+> Next: release 1.0 ([project plan](docs/plan.md)).
 
 ## Features (planned)
 
@@ -44,8 +45,8 @@ see [docs/build/macos.md](docs/build/macos.md).
 | Platform | Toolchain | Guide | Status |
 |---|---|---|---|
 | macOS ≥ 14 (Apple Silicon, Intel) | Apple Clang, Qt ≥ 6.8, CMake ≥ 3.24 | [macos.md](docs/build/macos.md) | development platform |
-| Windows 11 | MSVC 2022/2026, Qt ≥ 6.8 | [windows11.md](docs/build/windows11.md) | M7 |
-| AlmaLinux / RHEL 10 | GCC 14, Qt ≥ 6.8 | [almalinux10.md](docs/build/almalinux10.md) | M7 |
+| Windows 11 | MSVC 2022/2026, Qt ≥ 6.8 | [windows11.md](docs/build/windows11.md) | supported (installer) |
+| AlmaLinux / RHEL 10 | GCC 14, Qt ≥ 6.8 | [almalinux10.md](docs/build/almalinux10.md) | supported (RPM) |
 
 ## Documentation
 
@@ -61,7 +62,7 @@ resources/  icons (SVG), shaders, styles, platform files (Info.plist, .rc, .desk
 tests/      Qt Test unit tests
 docs/       documentation and ADRs
 cmake/      CMake helpers
-packaging/  dmg / installer / RPM (from M7)
+packaging/  Windows installer, RPM spec, macOS DMG script
 ```
 
 ## License

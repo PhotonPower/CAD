@@ -10,6 +10,8 @@ Every viewport is a `QRhiWidget` (Qt ≥ 6.7, used from 6.8). Qt RHI picks the n
 | Windows 11 | Direct3D 11 (default) or 12 | |
 | AlmaLinux / RHEL 10 | OpenGL ≥ 3.3 (default) or Vulkan | Wayland and X11; works with Mesa in VMs |
 
+`NFCAD_RHI_BACKEND=opengl|vulkan|metal|d3d11|d3d12` overrides the choice (debugging, VMs).
+
 Shaders are written once in Vulkan-style GLSL (`resources/shaders/*.vert|frag`) and compiled to
 `.qsb` at build time by `qt_add_shaders()` (SPIR-V, MSL, HLSL, GLSL).
 

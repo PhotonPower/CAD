@@ -1,0 +1,109 @@
+name: Packages
+
+# Installers / packages (packaging/README.md): Windows (Inno Setup), AlmaLinux / RHEL 10 (RPM),
+# macOS (DMG, unsigned). Built for tags, on demand, and for pull requests that touch packaging.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "packaging/**"
+      - "resources/linux/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/package.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NURBFORGE_TAG: a35e92994ed55d5dbaba4e72f30bbdd106584d1c
+
+jobs:
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.*"
+          arch: win64_msvc2022_64
+          modules: qtshadertools
+          cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNFCAD_BUILD_TESTS=OFF "-DNFCAD_NURBFORGE_TAG=${{ env.NURBFORGE_TAG }}"
+          cmake --build build
+      - name: Stage (windeployqt)
+        # Qt 6.8's deploy support needs an absolute prefix
+        run: cmake --install build --component app --prefix "$PWD\stage"
+      - name: Check the staged files
+        shell: bash
+        run: |
+          test -f stage/bin/NurbforgeCAD.exe
+          ls stage/bin | grep -i Qt6Core
+          find stage -iname 'qwindows.dll' | grep -q .
+          test -f stage/LICENSE.txt
+      - name: Installer (Inno Setup)
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DSourceDir=$PWD\stage" "/DOutputDir=$PWD\dist" packaging\windows\nurbforge-cad.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/*.exe
+
+  almalinux10:
+    name: AlmaLinux / RHEL 10 RPM
+    runs-on: ubuntu-latest
+    container: almalinux:10
+    steps:
+      - name: Build dependencies
+        run: |
+          dnf install -y epel-release dnf-plugins-core
+          dnf config-manager --set-enabled crb
+          dnf install -y rpm-build gcc-c++ git cmake ninja-build \
+                         qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtsvg-devel \
+                         qt6-qtshadertools-devel mesa-libGL-devel
+      - uses: actions/checkout@v5
+      - name: rpmbuild
+        run: |
+          rpmbuild -bb packaging/linux/nurbforge-cad.spec \
+            --define "_srcdir $PWD" --define "_topdir $PWD/rpmbuild" \
+            --define "nurbforge_tag $NURBFORGE_TAG"
+      - name: Install and smoke test
+        run: |
+          dnf install -y ./rpmbuild/RPMS/*/nurbforge-cad-*.rpm
+          rpm -ql nurbforge-cad
+          QT_QPA_PLATFORM=offscreen NurbforgeCAD --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: almalinux10-rpm
+          path: rpmbuild/RPMS/*/*.rpm
+
+  macos:
+    name: macOS disk image
+    runs-on: macos-latest
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: brew install qt ninja
+      - name: Build and stage (macdeployqt)
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNFCAD_BUILD_TESTS=OFF -DNFCAD_NURBFORGE_TAG=$NURBFORGE_TAG
+          cmake --build build
+          cmake --install build --component app --prefix stage
+      - name: Smoke test (no Homebrew paths left)
+        run: |
+          ! otool -L stage/NurbforgeCAD.app/Contents/MacOS/NurbforgeCAD | grep -q /opt/homebrew
+          stage/NurbforgeCAD.app/Contents/MacOS/NurbforgeCAD --version
+      - name: DMG
+        run: packaging/macos/make_dmg.sh stage/NurbforgeCAD.app NurbforgeCAD-macos.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: NurbforgeCAD-macos.dmg
