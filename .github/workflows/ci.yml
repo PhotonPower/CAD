@@ -34,7 +34,7 @@ jobs:
           cmake --preset ci -DNFCAD_NURBFORGE_TAG=$NURBFORGE_TAG
           cmake --build --preset ci -j
       - name: Tests
-        run: ctest --preset ci
+        run: ctest --preset ci --output-on-failure
 
   almalinux10:
     name: AlmaLinux 10 (GCC, distro Qt 6)
@@ -56,7 +56,7 @@ jobs:
           cmake --preset ci -DNFCAD_NURBFORGE_TAG=$NURBFORGE_TAG
           cmake --build --preset ci -j
       - name: Tests
-        run: ctest --preset ci
+        run: ctest --preset ci --output-on-failure
 
   windows11:
     name: Windows (MSVC, Qt 6)
@@ -74,12 +74,19 @@ jobs:
           cmake --preset msvc "-DNFCAD_NURBFORGE_TAG=${{ env.NURBFORGE_TAG }}"
           cmake --build --preset msvc
       - name: Tests
-        run: ctest --preset msvc
-      - name: Plugin tests with full output (diagnostics on failure)
+        run: ctest --preset msvc --output-on-failure
+      - name: Failing tests run directly (diagnostics on failure)
         if: failure()
         run: |
-          .\build\msvc\tests\Release\test_plugin_host.exe
-          .\build\msvc\tests\Release\test_main_window_plugins.exe -platform offscreen
+          foreach ($name in @("test_support")) {
+            $exe = Get-ChildItem -Recurse build\msvc -Filter "$name.exe" | Select-Object -First 1
+            if ($exe) {
+              Write-Host "== $($exe.FullName)"
+              & $exe.FullName -o "$env:RUNNER_TEMP\$name.txt,txt"
+              Write-Host ("exit code: 0x{0:X8}" -f $LASTEXITCODE)
+              Get-Content "$env:RUNNER_TEMP\$name.txt" -ErrorAction SilentlyContinue | Out-Host
+            }
+          }
 
   lint:
     name: clang-format (report only)

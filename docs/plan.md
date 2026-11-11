@@ -160,7 +160,7 @@ jobs build from M0 on but are allowed to fail until M7.
 See [plugins.md](plugins.md): model tree, attributes, result layers and face fields, plugin
 host, parameter panel, signing, reference plugin *Raytracer*, distribution.
 
-### M8 – Release 1.0
+### M8 – Release 1.0 ✅ (prepared; the release is published by the owner)
 - macOS: unsigned `.dmg` (decision 2026-11-11), universal binary (arm64 + x86_64)
 - User documentation (screenshots, keyboard shortcuts), example models
 - Performance pass, crash reporting (local only), settings migration

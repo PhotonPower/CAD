@@ -4,7 +4,7 @@
 %global nurbforge_tag_opt %{?nurbforge_tag:-DNFCAD_NURBFORGE_TAG=%{nurbforge_tag}}
 
 Name:           raytatouille-fusion
-Version:        0.0.1
+Version:        1.0.0
 Release:        1%{?dist}
 Summary:        Desktop CAD front end for the Nurbforge NURBS kernel
 License:        MIT AND MPL-2.0
@@ -42,5 +42,7 @@ DESTDIR=%{buildroot} cmake --install build --component app
 %{_datadir}/raytatouille-fusion/
 
 %changelog
+* Wed Nov 11 2026 Raytatouille Fusion developers - 1.0.0-1
+- Release 1.0.0: plugins (Raytracer), universal macOS build, local crash reports
 * Wed Nov 11 2026 Raytatouille Fusion developers - 0.0.1-1
 - First package (milestone M7)
