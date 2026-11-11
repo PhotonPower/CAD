@@ -179,7 +179,11 @@ class TestRaytracerPlugin : public QObject {
     QVERIFY(detector);
     params_.insert(QStringLiteral("workflow_rays"), 2000);
     params_.insert(QStringLiteral("workflow_pixels"), 64);
+    QVERIFY(!doc_.workflow()["plan"].toObject()["links"].toObject().isEmpty());  // R17 planner
     run(QStringLiteral("check_workflow"));
+    for (const QJsonValue& v : doc_.workflow()["plan"].toObject()["links"].toObject()) {
+      QCOMPARE(v.toObject()["representation"].toString(), QStringLiteral("R"));  // only R runs yet
+    }
     run(QStringLiteral("run_workflow"));
     const auto& items = results_.sets().back().items;
     QVERIFY(!items.empty());

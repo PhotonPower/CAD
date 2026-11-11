@@ -74,7 +74,7 @@ class SocketItem : public QGraphicsEllipseItem {
 class NodeItem : public QGraphicsRectItem {
  public:
   NodeItem(NodeEditor* editor, const QJsonObject& node, const QJsonArray& sockets, const QString& category,
-           const QString& problem)
+           const QString& problem, const QStringList& conversions = {})
       : editor_(editor), id_(node["id"].toString()) {
     setFlags(ItemIsMovable | ItemIsSelectable | ItemSendsGeometryChanges);
     QJsonArray ins;
@@ -123,6 +123,13 @@ class NodeItem : public QGraphicsRectItem {
       if (it.key() == QLatin1String("surfaces") || it.key() == QLatin1String("paths")) continue;
       tip << QStringLiteral("%1 = %2").arg(it.key(), it.value().toVariant().toString());
     }
+    if (!conversions.isEmpty()) {
+      tip << QString() << QObject::tr("planned conversions:") << conversions;
+      auto* mark = new QGraphicsSimpleTextItem(QStringLiteral("⇄"), this);
+      mark->setBrush(QColor(240, 240, 240));
+      mark->setPos(kWidth - 6 - mark->boundingRect().width(), 4);
+      text->setText(QFontMetrics(text->font()).elidedText(text->text(), Qt::ElideRight, static_cast<int>(kWidth - 30)));
+    }
     if (!problem.isEmpty()) tip << QString() << problem;
     setToolTip(tip.join(QLatin1Char('\n')));
     setPos(node["position"].toArray().at(0).toDouble(), node["position"].toArray().at(1).toDouble());
@@ -149,13 +156,35 @@ class NodeItem : public QGraphicsRectItem {
 
 class LinkItem : public QGraphicsPathItem {
  public:
-  LinkItem(int index, SocketItem* a, SocketItem* b, const QString& transport, bool light)
+  LinkItem(int index, SocketItem* a, SocketItem* b, const QString& transport, bool light, const QJsonObject& planned = {},
+           const QString& problem = {})
       : index_(index), a_(a), b_(b), transport_(transport) {
     QPen pen(light ? QColor(240, 185, 60, 220) : QColor(90, 170, 230, 220), transport == QLatin1String("auto") ? 2.0 : 3.0);
+    if (!problem.isEmpty()) {
+      pen.setColor(QColor(230, 70, 70));
+      pen.setStyle(Qt::DashLine);
+    }
     setPen(pen);
     setZValue(-1);
-    setToolTip(transport == QLatin1String("auto") ? QObject::tr("transport: auto (the planner chooses)")
-                                                  : QObject::tr("transport: %1 (fixed)").arg(transport));
+    QStringList tip;
+    tip << (transport == QLatin1String("auto") ? QObject::tr("transport: auto (the planner chooses)")
+                                               : QObject::tr("transport: %1 (fixed)").arg(transport));
+    representation_ = planned["representation"].toString();
+    if (!representation_.isEmpty()) {
+      tip << QObject::tr("planned: %1 – %2").arg(representation_, planned["reason"].toString());
+      label_ = new QGraphicsSimpleTextItem(representation_ + (transport == QLatin1String("auto") ? QString() : QStringLiteral("*")), this);
+      QFont f = label_->font();
+      f.setBold(true);
+      f.setPointSizeF(f.pointSizeF() * 0.85);
+      label_->setFont(f);
+      label_->setBrush(QColor(20, 20, 20));
+      auto* back = new QGraphicsRectItem(label_->boundingRect().adjusted(-3, -1, 3, 1), label_);
+      back->setBrush(pen.color());
+      back->setPen(Qt::NoPen);
+      back->setFlag(QGraphicsItem::ItemStacksBehindParent);
+    }
+    if (!problem.isEmpty()) tip << QString() << problem;
+    setToolTip(tip.join(QLatin1Char('\n')));
     update();
   }
   void update() {
@@ -171,15 +200,28 @@ class LinkItem : public QGraphicsPathItem {
       path.cubicTo(p + QPointF(60.0, drop), q + QPointF(-60.0, drop), q);
     }
     setPath(path);
+    if (label_ != nullptr) {
+      const QPointF m = path.pointAtPercent(0.5);
+      label_->setPos(m - label_->boundingRect().center());
+    }
   }
   [[nodiscard]] int index() const { return index_; }
+  [[nodiscard]] QString representation() const { return representation_; }
 
  private:
   int index_;
   SocketItem* a_;
   SocketItem* b_;
   QString transport_;
+  QString representation_;
+  QGraphicsSimpleTextItem* label_ = nullptr;
 };
+
+static QString link_key(const QJsonObject& l) {
+  const QJsonArray a = l["from"].toArray();
+  const QJsonArray b = l["to"].toArray();
+  return QStringLiteral("%1.%2 -> %3.%4").arg(a.at(0).toString(), a.at(1).toString(), b.at(0).toString(), b.at(1).toString());
+}
 
 // ------------------------------------------------------------------------------ editor
 
@@ -350,6 +392,20 @@ QJsonArray NodeEditor::socketsOf(const QJsonObject& node) const {
 
 QGraphicsRectItem* NodeEditor::nodeItem(const QString& id) const { return nodes_.value(id); }
 
+QGraphicsPathItem* NodeEditor::linkItem(int index) const {
+  for (LinkItem* l : links_) {
+    if (l->index() == index) return l;
+  }
+  return nullptr;
+}
+
+QString NodeEditor::plannedRepresentation(int index) const {
+  for (LinkItem* l : links_) {
+    if (l->index() == index) return l->representation();
+  }
+  return {};
+}
+
 int NodeEditor::linkCount() const { return graph()["links"].toArray().size(); }
 
 void NodeEditor::rebuild() {
@@ -360,12 +416,27 @@ void NodeEditor::rebuild() {
   const QJsonObject g = graph();
   // problems per node from the last check
   QHash<QString, QString> problems;
+  QHash<QString, QString> link_problems;
   for (const QJsonValue& d : workflow_.value(QStringLiteral("diagnostics")).toArray()) {
     const QJsonObject o = d.toObject();
     if (o["severity"].toString() != QLatin1String("error")) continue;
     const QString loc = o["location"].toString();
+    if (loc.contains(QLatin1String(" -> "))) {
+      link_problems[loc] += o["code"].toString() + QStringLiteral(": ") + o["message"].toString() + QLatin1Char('\n');
+    }
     const QString node = loc.section(QLatin1Char('.'), 0, 0).section(QLatin1Char(' '), 0, 0);
     problems[node] += o["code"].toString() + QStringLiteral(": ") + o["message"].toString() + QLatin1Char('\n');
+  }
+  // the planner's result (RTT-Fusion R17): representation per link, conversions per block
+  const QJsonObject plan = workflow_.value(QStringLiteral("plan")).toObject();
+  const QJsonObject planned_links = plan["links"].toObject();
+  QHash<QString, QStringList> conversions;
+  for (const QJsonValue& v : plan["conversions"].toArray()) {
+    const QJsonObject c = v.toObject();
+    QStringList ops;
+    for (const QJsonValue& op : c["operators"].toArray()) ops << op.toString();
+    conversions[c["node"].toString()] << QStringLiteral("%1 → %2: %3 (%4)").arg(c["from"].toString(), c["to"].toString(),
+                                                                               c["chain"].toString(), ops.join(QStringLiteral(", ")));
   }
   QHash<QString, QString> categories;
   for (const QJsonValue& t : workflow_.value(QStringLiteral("types")).toArray()) {
@@ -375,7 +446,7 @@ void NodeEditor::rebuild() {
     const QJsonObject n = v.toObject();
     const QString type = n["type"].toString();
     auto* item = new NodeItem(this, n, socketsOf(n), categories.value(type, type_category(type)),
-                              problems.value(n["id"].toString()).trimmed());
+                              problems.value(n["id"].toString()).trimmed(), conversions.value(n["id"].toString()));
     scene()->addItem(item);
     nodes_.insert(item->id(), item);
   }
@@ -387,8 +458,10 @@ void NodeEditor::rebuild() {
     SocketItem* sa = a != nullptr ? a->socket(l["from"].toArray().at(1).toString()) : nullptr;
     SocketItem* sb = b != nullptr ? b->socket(l["to"].toArray().at(1).toString()) : nullptr;
     if (sa == nullptr || sb == nullptr) continue;  // reported by the check of the plugin
+    const QString key = link_key(l);
     auto* link = new LinkItem(k, sa, sb, l["transport"].toString(QStringLiteral("auto")),
-                              sa->kind() == QLatin1String("light"));
+                              sa->kind() == QLatin1String("light"), planned_links[key].toObject(),
+                              link_problems.value(key).trimmed());
     scene()->addItem(link);
     links_.append(link);
   }
@@ -417,6 +490,7 @@ void NodeEditor::nodeMoved() {
 void NodeEditor::setGraph(const QJsonObject& graph) {
   workflow_["graph"] = graph;
   workflow_.remove(QStringLiteral("diagnostics"));  // stale after an edit; the next check renews it
+  workflow_.remove(QStringLiteral("plan"));
   rebuild();
   emit edited(workflow_);
 }
