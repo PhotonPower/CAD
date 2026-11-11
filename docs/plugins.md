@@ -57,10 +57,10 @@ Hierarchy applied:
 | Feature | Goes to |
 |---|---|
 | rtt surface → exact NURBS (conic, asphere, Zernike, XY, grid), apertures, lens bodies as solids | **library level**, because it is useful without a GUI too (STEP export of optical systems for the mechanics) – as an optional bridge module (`raytatouille.nurbs`, depends on `nurbforge`) or first in the plugin and moved later (❓ D10) |
-| Iteration callback with the current system in `rt.optim.optimize` | **Raytatouille** |
-| Binning hits on a surface into an irradiance grid | **Raytatouille** (`rt.analysis`), generally useful |
+| Iteration callback with the current system in `rt.optim.optimize` | **Raytatouille** – [#378](https://github.com/PhotonPower/Raytatouille/issues/378) |
+| Binning hits on a surface into an irradiance grid | **Raytatouille** (`rt.analysis`), generally useful – [#379](https://github.com/PhotonPower/Raytatouille/issues/379) |
 | Ray layer, face fields, colour maps, plot dock, model tree, job runner, parameter panel | **CAD core** |
-| Excluding elements from a trace without deleting them ("inactive") | **Raytatouille** (e.g. a flag per element or via configurations) |
+| Excluding elements from a trace without deleting them ("inactive") | **Raytatouille** (e.g. a flag per element or via configurations) – [#380](https://github.com/PhotonPower/Raytatouille/issues/380) |
 | Mapping CAD entities ↔ rtt JSON pointers, scene building, actions Trace / Optimise | **plugin** |
 
 ## 3. Architecture
