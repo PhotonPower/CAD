@@ -71,7 +71,7 @@ class TestCommands : public QObject {
     QVERIFY(create_command(QStringLiteral("L")));
     QCOMPARE(create_command(QStringLiteral("pl"))->id(), QStringLiteral("polyline"));
     QVERIFY(!create_command(QStringLiteral("nonsense")));
-    QCOMPARE(nfcad::commands::command_ids().size(), 27);
+    QCOMPARE(nfcad::commands::command_ids().size(), 40);
     for (const QString& id : nfcad::commands::command_ids()) {
       QVERIFY2(create_command(id), qPrintable(id));
       QCOMPARE(create_command(id)->id(), id);

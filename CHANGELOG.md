@@ -6,6 +6,9 @@ versioning: [SemVer](https://semver.org) (0.x: API and file format may change).
 ## [Unreleased]
 
 ### Added
+- M6b – surfaces from curves: Spline, Offset curve, Fillet curves (two curves or all corners),
+  Plane, Extrude, Revolve, Loft, Sweep 1 / 2 rails, Coons, Gordon (network sorted
+  automatically), Offset surface, Fillet surfaces; tests against exact areas
 - M6a – solids, transforms, export: commands Box, Sphere, Cylinder, Cone, Torus, Union,
   Difference, Intersection, Move, Copy, Rotate, Scale, Mirror, Linear / Grid / Polar array,
   Angle; selection-based commands (selection order kept for Difference); `Document::apply`

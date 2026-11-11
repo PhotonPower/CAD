@@ -37,6 +37,7 @@ add_library(nfcad_core STATIC
   src/commands/drawing_commands.cpp
   src/commands/input_parser.cpp
   src/commands/solid_commands.cpp
+  src/commands/surface_commands.cpp
   src/commands/transform_commands.cpp
   src/document/document.cpp
   src/document/entity.cpp

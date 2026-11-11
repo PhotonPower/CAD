@@ -130,7 +130,12 @@ jobs build from M0 on but are allowed to fail until M7.
   selected minus the others, intersection), transforms (move, copy, rotate, scale, mirror),
   arrays (linear, grid, polar), angle; STEP and STL export; one undo step per result
 
-### M6b – Surfaces from curves
+### M6b – Surfaces from curves ✅
+- Spline, offset / fillet curves, plane, extrude, revolve, loft, sweep (1 / 2 rails), Coons,
+  Gordon (network sorted automatically), offset / fillet surfaces – all via Nurbforge
+- Moved to M6c: trim / split / join / explode, capping planar ends into solids, curvature analysis
+
+### M6c – Editing (open)
 - Extrude, revolve, loft, sweep (1/2 rails), Coons/Gordon, offset, fillet
 - Solid primitives: box, sphere, cylinder, cone, torus; Booleans (union, difference, intersection)
 - Transform: move, copy, rotate, scale, mirror, arrays (linear, grid, polar)
