@@ -1,0 +1,19 @@
+/* Dark theme (default). Colours: docs/ui-concept.md, "Visual style". */
+QMainWindow, QDockWidget, QScrollArea, QScrollArea > QWidget > QWidget { background: #25282d; color: #d8dce2; }
+QToolBar { background: #2c3036; border: none; spacing: 2px; }
+QStatusBar { background: #2c3036; color: #c0c5cc; }
+QToolButton { color: #d8dce2; }
+QToolButton:checked { background: #3d5a80; border-radius: 3px; }
+QToolButton:hover { background: #3a3f47; border-radius: 3px; }
+
+QToolButton#toolGroupHeader {
+  background: #30343b; font-weight: bold; text-align: left; padding: 3px 4px; border: none;
+}
+QToolButton#toolButton { font-size: 10px; }
+
+QFrame#viewportFrame { background: #1c1e22; border: 1px solid #1c1e22; }
+QFrame#viewportFrame[active="true"] { border: 1px solid #e0b040; }
+QLabel#viewportTitle { color: #e6e9ee; background: transparent; font-size: 11px; }
+
+QLineEdit#commandLine { background: #1c1e22; color: #e6e9ee; border: 1px solid #3a3f47; padding: 3px; }
+QSplitter::handle { background: #1c1e22; }

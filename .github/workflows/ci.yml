@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Nurbforge is downloaded at this tag or commit (cmake/FindOrFetchNurbforge.cmake).
+  # a35e929 = Nurbforge branch feature/macos (macOS < 26 support for the STEP reader);
+  # switch back to a release tag once that is released.
+  NURBFORGE_TAG: a35e92994ed55d5dbaba4e72f30bbdd106584d1c
+
+jobs:
+  macos:
+    name: macOS (Apple Clang, Qt 6, arm64)
+    runs-on: macos-latest
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: brew install qt ninja
+      - name: Configure & build
+        run: |
+          cmake --preset ci -DNFCAD_NURBFORGE_TAG=$NURBFORGE_TAG
+          cmake --build --preset ci -j
+      - name: Tests
+        run: ctest --preset ci
+
+  # Prepared for milestone M7; allowed to fail until then.
+  almalinux10:
+    name: AlmaLinux 10 (GCC, distro Qt 6)
+    runs-on: ubuntu-latest
+    container: almalinux:10
+    continue-on-error: true
+    steps:
+      - name: System packages
+        run: |
+          dnf install -y epel-release dnf-plugins-core
+          dnf config-manager --set-enabled crb
+          dnf install -y gcc-c++ git cmake ninja-build \
+                         qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtsvg-devel \
+                         mesa-libGL-devel
+          rpm -q qt6-qtbase
+      - uses: actions/checkout@v5
+      - name: Configure & build
+        run: |
+          cmake --preset ci -DNFCAD_NURBFORGE_TAG=$NURBFORGE_TAG
+          cmake --build --preset ci -j
+      - name: Tests
+        run: ctest --preset ci
+
+  windows11:
+    name: Windows (MSVC, Qt 6)
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.*"
+          arch: win64_msvc2022_64
+          modules: qtshadertools
+          cache: true
+      - name: Configure & build
+        run: |
+          cmake --preset msvc "-DNFCAD_NURBFORGE_TAG=${{ env.NURBFORGE_TAG }}"
+          cmake --build --preset msvc
+      - name: Tests
+        run: ctest --preset msvc
+
+  lint:
+    name: clang-format (report only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          find src tests -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run || true
