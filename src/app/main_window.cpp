@@ -39,6 +39,15 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
   connect(grid_, &viewport::ViewportGrid::activeViewChanged, this,
           &MainWindow::onActiveViewChanged);
+  for (viewport::Viewport* v : grid_->views()) {
+    connect(v, &viewport::Viewport::cursorMoved, this, [this](const QVector3D& p, bool valid) {
+      coords_->setText(valid ? QStringLiteral("X %1   Y %2   Z %3")
+                                   .arg(p.x(), 0, 'f', 3)
+                                   .arg(p.y(), 0, 'f', 3)
+                                   .arg(p.z(), 0, 'f', 3)
+                             : QStringLiteral("X —  Y —  Z —"));
+    });
+  }
   auto* maximize = new QShortcut(QKeySequence(Qt::Key_Space), this);
   connect(maximize, &QShortcut::activated, this,
           [this] { grid_->toggleMaximized(grid_->activeView()); });
@@ -103,7 +112,15 @@ void MainWindow::createViewToolBar() {
   }
   bar->addSeparator();
   QAction* zoom_extents = bar->addAction(tr("Zoom extents"));
-  zoom_extents->setEnabled(false);  // M1
+  zoom_extents->setShortcut(QKeySequence(Qt::Key_Z, Qt::Key_E));
+  zoom_extents->setToolTip(tr("Zoom extents (Z, E)\nShift-click: all views"));
+  view_menu->addAction(zoom_extents);
+  connect(zoom_extents, &QAction::triggered, this, [this] {
+    const bool all = (QApplication::keyboardModifiers() & Qt::ShiftModifier) != 0;
+    for (viewport::Viewport* v : grid_->views()) {
+      if (all || v == grid_->activeView()) v->zoomExtents();
+    }
+  });
   view_menu->addSeparator();
 }
 

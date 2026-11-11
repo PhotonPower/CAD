@@ -54,7 +54,9 @@ user input ─► Viewport ─► (active) Command ─► kernel/ (Nurbforge) �
 | `Entity` | document | id, layer, colour, visibility; geometry variant (`Point`, `NurbsCurve`, `NurbsSurface`, `TrimmedSurface`, `Shell`) |
 | `DisplayMesh` | tessellation | vertices, triangles, edge polylines, iso-curves of one entity |
 | `Scene` | render | GPU resources per entity, shared by all viewports |
-| `Camera` | viewport | eye, target, up, projection; `ViewProjection` for project / unproject |
+| `Camera` | viewport | target, view direction, up, scale (`halfHeight`), projection; project, pick ray, pan / zoom / orbit (no widgets, in `nfcad_core`) |
+| `CPlane`, `build_grid` | viewport | construction plane per view and its adaptive grid (no widgets, in `nfcad_core`) |
+| `LineRenderer`, `LineLayer` | render | RHI pipeline and buffers for coloured lines (grid, axes, triad) |
 | `Viewport` | viewport | one QRhiWidget; camera, display mode, input → navigation or command |
 | `ViewportGrid` | viewport | 2×2 layout, active view, maximise / restore |
 | `ToolCatalog` | ui | data-driven list of tools (id, group, icon, shortcut) |

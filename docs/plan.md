@@ -67,12 +67,13 @@ jobs build from M0 on but are allowed to fail until M7.
   background only), view toolbar with the three display modes, snap bar in the status bar
 - **Done when:** `cmake --preset debug && cmake --build --preset debug` builds and the window opens on macOS.
 
-### M1 – Viewports and camera
+### M1 – Viewports and camera ✅
 - `Camera` (orthographic / perspective), standard views Front (XZ), Left (YZ), Top (XY), 3D iso
 - Navigation: middle-drag pan, wheel zoom to cursor, right/Alt-drag orbit (3D only), zoom extents
-- Grid in the construction plane, world axes, view cube or axis triad in the 3D view
-- Active viewport highlighted; double-click on the title (or `Space`) maximises/restores it
-- Shared scene between the four views; each view only owns its camera
+- Grid in the construction plane, world axes, axis triad in every view
+- Active viewport highlighted; `Space` or the view menu (click on the title) maximises/restores it
+- Cursor coordinates in the construction plane in the status bar
+- Shared scene between the four views moved to M2 (there is no geometry before M2)
 - Unit tests: projection / unprojection round trip, zoom to cursor keeps the point under the cursor
 - **Done when:** all four views navigate independently and stay consistent at any window size, Retina included.
 

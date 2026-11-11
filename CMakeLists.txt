@@ -21,7 +21,11 @@ include(CadWarnings)
 # QRhi headers (rhi/qrhi.h) belong to the semi-public RHI API and require Qt6::GuiPrivate;
 # ADR 0002 accepts this. The private-module warning is therefore silenced.
 set(QT_NO_PRIVATE_MODULE_WARNING ON)
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui GuiPrivate Widgets Svg)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Svg ShaderTools)
+if(Qt6_VERSION VERSION_GREATER_EQUAL 6.9)
+  # Since Qt 6.9 private modules are separate packages; before, Qt6::GuiPrivate comes with Gui.
+  find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
+endif()
 include(FindOrFetchNurbforge)   # -> Nurbforge::core (before AUTOMOC is switched on)
 
 qt_standard_project_setup(REQUIRES 6.8)
@@ -30,7 +34,9 @@ qt_standard_project_setup(REQUIRES 6.8)
 # Layers below the widget layer; unit tested without a window (docs/architecture.md).
 add_library(nfcad_core STATIC
   src/kernel/kernel_info.cpp
-  src/snap/snap_types.cpp)
+  src/snap/snap_types.cpp
+  src/viewport/camera.cpp
+  src/viewport/grid.cpp)
 target_include_directories(nfcad_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(nfcad_core PUBLIC Qt6::Core Qt6::Gui PRIVATE Nurbforge::core)
 nfcad_set_warnings(nfcad_core)
@@ -41,6 +47,7 @@ add_library(nfcad_gui STATIC
   src/ui/tool_catalog.cpp
   src/ui/tool_box.cpp
   src/ui/snap_bar.cpp
+  src/render/line_renderer.cpp
   src/viewport/viewport.cpp
   src/viewport/viewport_grid.cpp)
 target_link_libraries(nfcad_gui PUBLIC nfcad_core Qt6::Widgets Qt6::GuiPrivate Qt6::Svg)
@@ -50,6 +57,14 @@ qt_add_resources(nfcad_gui "nfcad_resources"
   PREFIX "/"
   BASE resources
   FILES resources/styles/dark.qss)
+
+# GLSL 440 -> .qsb for Metal, D3D, OpenGL, Vulkan (docs/rendering.md); served as :/shaders/*.qsb
+qt_add_shaders(nfcad_gui "nfcad_shaders"
+  PREFIX "/"
+  BASE resources
+  FILES
+    resources/shaders/line.vert
+    resources/shaders/line.frag)
 
 # ---------------------------------------------------------------- application
 qt_add_executable(NurbforgeCAD MACOSX_BUNDLE WIN32 src/app/main.cpp)

@@ -45,20 +45,25 @@ to a text abbreviation, so the skeleton runs before the icon set exists.
 | Front | +Y | X / Z | orthographic |
 | Left | +X (from −X side) | −Y / Z | orthographic |
 | Top | −Z | X / Y | orthographic |
-| Perspective | iso direction (−1, −1, −1) | – | perspective (switchable to ortho) |
+| Perspective | iso direction (−1, 1, −1), i.e. seen from (+X, −Y, +Z) | X right-down, Y right-up, Z up | perspective (switchable to ortho) |
 
 - The active view (last clicked) has a highlighted frame; commands and keyboard navigation act on it.
-- Double-click on the view title or `Space` maximises the view; again restores the 2×2 grid.
-- The view title label (top left) opens a menu: change view, projection, display mode of this view.
+- A click on the view title (top left, "▾") opens the view menu: change to another standard view,
+  perspective/parallel projection, zoom extents, maximise / restore.
+- `Space` maximises the active view; again restores the 2×2 grid.
+- Each view has a construction plane (Front: XZ, Left: YZ, Top and Perspective: XY) with an
+  adaptive grid (minor spacing a power of ten, ≥ 12 px; every 10th line major) and the two plane
+  axes in X red / Y green / Z blue. An axis triad sits in the bottom-left corner.
+- The status bar shows the cursor position in the construction plane of the view under the cursor.
 
 ### Mouse and keyboard
 
 | Action | macOS | Windows / Linux |
 |---|---|---|
 | Pan | middle drag, Shift + right drag, two-finger trackpad scroll | middle drag, Shift + right drag |
-| Zoom (to cursor) | wheel, pinch | wheel |
-| Orbit (3D view) | right drag, Alt + left drag | right drag |
-| Zoom extents | `Z` `E` / double-click middle | same |
+| Zoom (to cursor) | wheel, pinch, Cmd + two-finger scroll | wheel |
+| Orbit (3D view; turntable around Z) | right drag, Alt + left drag | right drag, Alt + left drag |
+| Zoom extents | `Z` `E`, double-click middle, two-finger double tap; Shift + toolbar: all views | `Z` `E`, double-click middle |
 | Snap on/off | `F3` | `F3` |
 | Ortho | `F8` | `F8` |
 | Cycle snap candidates | `Tab` | `Tab` |
