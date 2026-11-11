@@ -1,6 +1,7 @@
 # Plugin plan: computation kernels in Nurbforge CAD
 
-Status: **proposal** (decisions marked ❓ are open, see the end).
+Status: **accepted in principle** (2026-11-11: separate process, single signing key); the
+remaining decisions marked ❓ use the proposal until decided otherwise (see the end).
 
 Several computation kernels build on Nurbforge – a ray tracer (Raytatouille), field solvers
 (BEM / FEM / FMM), grating and writing-path tools. Nurbforge CAD becomes their common
@@ -78,7 +79,7 @@ Hierarchy applied:
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Separate process per plugin** (❓ D2): a crash or a hanging computation does not take
+- **Separate process per plugin** (decided, D2): a crash or a hanging computation does not take
   the CAD down, Cancel can always stop it, every plugin can use its own Python environment
   (numpy, its kernel's wheels), and the UI never waits for the Python GIL. Started and
   controlled by CAD; for the user it runs "inside" the application.
@@ -131,12 +132,12 @@ class Raytracer(plugin.Plugin):
             ctx.plots.append("Merit", it.index, it.merit)
 ```
 
-### Signing (❓ D3)
+### Signing (decided, D3: one publisher)
 
 - Ed25519 signature over the manifest and the SHA-256 of every file (`nfcad-plugin sign`,
   `nfcad-plugin verify`; the private key never leaves the signer's machine / a CI secret).
-- CAD keeps a list of trusted public keys (*Settings → Plugins → Trusted publishers*); the
-  built-in list contains your key.
+- Exactly **one** trusted key – the project owner's – is built into the application; there is no
+  user-managed list of publishers. Replacing the key needs a new CAD build.
 - Unsigned or modified plugins are not loaded; a developer mode (explicit switch, red banner)
   loads unsigned plugins from a development folder.
 - Important: a signature proves **who** wrote a plugin and that it is unchanged – it does not
@@ -162,8 +163,8 @@ tree, attributes, result display from scripts).
 | | Question | Proposal |
 |---|---|---|
 | D1 | ~~Raytatouille interface~~ – answered by the repository (section 2a): Python package `raytatouille`, NumPy results, `.rtt.json` model, JSON Patch editing | – |
-| D2 | Plugins in a separate process or in the CAD process (embedded Python)? | separate process (crash isolation, cancel, own environments) |
-| D3 | Who signs – only you, or several publishers? Load unsigned plugins at all? | one key (yours) built in, more can be added; unsigned only in developer mode |
+| D2 | ✅ decided: separate process per plugin | – |
+| D3 | ✅ decided: only the project owner signs (one built-in key); unsigned plugins only in the explicit developer mode | – |
 | D4 | Panel position | right dock, as a tab next to Properties / Layers; the tool column gets one group per plugin for its actions |
 | D5 | Python for plugins: bundled with the installer or a user-selected environment (venv / conda with your libraries)? | user-selected environment first (scientific stack, your wheels); bundling later |
 | D6 | Rays: display-only result layer or real CAD curves? | display layer (millions of rays) + *promote selected rays* to curves |

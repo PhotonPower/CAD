@@ -8,6 +8,6 @@
 - [Architecture](architecture.md) – layers, main types, data flow
 - [Document format `.nfcad`](file-format.md)
 - [Benchmarks](benchmarks.md)
-- [Plugin plan](plugins.md) – computation kernels as signed Python plugins (proposal)
+- [Plugin plan](plugins.md) – computation kernels as signed Python plugins
 - [Architecture decisions](adr/README.md)
 - Build guides: [macOS](build/macos.md) · [Windows 11](build/windows11.md) · [AlmaLinux / RHEL 10](build/almalinux10.md)
