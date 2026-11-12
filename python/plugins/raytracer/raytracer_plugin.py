@@ -641,10 +641,47 @@ class RaytracerPlugin(Plugin):
         for node in graph.nodes.values():
             if not node.sockets:
                 node.sockets = validate.node_sockets(node, registry)
+        kept = self._keep_edits(io, graph, ctx.workflow().get("graph"))
         diagnostics, plan = self._checked(fg, execute, validate, graph, registry)
         ctx.set_workflow({"graph": io.to_dict(graph), "types": self._catalogue(registry),
                           "diagnostics": diagnostics, "plan": plan})
-        return f"workflow: {len(graph.nodes)} blocks, {len(graph.links)} links"
+        return f"workflow: {len(graph.nodes)} blocks, {len(graph.links)} links" + (f"; kept {kept}" if kept else "")
+
+    @staticmethod
+    def _keep_edits(io, graph, old) -> str:
+        """Carries the user's edits of the previous workflow over to a new import of the same system:
+        positions, muted blocks, parameters and type of blocks that were replaced (same id), link
+        transports, and blocks the import does not make (e.g. meta blocks) with their links."""
+        if not old:
+            return ""
+        try:
+            previous = io.from_dict(old)
+        except Exception:  # noqa: BLE001 - an unreadable old workflow is simply replaced
+            return ""
+        counts = {"blocks": 0, "transports": 0, "added": 0}
+        for nid, node in previous.nodes.items():
+            if nid in graph.nodes:
+                new = graph.nodes[nid]
+                new.position = node.position
+                new.muted = node.muted
+                if node.type_id != new.type_id or node.params != new.params:
+                    if node.type_id != new.type_id:  # replaced in the editor (e.g. grating)
+                        new.type_id, new.sockets, new.through = node.type_id, node.sockets, node.through
+                    new.params = dict(node.params)
+                    counts["blocks"] += 1
+            else:
+                graph.add(node)
+                counts["added"] += 1
+        existing = {(lk.source, lk.target) for lk in graph.links}
+        for lk in previous.links:
+            match = next((x for x in graph.links if (x.source, x.target) == (lk.source, lk.target)), None)
+            if match is not None and lk.transport != match.transport:
+                graph.set_transport(match, lk.transport)
+                counts["transports"] += 1
+            elif match is None and (lk.source, lk.target) not in existing \
+                    and lk.source[0] in graph.nodes and lk.target[0] in graph.nodes:
+                graph.connect(lk.source, lk.target, lk.transport)
+        return ", ".join(f"{v} {k}" for k, v in counts.items() if v)
 
     @action("Check workflow", description="Check the node workflow (RTT-Fusion) and mark problems")
     def check_workflow(self, ctx):

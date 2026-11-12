@@ -159,6 +159,27 @@ class TestNodeEditor : public QObject {
     QCOMPARE(p["orders"].toArray(), (QJsonArray{-1, 0, 1}));
   }
 
+  void linksCanBeHit() {
+    // a link is hit a few pixels beside the curve and on its label (right-click: transport)
+    NodeEditor e;
+    e.resize(1500, 420);
+    e.setAttribute(Qt::WA_DontShowOnScreen);
+    e.setWorkflow(linnik());
+    e.show();
+    e.fitAll();
+    auto* link = e.linkItem(0);
+    QVERIFY(link != nullptr);
+    const QPointF mid = link->path().pointAtPercent(0.5);
+    const QPoint at = e.mapFromScene(mid);
+    QCOMPARE(e.linkAt(at), 0);
+    QCOMPARE(e.linkAt(at + QPoint(0, 4)), 0);
+    // the label of the planned representation sits in the middle of the link
+    QVERIFY(!link->childItems().isEmpty());
+    const QPoint on_label = e.mapFromScene(link->childItems().front()->sceneBoundingRect().center());
+    QCOMPARE(e.linkAt(on_label), 0);
+    QCOMPARE(e.linkAt(QPoint(5, 5)), -1);
+  }
+
   void savedWithTheDocument() {
     nfcad::document::Document doc;
     doc.setWorkflow(linnik());
@@ -246,7 +267,14 @@ class TestNodeEditor : public QObject {
   void snapshot() {
     NodeEditor e;
     e.resize(1500, 420);
-    e.setWorkflow(linnik());
+    QJsonObject wf = linnik();
+    // optional: the workflow of a document (.rttf) for a look at a real case
+    if (const QByteArray doc = qgetenv("NFCAD_SNAPSHOT_WORKFLOW_DOC"); !doc.isEmpty()) {
+      QFile f(QString::fromLocal8Bit(doc));
+      if (f.open(QIODevice::ReadOnly)) wf = QJsonDocument::fromJson(f.readAll()).object()["workflow"].toObject();
+      e.resize(1800, 700);
+    }
+    e.setWorkflow(wf);
     e.show();
     QVERIFY(QTest::qWaitForWindowExposed(&e) || true);
     e.fitAll();
