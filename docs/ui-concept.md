@@ -121,8 +121,15 @@ Raytatouille block shows a tab per element with its exact data – radii, conics
 surface poses, glasses, interactions – as the Raytatouille plugin describes them (lengths in mm,
 angles in degree, a parameter's "variable" as a check box); the source shows the system's
 settings (wavelengths, fields, aperture, object) and the assemblies split over blocks. Only the
-values you change are written back (a value with more digits than shown stays exact). The CAD
-view keeps drawing NURBS derived from these exact data.
+values you change are written back (a value with more digits than shown stays exact).
+
+Once the workflow holds the system it is the truth for the Raytracer plugin: *Run workflow*,
+*Trace rays*, *Camera image* and *Optimise* compute with the system the workflow makes, and the
+CAD view shows it – NURBS derived from the exact data, drawn again before a computation when the
+workflow changed, or at once with *Update drawing*. *Optimise* writes its result into the blocks;
+a plugin run that changes the workflow is undone together with its drawing (one undo step).
+*Save system* exports the workflow's system as .rtt.json. Without a workflow the plugin works on
+the loaded file as before.
 
 ## Selection (M3)
 

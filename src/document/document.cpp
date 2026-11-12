@@ -165,10 +165,11 @@ class AppliedCommand : public QUndoCommand {
   AppliedCommand(Document* doc, const QString& text, std::vector<Entity> added, std::vector<Entity> removed,
                  std::vector<Group> added_groups, std::vector<Group> removed_groups,
                  std::vector<std::tuple<EntityId, GeometryPtr, GeometryPtr>> geometry,
-                 std::vector<std::tuple<EntityId, QVariantMap, QVariantMap>> attributes)
+                 std::vector<std::tuple<EntityId, QVariantMap, QVariantMap>> attributes,
+                 std::optional<std::pair<QJsonObject, QJsonObject>> workflow = std::nullopt)
       : QUndoCommand(text), doc_(doc), added_(std::move(added)), removed_(std::move(removed)),
         added_groups_(std::move(added_groups)), removed_groups_(std::move(removed_groups)),
-        geometry_(std::move(geometry)), attributes_(std::move(attributes)) {}
+        geometry_(std::move(geometry)), attributes_(std::move(attributes)), workflow_(std::move(workflow)) {}
   void redo() override {
     if (first_) {  // already applied live
       first_ = false;
@@ -180,8 +181,10 @@ class AppliedCommand : public QUndoCommand {
     for (const Entity& e : added_) doc_->insert(e);
     for (const auto& [id, before, after] : geometry_) doc_->setGeometry(id, after);
     for (const auto& [id, before, after] : attributes_) doc_->setEntityAttributes(id, after);
+    if (workflow_) doc_->setWorkflow(workflow_->second);
   }
   void undo() override {
+    if (workflow_) doc_->setWorkflow(workflow_->first);
     for (const auto& [id, before, after] : attributes_) doc_->setEntityAttributes(id, before);
     for (const auto& [id, before, after] : geometry_) doc_->setGeometry(id, before);
     for (auto it = added_.rbegin(); it != added_.rend(); ++it) doc_->erase(it->id);
@@ -199,6 +202,7 @@ class AppliedCommand : public QUndoCommand {
   std::vector<Group> removed_groups_;
   std::vector<std::tuple<EntityId, GeometryPtr, GeometryPtr>> geometry_;
   std::vector<std::tuple<EntityId, QVariantMap, QVariantMap>> attributes_;
+  std::optional<std::pair<QJsonObject, QJsonObject>> workflow_;  ///< before, after
 };
 
 class AssignLayerCommand : public QUndoCommand {
@@ -484,12 +488,18 @@ void Document::recordApplied(const QString& text, const LiveChanges& changes) {
   for (const auto& [id, before] : changes.old_attributes) {
     if (const Entity* e = entity(id)) attributes.emplace_back(id, before, e->attributes);
   }
+  std::optional<std::pair<QJsonObject, QJsonObject>> workflow;
+  if (changes.old_workflow) {  // only a change of the model / graph itself (not of the checks)
+    auto content = [](const QJsonObject& w) { return QJsonObject{{"model", w["model"]}, {"graph", w["graph"]}}; };
+    if (content(*changes.old_workflow) != content(workflow_)) workflow.emplace(*changes.old_workflow, workflow_);
+  }
   if (add.empty() && groups.empty() && changes.removed.empty() && changes.removed_groups.empty() &&
-      geometry.empty() && attributes.empty()) {
+      geometry.empty() && attributes.empty() && !workflow) {
     return;
   }
   undo_.push(new AppliedCommand(this, text, std::move(add), changes.removed, std::move(groups),
-                                changes.removed_groups, std::move(geometry), std::move(attributes)));
+                                changes.removed_groups, std::move(geometry), std::move(attributes),
+                                std::move(workflow)));
 }
 
 GeometryPtr Document::setGeometry(EntityId id, GeometryPtr geometry) {

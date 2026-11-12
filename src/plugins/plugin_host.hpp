@@ -130,6 +130,7 @@ class PluginHost : public QObject {
   // model changes of the active job (one undo step at the end)
   std::map<document::EntityId, document::GeometryPtr> original_geometry_;
   std::map<document::EntityId, QVariantMap> original_attributes_;
+  std::optional<QJsonObject> original_workflow_;  ///< before the run's first workflow.set
   std::vector<document::EntityId> added_;
   std::vector<document::Entity> removed_;          ///< state before the job
   std::vector<document::GroupId> added_groups_;

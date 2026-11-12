@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import glob
 import importlib
+import json
 import math
 import os
 import re
@@ -134,7 +135,19 @@ class RaytracerPlugin(Plugin):
         return None
 
     def _current(self, ctx):
-        """The system of the revision CAD shows (follows undo / redo); loads it if needed."""
+        """The system to compute with. With a node workflow that holds the system (ADR Nachtrag 1)
+        the system the workflow makes – the drawing follows it (redrawn when the workflow changed);
+        else the revision CAD shows (follows undo / redo), loaded if needed."""
+        made = self._workflow_system(ctx)
+        if made is not None:
+            system, stamp = made
+            anchor = self._anchor(ctx)
+            if anchor is None or anchor["attributes"].get("rtt.workflow") != stamp:
+                ctx.progress(0.02, "drawing the system of the workflow …")
+                self.detector_half = None
+                self._draw(ctx, system, self._compile(system), {"rtt.workflow": stamp},
+                           (system.name or "workflow") + " (workflow)")
+            return system, 0
         anchor = self._anchor(ctx)
         if anchor is not None:
             rev = int(anchor["attributes"].get("rtt.revision", 0))
@@ -145,6 +158,36 @@ class RaytracerPlugin(Plugin):
         anchor = self._anchor(ctx)
         rev = int(anchor["attributes"].get("rtt.revision", 0))
         return self.revisions[rev], rev
+
+    def _workflow_system(self, ctx):
+        """(system, stamp) made from the document's workflow, or None (no workflow with a
+        Raytatouille system, or no RTT-Fusion). Kept while the workflow's data stay the same."""
+        wf = ctx.workflow()
+        model = wf.get("model") if isinstance(wf, dict) else None
+        if not model or not any("rtt_system" in n.get("params", {}) for n in model.get("nodes", [])):
+            return None
+        try:
+            io = importlib.import_module("rtt_fusion.graph.io")
+            importer = importlib.import_module("rtt_fusion.graph.importer")
+            fg = importlib.import_module("rtt_fusion.graph")
+        except ImportError:
+            return None
+        stamp = str(abs(hash(json.dumps(
+            [[n.get("id"), {k: n.get("params", {}).get(k) for k in ("rtt", "runs", "rtt_system", "rtt_tree", "rtt_paths")}]
+             for n in model.get("nodes", [])] + [model.get("branches")], sort_keys=True))))
+        cached = getattr(self, "_made", None)
+        if cached is not None and cached[1] == stamp:
+            return cached
+        registry, _ = self._registry(fg)
+        d = importer.system_from_model(io.model_from_dict(model, registry))
+        if self.library is None:
+            self.library = self._library(ctx, ctx.params.get("system") or "")
+        try:
+            system = rt.System.from_json(json.dumps(d))
+        except rt.RaytatouilleError as e:
+            raise UserError(f"The system of the node workflow is not valid:\n{e}") from e
+        self._made = (system, stamp)
+        return self._made
 
     def _new_revision(self, system) -> int:
         rev = self.next_revision
@@ -297,7 +340,15 @@ class RaytracerPlugin(Plugin):
         self.loaded_from = path
         self.detector_half = None
         rev = self._new_revision(system)
+        count = self._draw(ctx, system, compiled, {"rtt.revision": rev, "rtt.file": path},
+                           system.name or Path(path).stem)
+        if not quiet:
+            return f"{system.name or Path(path).name}: {count} surfaces"
+        return None
 
+    def _draw(self, ctx, system, compiled, anchor_attributes: dict, title: str) -> int:
+        """Draws a system (replaces the drawing before): NURBS derived from the exact surfaces
+        (exact -> NURBS, never back), in groups after the model tree. Returns the surface count."""
         # remove the previous drawing (entities, then its groups, innermost first)
         for e in self._entities(ctx):
             ctx.remove(e["id"])
@@ -311,7 +362,7 @@ class RaytracerPlugin(Plugin):
             ctx.remove_group(gid)
 
         # model tree: assemblies and elements of the rtt node tree
-        top = ctx.add_group(TOP_GROUP_PREFIX + (system.name or Path(path).stem))
+        top = ctx.add_group(TOP_GROUP_PREFIX + title)
         group_of: dict[str, int] = {"/root": top}
 
         def group_for(location: str) -> int:
@@ -336,7 +387,7 @@ class RaytracerPlugin(Plugin):
             attributes = {"rtt.surface": L.id, "rtt.location": locations[i], "rtt.kind": L.kind,
                           "rtt.shape": L.shape, "rtt.nurbs_error_mm": float(f"{face.max_error:.3g}")}
             if k == 0:
-                attributes.update({"rtt.anchor": True, "rtt.revision": rev, "rtt.file": path})
+                attributes.update({"rtt.anchor": True, **anchor_attributes})
             ctx.add(face.geometry, L.id, attributes, group=group_for(element_location))
             if face.max_error > tol:
                 coarse.append(f"{L.id} ({face.max_error:.1e} mm)")
@@ -348,9 +399,7 @@ class RaytracerPlugin(Plugin):
         if coarse:
             ctx.log("drawn with more than the tolerance (non-smooth shapes such as the axicon tip): "
                     + ", ".join(coarse))
-        if not quiet:
-            return f"{system.name or Path(path).name}: {len(layouts)} surfaces"
-        return None
+        return len(layouts)
 
     @action("Trace rays", description="Rays along the path as lines; irradiance on the image surface")
     def trace(self, ctx):
@@ -1143,15 +1192,58 @@ class RaytracerPlugin(Plugin):
             result = rt.optim.optimize(system, materials=self.library, cancel=token, progress=progress,
                                        on_iteration=on_iteration)
         redraw(result.system)
-        rev = self._new_revision(result.system)
         anchor = self._anchor(ctx)
-        ctx.set_attribute(anchor["id"], "rtt.revision", rev)  # undone with the run (follows CAD undo)
+        if self._workflow_system(ctx) is not None:
+            # the workflow is the truth (ADR Nachtrag 1): the result goes into its blocks, undone
+            # with the run together with the drawing
+            self._write_back(ctx, result.system)
+            made = self._workflow_system(ctx)
+            if made is not None:
+                ctx.set_attribute(anchor["id"], "rtt.workflow", made[1])
+        else:
+            rev = self._new_revision(result.system)
+            ctx.set_attribute(anchor["id"], "rtt.revision", rev)  # undone with the run (follows CAD undo)
         phis = np.asarray(result.history.phi)
         phi = float(phis[-1]) if phis.size else float("nan")
         status = str(result.status).split(".")[-1]
         return f"{status} after {result.iterations} iterations, φ = {phi:.4g}"
 
-    @action("Save system", description="Write the current (optimised) system as .rtt.json")
+    @staticmethod
+    def _write_back(ctx, system) -> None:
+        """A system (e.g. optimised) into the workflow's blocks: each tree node the workflow holds
+        takes the values at its location, the source the system's settings."""
+        new = json.loads(system.to_json())
+        wf = ctx.workflow()
+
+        def entry(location: str):
+            node = new
+            for part in location.split("/")[1:]:
+                node = node[int(part)] if part.isdigit() else node[part]
+            out = {k: v for k, v in node.items() if k != "children"}
+            if "children" in node:
+                out["children"] = []
+            return out
+
+        for nd in wf["model"]["nodes"]:
+            params = nd.get("params", {})
+            for key in ("rtt", "rtt_tree"):
+                for location in list(params.get(key, {})):
+                    params[key][location] = entry(location)
+            if "rtt_system" in params:
+                params["rtt_system"] = {k: v for k, v in new.items() if k not in ("root", "paths")}
+        ctx.set_workflow(wf)
+
+    @action("Update drawing", description="Draw the system of the node workflow now (it is also drawn "
+                                            "before every computation when the workflow changed)")
+    def update_drawing(self, ctx):
+        _require_rt()
+        if self._workflow_system(ctx) is None:
+            raise UserError("No node workflow with a system – Workflow from system makes one.")
+        system, _ = self._current(ctx)
+        return f"drawn from the workflow: {system.name or 'system'}"
+
+    @action("Save system", description="Write the system as .rtt.json: the one of the node workflow (an export), "
+                                       "else the loaded one with its optimisation")
     def save(self, ctx):
         _require_rt()
         system, _ = self._current(ctx)

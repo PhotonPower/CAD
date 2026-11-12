@@ -469,6 +469,92 @@ class TestRaytracerPlugin : public QObject {
     QVERIFY(curve);
   }
 
+  /// The radius of L1.S1 in the workflow's data (ADR Nachtrag 1), and a setter.
+  double workflowRadius() const {
+    for (const QJsonValue& n : doc_.workflow()["model"].toObject()["nodes"].toArray()) {
+      const QJsonObject rtt = n.toObject()["params"].toObject()["rtt"].toObject();
+      for (auto it = rtt.begin(); it != rtt.end(); ++it) {
+        if (it.value().toObject()["name"].toString() == QStringLiteral("L1")) {
+          return it.value().toObject()["surfaces"].toArray()[0].toObject()["shape"].toObject()["base"].toObject()["radius"].toObject()["value"].toDouble();
+        }
+      }
+    }
+    return 0.0;
+  }
+  void setWorkflowRadius(double r) {
+    QJsonObject wf = doc_.workflow();
+    QJsonObject model = wf["model"].toObject();
+    QJsonArray nodes = model["nodes"].toArray();
+    for (int k = 0; k < nodes.size(); ++k) {
+      QJsonObject n = nodes[k].toObject();
+      QJsonObject params = n["params"].toObject();
+      QJsonObject rtt = params["rtt"].toObject();
+      for (auto it = rtt.begin(); it != rtt.end(); ++it) {
+        QJsonObject e = it.value().toObject();
+        if (e["name"].toString() != QStringLiteral("L1")) continue;
+        QJsonArray surfaces = e["surfaces"].toArray();
+        QJsonObject s1 = surfaces[0].toObject();
+        QJsonObject shape = s1["shape"].toObject();
+        QJsonObject base = shape["base"].toObject();
+        QJsonObject radius = base["radius"].toObject();
+        radius["value"] = r;
+        base["radius"] = radius;
+        shape["base"] = base;
+        s1["shape"] = shape;
+        surfaces[0] = s1;
+        e["surfaces"] = surfaces;
+        rtt[it.key()] = e;
+      }
+      params["rtt"] = rtt;
+      n["params"] = params;
+      nodes[k] = n;
+    }
+    model["nodes"] = nodes;
+    wf["model"] = model;
+    doc_.setWorkflow(wf);
+  }
+  const document::Entity* surface(const QString& id) const {
+    for (const auto& [eid, e] : doc_.entities()) {
+      if (e.attributes.value(QStringLiteral("rtt.surface")).toString() == id) return &e;
+    }
+    return nullptr;
+  }
+
+  void workflowIsTheTruth() {
+    // ADR Nachtrag 1 / S3: the drawing, Optimise and Save follow the node workflow
+    QProcess probe;
+    probe.start(python_, {QStringLiteral("-c"), QStringLiteral("from rtt_fusion.graph.importer import system_from_graph")});
+    if (!probe.waitForFinished(30000) || probe.exitCode() != 0) QSKIP("rtt_fusion without S2");
+    doc_.setWorkflow(QJsonObject{});
+    run(QStringLiteral("workflow_from_system"));
+    run(QStringLiteral("update_drawing"));
+    QVERIFY(surface(QStringLiteral("L1.S1")) != nullptr);
+    const auto before = surface(QStringLiteral("L1.S1"))->geometry;
+    QVERIFY(std::abs(workflowRadius() - 103.36) < 1e-9);
+    // an edit in the workflow: the drawing is made again from the exact data
+    setWorkflowRadius(60.0);
+    run(QStringLiteral("update_drawing"));
+    QVERIFY(surface(QStringLiteral("L1.S1")) != nullptr);
+    QVERIFY(surface(QStringLiteral("L1.S1"))->geometry != before);
+    // Optimise works on the workflow's system and writes its result back – one undo step
+    const double edited = workflowRadius();
+    run(QStringLiteral("optimise"));
+    const double optimised = workflowRadius();
+    QVERIFY(std::abs(optimised - edited) > 1e-6);
+    doc_.undoStack()->undo();
+    QVERIFY(std::abs(workflowRadius() - edited) < 1e-12);
+    doc_.undoStack()->redo();
+    QVERIFY(std::abs(workflowRadius() - optimised) < 1e-12);
+    // Save system exports the workflow's system
+    QTemporaryDir dir;
+    params_.insert(QStringLiteral("save_as"), dir.filePath(QStringLiteral("export.rtt.json")));
+    run(QStringLiteral("save"));
+    params_.insert(QStringLiteral("save_as"), QString());
+    QFile f(dir.filePath(QStringLiteral("export.rtt.json")));
+    QVERIFY(f.open(QIODevice::ReadOnly));
+    QVERIFY(f.readAll().contains(QByteArray::number(optimised, 'g', 10).left(6)));
+  }
+
   void save() {
     QTemporaryDir dir;
     params_.insert(QStringLiteral("save_as"), dir.filePath(QStringLiteral("out.rtt.json")));
