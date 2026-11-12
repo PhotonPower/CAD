@@ -1,6 +1,8 @@
 // Plugins in the main window (docs/plugin-api.md): menu, tool-column groups, job progress, log.
 #include <QDir>
 #include <QDockWidget>
+#include <QSet>
+#include <QSettings>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QMessageBox>
@@ -189,6 +191,27 @@ void MainWindow::rebuildPluginUi() {
   }
   if (uninstall->isEmpty()) uninstall->addAction(tr("(no plugins)"))->setEnabled(false);
   plugins_menu_->addAction(tr("Reload plugins"), this, [this] { plugins_->reload(); });
+  // plugins can be kept out of the side panels (tool box, Plugin panel); their actions stay here
+  const QSet<QString> hidden = hiddenPlugins();
+  QMenu* show = plugins_menu_->addMenu(tr("Show in the side panels"));
+  show->setToolTipsVisible(true);
+  for (const auto& h : plugins_->plugins()) {
+    const QString id = h->manifest().id;
+    QAction* a = show->addAction(h->manifest().displayName());
+    a->setCheckable(true);
+    a->setChecked(!hidden.contains(id));
+    a->setToolTip(tr("Tool box group and Plugin panel; the actions stay in this menu"));
+    connect(a, &QAction::toggled, this, [this, id](bool on) {
+      QSet<QString> h = hiddenPlugins();
+      if (on) {
+        h.remove(id);
+      } else {
+        h.insert(id);
+      }
+      setHiddenPlugins(h);
+    });
+  }
+  if (show->isEmpty()) show->addAction(tr("(no plugins)"))->setEnabled(false);
   plugins_menu_->addSeparator();
   std::vector<ui::ToolGroupDef> groups;
   for (const auto& h : plugins_->plugins()) {
@@ -206,7 +229,7 @@ void MainWindow::rebuildPluginUi() {
       group.tools.push_back({QStringLiteral("plugin:%1/%2").arg(m.id, a.id), a.label,
                              a.label.left(3), QKeySequence()});
     }
-    if (!group.tools.empty()) groups.push_back(std::move(group));
+    if (!group.tools.empty() && !hidden.contains(m.id)) groups.push_back(std::move(group));
   }
   if (plugins_->plugins().empty()) {
     plugins_menu_->addAction(tr("(no plugins loaded – see Settings)"))->setEnabled(false);
@@ -220,6 +243,20 @@ void MainWindow::rebuildPluginUi() {
   }
   developer_banner_->setVisible(plugins_->developerMode());
   toolbox_->setExtraGroups(groups);
+  if (plugin_panel_ != nullptr) plugin_panel_->setHidden(hidden);
+}
+
+QSet<QString> MainWindow::hiddenPlugins() const {
+  const QStringList ids = QSettings().value(QStringLiteral("plugins/hidden")).toStringList();
+  return {ids.begin(), ids.end()};
+}
+
+void MainWindow::setHiddenPlugins(const QSet<QString>& ids) {
+  QStringList list(ids.begin(), ids.end());
+  list.sort();
+  QSettings().setValue(QStringLiteral("plugins/hidden"), list);
+  // rebuild menu, tool box and panel after the menu that triggered this has closed
+  QTimer::singleShot(0, this, &MainWindow::rebuildPluginUi);
 }
 
 void MainWindow::installPlugin(const QString& package) {

@@ -42,6 +42,7 @@ void PluginPanel::rebuild() {
   chooser_->blockSignals(true);
   chooser_->clear();
   for (const auto& h : manager_->plugins()) {
+    if (hidden_.contains(h->manifest().id)) continue;
     chooser_->addItem(h->manifest().displayName(), h->manifest().id);
     // the parameters are known once the plugin said hello
     connect(h.get(), &plugins::PluginHost::readyChanged, this, &PluginPanel::showPlugin, Qt::UniqueConnection);
@@ -50,6 +51,12 @@ void PluginPanel::rebuild() {
   chooser_->setCurrentIndex(index >= 0 ? index : 0);
   chooser_->blockSignals(false);
   showPlugin();
+}
+
+void PluginPanel::setHidden(const QSet<QString>& ids) {
+  if (ids == hidden_) return;
+  hidden_ = ids;
+  rebuild();
 }
 
 void PluginPanel::showPlugin() {
@@ -61,7 +68,9 @@ void PluginPanel::showPlugin() {
   }
   form_ = nullptr;
   if (host == nullptr) {
-    description_->setText(tr("No plugins – see Plugins → Settings…"));
+    description_->setText(chooser_->count() == 0 && !manager_->plugins().empty()
+                              ? tr("All plugins are hidden – see Plugins → Show in the side panels")
+                              : tr("No plugins – see Plugins → Settings…"));
     scroll_->setWidget(new QWidget);
     return;
   }
