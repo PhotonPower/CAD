@@ -94,6 +94,36 @@ class TestMainWindowPlugins : public QObject {
     QCOMPARE(w.openDisplay(QStringLiteral("show"), QStringLiteral("display.image"), QStringLiteral("Camera")), dock);  // one per block
   }
 
+  void displayResultsOpenNoGeneralWindow() {
+    // results of display blocks (key "workflow:…") belong to their own windows: the general
+    // image and plot windows do not pop up for them, as they do for other results
+    QStandardPaths::setTestModeEnabled(true);
+    nfcad::app::MainWindow w;
+    w.setAttribute(Qt::WA_DontShowOnScreen);
+    w.show();
+    auto* store = w.findChild<nfcad::results::ResultStore*>();
+    auto dock = [&w](const char* name) { return w.findChild<QDockWidget*>(QString::fromLatin1(name)); };
+    QVERIFY(store != nullptr && dock("imageDock") != nullptr && dock("plotDock") != nullptr);
+    const auto set = store->createSet(QStringLiteral("Workflow"));
+    nfcad::results::Image im;
+    im.width = 2;
+    im.height = 2;
+    im.values = {0, 1, 2, 3};
+    im.x1 = 1;
+    im.y1 = 1;
+    nfcad::results::Curve c;
+    c.x = {0, 1};
+    c.y = {1, 2};
+    store->addImage(set, QStringLiteral("camera"), im, QStringLiteral("workflow:show"));
+    store->addCurve(set, QStringLiteral("sweep"), c, QStringLiteral("workflow:plot"));
+    QVERIFY(!dock("imageDock")->isVisible());
+    QVERIFY(!dock("plotDock")->isVisible());
+    store->addImage(set, QStringLiteral("trace"), im);  // an ordinary result: shown
+    store->addCurve(set, QStringLiteral("merit"), c);
+    QVERIFY(dock("imageDock")->isVisible());
+    QVERIFY(dock("plotDock")->isVisible());
+  }
+
   void demoPluginFromTheMenu() {
     if (QStandardPaths::findExecutable(QStringLiteral("python3")).isEmpty() &&
         QStandardPaths::findExecutable(QStringLiteral("python")).isEmpty() && qEnvironmentVariableIsEmpty("NFCAD_PYTHON")) {

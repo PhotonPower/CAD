@@ -25,8 +25,10 @@ class ResultStore : public QObject {
   ResultId createSet(const QString& name, const QString& source = {});
   ResultId addLines(ResultId set, const QString& name, LineSet lines);
   ResultId addField(ResultId set, const QString& name, FaceField field);
-  ResultId addCurve(ResultId set, const QString& name, Curve curve);
-  ResultId addImage(ResultId set, const QString& name, Image image);
+  /// `key`: as `setKey`, but set before the item is announced (one `changed` with the key – a
+  /// window that ignores keyed results never sees the item without it)
+  ResultId addCurve(ResultId set, const QString& name, Curve curve, const QString& key = {});
+  ResultId addImage(ResultId set, const QString& name, Image image, const QString& key = {});
   /// Sets the key of an item (ResultItem::key).
   void setKey(ResultId item, const QString& key);
   /// Items with `key` (of `kind`) from the newest result set that has any (empty if none).

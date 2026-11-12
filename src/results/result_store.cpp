@@ -88,17 +88,19 @@ ResultId ResultStore::addField(ResultId set, const QString& name, FaceField fiel
   return add(set, std::move(i));
 }
 
-ResultId ResultStore::addImage(ResultId set, const QString& name, Image image) {
+ResultId ResultStore::addImage(ResultId set, const QString& name, Image image, const QString& key) {
   ResultItem i;
   i.name = name;
+  i.key = key;
   i.kind = ResultItem::Kind::Image;
   i.image = std::make_shared<const Image>(std::move(image));
   return add(set, std::move(i));
 }
 
-ResultId ResultStore::addCurve(ResultId set, const QString& name, Curve curve) {
+ResultId ResultStore::addCurve(ResultId set, const QString& name, Curve curve, const QString& key) {
   ResultItem i;
   i.name = name;
+  i.key = key;
   i.kind = ResultItem::Kind::Curve;
   i.curve = std::make_shared<const Curve>(std::move(curve));
   return add(set, std::move(i));
