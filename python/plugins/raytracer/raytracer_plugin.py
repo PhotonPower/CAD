@@ -606,7 +606,7 @@ class RaytracerPlugin(Plugin):
         extra = {}
         import importlib
 
-        for module in ("rtt_fusion.graph.grating", "rtt_fusion.graph.meta"):  # R19, R20
+        for module in ("rtt_fusion.graph.grating", "rtt_fusion.graph.particle", "rtt_fusion.graph.meta"):  # R19, R20
             try:
                 extra.update(importlib.import_module(module).register(registry))
             except ImportError:

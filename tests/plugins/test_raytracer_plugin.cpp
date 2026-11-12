@@ -182,6 +182,13 @@ class TestRaytracerPlugin : public QObject {
       for (const QJsonValue& t : wf["types"].toArray()) grating = grating || t.toObject()["type"].toString() == QStringLiteral("fusion.grating");
       QVERIFY(grating);
     }
+    QProcess has_particle;
+    has_particle.start(python_, {QStringLiteral("-c"), QStringLiteral("import rtt_fusion.graph.particle")});
+    if (has_particle.waitForFinished(30000) && has_particle.exitCode() == 0) {
+      bool particle = false;  // RTT-Fusion R19c: the particle sample (CliffordBem)
+      for (const QJsonValue& t : wf["types"].toArray()) particle = particle || t.toObject()["type"].toString() == QStringLiteral("fusion.particle");
+      QVERIFY(particle);
+    }
     bool detector = false;
     for (const QJsonValue& n : nodes) detector = detector || n.toObject()["type"].toString() == QStringLiteral("rtt.detector");
     QVERIFY(detector);
