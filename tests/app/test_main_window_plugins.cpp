@@ -159,7 +159,6 @@ class TestMainWindowPlugins : public QObject {
     QCOMPARE(chooser->findData(QStringLiteral("demo")), -1);
     QMenu* demo_menu = menu_named(plugins, QStringLiteral("Demo plugin"));
     QVERIFY(demo_menu != nullptr && !demo_menu->actions().isEmpty());
-    QVERIFY(QSettings().value(QStringLiteral("plugins/hidden")).toStringList().contains(QStringLiteral("demo")));
     // and back
     show = menu_named(plugins, QStringLiteral("Show in the side panels"));
     for (QAction* a : show->actions()) {

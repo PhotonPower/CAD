@@ -122,7 +122,14 @@ ToolBox::ToolBox(QWidget* parent) : QScrollArea(parent) {
 }
 
 void ToolBox::setExtraGroups(const std::vector<ToolGroupDef>& groups) {
-  for (ToolGroup* g : extra_) g->deleteLater();
+  for (ToolGroup* g : extra_) {
+    // out of the layout and the widget tree at once (deleteLater alone leaves it findable and
+    // visible until the event loop runs)
+    layout_->removeWidget(g);
+    g->hide();
+    g->setParent(nullptr);
+    g->deleteLater();
+  }
   extra_.clear();
   const int stretch = layout_->count() - 1;  // keep the stretch last
   int at = stretch;
