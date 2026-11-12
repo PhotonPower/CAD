@@ -666,6 +666,7 @@ void NodeEditor::fitAll() {
 
 void NodeEditor::updateLinks() {
   for (LinkItem* l : links_) l->update();
+  for (LinkItem* c : connections_) c->update();  // connections of ports follow the blocks too
 }
 
 void NodeEditor::nodeMoved() {
