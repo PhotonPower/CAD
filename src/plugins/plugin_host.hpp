@@ -62,6 +62,7 @@ class PluginHost : public QObject {
     QString id;
     QString label;
     QString description;
+    bool on_workflow_edit = false;  ///< also run quietly after an edit of the node workflow
   };
 
   PluginHost(Manifest manifest, document::Document* doc, document::Selection* selection,

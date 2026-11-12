@@ -531,11 +531,23 @@ class TestRaytracerPlugin : public QObject {
     QVERIFY(surface(QStringLiteral("L1.S1")) != nullptr);
     const auto before = surface(QStringLiteral("L1.S1"))->geometry;
     QVERIFY(std::abs(workflowRadius() - 103.36) < 1e-9);
-    // an edit in the workflow: the drawing is made again from the exact data
+    // an edit in the workflow: the drawing is made again from the exact data – by the quiet
+    // action CAD runs after every edit of the workflow
+    bool follows = false;
+    for (const auto& a : host_->actions()) follows = follows || (a.id == QStringLiteral("follow_workflow") && a.on_workflow_edit);
+    QVERIFY(follows);
     setWorkflowRadius(60.0);
-    run(QStringLiteral("update_drawing"));
+    run(QStringLiteral("follow_workflow"));
     QVERIFY(surface(QStringLiteral("L1.S1")) != nullptr);
     QVERIFY(surface(QStringLiteral("L1.S1"))->geometry != before);
+    {  // a half-done edit (a radius of 0 is no surface) does not fail; the drawing waits
+      const auto drawn = surface(QStringLiteral("L1.S1"))->geometry;
+      setWorkflowRadius(0.0);
+      run(QStringLiteral("follow_workflow"));
+      QVERIFY(surface(QStringLiteral("L1.S1")) != nullptr);
+      QVERIFY(surface(QStringLiteral("L1.S1"))->geometry == drawn);
+      setWorkflowRadius(60.0);
+    }
     // Optimise works on the workflow's system and writes its result back – one undo step
     const double edited = workflowRadius();
     run(QStringLiteral("optimise"));

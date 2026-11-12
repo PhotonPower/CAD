@@ -1237,6 +1237,19 @@ class RaytracerPlugin(Plugin):
                 params["rtt_system"] = {k: v for k, v in new.items() if k not in ("root", "paths")}
         ctx.set_workflow(wf)
 
+    @action("Follow the workflow", description="Draw what an edit of the node workflow changed (run by CAD "
+                                                 "after every edit)", on_workflow_edit=True)
+    def follow_workflow(self, ctx):
+        """Quiet: redraws only when the system the workflow makes changed, and never fails (an
+        unfinished edit simply waits for the next one)."""
+        if rt is None or self._workflow_system(ctx) is None:
+            return ""
+        try:
+            self._current(ctx)
+        except Exception as e:  # noqa: BLE001 - a half-done edit must not interrupt the user
+            ctx.log(f"drawing not updated: {e}")
+        return ""
+
     @action("Update drawing", description="Draw the system of the node workflow now (it is also drawn "
                                             "before every computation when the workflow changed)")
     def update_drawing(self, ctx):
