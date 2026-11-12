@@ -31,6 +31,8 @@ class NodeEditor : public QGraphicsView {
   [[nodiscard]] const QJsonObject& workflow() const { return workflow_; }
   /// Shows the whole graph (zoom extents).
   void fitAll();
+  /// Fits the selected blocks into the view (all blocks without a selection).
+  void zoomSelected();
   /// Zooms by `factor` (> 1 = closer) keeping the scene point under `view_pos` in place.
   void zoomAt(const QPointF& view_pos, double factor);
   /// Moves the view content by `delta` pixels.
@@ -68,6 +70,7 @@ class NodeEditor : public QGraphicsView {
   void keyPressEvent(QKeyEvent* event) override;
   void contextMenuEvent(QContextMenuEvent* event) override;
   bool viewportEvent(QEvent* event) override;
+  bool event(QEvent* event) override;
 
  private:
   friend class NodeItem;
@@ -95,7 +98,7 @@ class NodeEditor : public QGraphicsView {
   bool right_down_ = false;
   bool right_dragged_ = false;
   QPointF right_from_;
-  bool z_pressed_ = false;  ///< first key of the zoom-extents sequence Z E
+  bool z_pressed_ = false;  ///< first key of the sequences Z E (extents) and Z S (selected)
 };
 
 }  // namespace nfcad::ui

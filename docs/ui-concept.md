@@ -68,6 +68,7 @@ to a text abbreviation, so the skeleton runs before the icon set exists.
 | Zoom (to cursor) | wheel, pinch, Cmd + two-finger scroll | wheel |
 | Orbit (3D view; turntable around Z) | right drag, Alt + left drag | right drag, Alt + left drag |
 | Zoom extents | `Z` `E`, double-click middle, two-finger double tap; Shift + toolbar: all views | `Z` `E`, double-click middle |
+| Zoom selected (selected entities, faces, edges or vertices fill the view; without a selection: zoom extents) | `Z` `S`, toolbar, view menu; Shift + toolbar: all views | same |
 | Snap on/off | `F3` | `F3` |
 | Ortho (status bar button) | `F8` | `F8` |
 | Cycle snap candidates | `Tab` | `Tab` |
@@ -78,7 +79,10 @@ to a text abbreviation, so the skeleton runs before the icon set exists.
 The *Node workflow* window navigates the same way: pan with middle drag, right drag (a right
 click without moving opens the context menu), Alt + left drag or two-finger scroll; zoom to the
 cursor with the wheel, pinch or Cmd + two-finger scroll; zoom extents with `Z` `E`, `Home`,
-double-click middle or two-finger double tap.
+double-click middle or two-finger double tap; zoom selected (the selected blocks) with `Z` `S` or
+the context menu. While the window has the focus these keys act on it, not on the CAD views. It
+opens when a plugin sets a workflow (also again after it was closed) and from *View → Node
+workflow*.
 
 ## Selection (M3)
 

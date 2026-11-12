@@ -5,6 +5,7 @@
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <QNativeGestureEvent>
+#include <algorithm>
 #include <QWheelEvent>
 #include <cmath>
 #include <rhi/qrhi.h>
@@ -309,6 +310,28 @@ void Viewport::zoomExtents() {
     camera_.fitBox(box.min, box.max);
   } else {
     camera_.fitSphere({}, kDefaultExtentRadius);
+  }
+  cameraChanged();
+}
+
+void Viewport::zoomSelected() {
+  if (selection_ == nullptr || selection_->empty() || scene_ == nullptr) {
+    zoomExtents();
+    return;
+  }
+  camera_.setViewportSize(size());
+  const tessellation::Box3 box = scene_->bounds(selection_->ordered());
+  if (!box.valid()) {
+    zoomExtents();
+    return;
+  }
+  // a single point or a tiny element: a sphere of 2 % of the scene around it
+  const tessellation::Box3 all = scene_->bounds();
+  const float least = 0.02F * std::max(all.radius(), 1.0F);
+  if (box.radius() < least) {
+    camera_.fitSphere(box.center(), least);
+  } else {
+    camera_.fitBox(box.min, box.max);
   }
   cameraChanged();
 }
@@ -645,6 +668,7 @@ void Viewport::showViewMenu() {
     setProjection(on ? Camera::Projection::Perspective : Camera::Projection::Orthographic);
   });
   menu.addAction(tr("Zoom extents"), this, &Viewport::zoomExtents);
+  menu.addAction(tr("Zoom selected"), this, &Viewport::zoomSelected);
   menu.addSeparator();
   menu.addAction(tr("Maximize / restore  (Space)"), this, [this] { emit maximizeRequested(this); });
   menu.exec(mapToGlobal(title_->geometry().bottomLeft()));

@@ -723,11 +723,49 @@ void NodeEditor::wheelEvent(QWheelEvent* event) {
   event->accept();
 }
 
+bool NodeEditor::event(QEvent* event) {
+  // Z E / Z S / Home belong to the node editor while it has the focus, not to the main
+  // window's shortcuts for the CAD views
+  if (event->type() == QEvent::ShortcutOverride) {
+    auto* key = static_cast<QKeyEvent*>(event);
+    const bool plain = (key->modifiers() & ~Qt::KeypadModifier) == Qt::NoModifier;
+    if (plain && (key->key() == Qt::Key_Z || key->key() == Qt::Key_Home ||
+                  (z_pressed_ && (key->key() == Qt::Key_E || key->key() == Qt::Key_S)))) {
+      event->accept();
+      return true;
+    }
+  }
+  return QGraphicsView::event(event);
+}
+
+void NodeEditor::zoomSelected() {
+  QRectF rect;
+  for (QGraphicsItem* item : scene()->selectedItems()) {
+    if (dynamic_cast<NodeItem*>(item) != nullptr) rect = rect.united(item->sceneBoundingRect());
+  }
+  if (rect.isNull()) {
+    fitAll();
+    return;
+  }
+  fitInView(rect.adjusted(-30, -30, 30, 30), Qt::KeepAspectRatio);
+  if (zoom() > 8.0) {  // the zoom limit of the editor
+    const QPointF c = rect.center();
+    resetTransform();
+    scale(8.0, 8.0);
+    centerOn(c);
+  }
+}
+
 void NodeEditor::keyPressEvent(QKeyEvent* event) {
-  // zoom extents: Z E (as in the CAD views); Home as well
+  // zoom extents: Z E (as in the CAD views); Home as well; zoom selected: Z S
   if (event->key() == Qt::Key_Home || (z_pressed_ && event->key() == Qt::Key_E)) {
     z_pressed_ = false;
     fitAll();
+    return;
+  }
+  if (z_pressed_ && event->key() == Qt::Key_S) {
+    z_pressed_ = false;
+    zoomSelected();
     return;
   }
   z_pressed_ = event->key() == Qt::Key_Z && event->modifiers() == Qt::NoModifier;
@@ -777,6 +815,14 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
     }
     menu.addAction(muted ? tr("Unmute") : tr("Mute (bypass)"), this, [this, id, muted] { setMuted(id, !muted); });
     menu.addAction(tr("Delete block"), this, [this, id] { removeNode(id); });
+    menu.addSeparator();
+    menu.addAction(tr("Zoom selected"), this, [this, node] {
+      if (!node->isSelected()) {
+        scene()->clearSelection();
+        node->setSelected(true);
+      }
+      zoomSelected();
+    });
   } else if (link != nullptr) {
     const int index = link->index();
     QMenu* transport = menu.addMenu(tr("Transport"));
@@ -799,6 +845,7 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
     add->setEnabled(!by_category.empty());
     add->setToolTipsVisible(true);
     menu.addAction(tr("Arrange"), this, &NodeEditor::arrange);
+    menu.addAction(tr("Zoom selected"), this, &NodeEditor::zoomSelected)->setEnabled(!scene()->selectedItems().isEmpty());
     menu.addAction(tr("Show all"), this, &NodeEditor::fitAll);
   }
   menu.exec(global_pos);

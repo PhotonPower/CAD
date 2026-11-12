@@ -249,6 +249,16 @@ void MainWindow::createViewToolBar() {
       if (all || v == grid_->activeView()) v->zoomExtents();
     }
   });
+  QAction* zoom_selected = bar->addAction(tr("Zoom selected"));
+  zoom_selected->setShortcut(QKeySequence(Qt::Key_Z, Qt::Key_S));
+  zoom_selected->setToolTip(tr("Zoom selected (Z, S): the selected elements fill the view\nShift-click: all views"));
+  view_menu->addAction(zoom_selected);
+  connect(zoom_selected, &QAction::triggered, this, [this] {
+    const bool all = (QApplication::keyboardModifiers() & Qt::ShiftModifier) != 0;
+    for (viewport::Viewport* v : grid_->views()) {
+      if (all || v == grid_->activeView()) v->zoomSelected();
+    }
+  });
   view_menu->addSeparator();
 }
 
@@ -408,6 +418,15 @@ void MainWindow::createPanels() {
   connect(doc_, &document::Document::workflowChanged, this, [show_workflow] { show_workflow(false); });
   connect(doc_, &document::Document::documentReset, this, [show_workflow] { show_workflow(true); });
   connect(node_editor_, &ui::NodeEditor::edited, doc_, &document::Document::setWorkflow);
+  // a plugin set the workflow (also unchanged, e.g. "Workflow from system" again after the
+  // window was closed): show it
+  connect(doc_, &document::Document::workflowShowRequested, this, [this, workflow] {
+    if (doc_->workflow().isEmpty()) return;
+    const bool was_hidden = !workflow->isVisible();
+    workflow->show();
+    workflow->raise();
+    if (was_hidden) QTimer::singleShot(0, node_editor_, &ui::NodeEditor::fitAll);
+  });
   view_menu_->addAction(model->toggleViewAction());
   view_menu_->addAction(results->toggleViewAction());
   view_menu_->addAction(workflow->toggleViewAction());

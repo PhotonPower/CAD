@@ -75,6 +75,41 @@ tessellation::Box3 Scene::bounds() const {
   return box;
 }
 
+tessellation::Box3 Scene::bounds(const std::vector<document::SelectionItem>& selected) const {
+  using Kind = document::SubElement::Kind;
+  tessellation::Box3 box;
+  for (const document::SelectionItem& s : selected) {
+    const auto it = items_.find(s.entity);
+    if (it == items_.end() || !it->second.visible || !it->second.mesh) continue;
+    const tessellation::DisplayMesh& m = *it->second.mesh;
+    const int i = s.sub.index;
+    auto vertex = [&m](std::uint32_t v) {
+      return QVector3D(m.vertices[v * tessellation::kVertexStride], m.vertices[v * tessellation::kVertexStride + 1],
+                       m.vertices[v * tessellation::kVertexStride + 2]);
+    };
+    switch (s.sub.kind) {
+      case Kind::None: box.add(m.bounds); break;
+      case Kind::Face:
+        if (i >= 0 && static_cast<std::size_t>(i) + 1 < m.face_starts.size()) {
+          for (std::uint32_t k = m.face_starts[i]; k < m.face_starts[i + 1]; ++k) box.add(vertex(m.indices[k]));
+        }
+        break;
+      case Kind::Edge:
+        if (i >= 0 && static_cast<std::size_t>(i) < m.edges.size()) {
+          const tessellation::Polyline& p = m.edges[i];
+          for (std::size_t k = 0; k + 2 < p.size(); k += 3) box.add(QVector3D(p[k], p[k + 1], p[k + 2]));
+        }
+        break;
+      case Kind::Vertex:
+        if (i >= 0 && static_cast<std::size_t>(3 * i + 2) < m.corners.size()) {
+          box.add(QVector3D(m.corners[3 * i], m.corners[3 * i + 1], m.corners[3 * i + 2]));
+        }
+        break;
+    }
+  }
+  return box;
+}
+
 std::vector<pick::Target> Scene::pickTargets() const {
   std::vector<pick::Target> out;
   out.reserve(items_.size());

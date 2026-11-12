@@ -3,6 +3,7 @@
 #include <QGraphicsRectItem>
 #include <QImage>
 #include <QJsonArray>
+#include <QKeyEvent>
 #include <QJsonDocument>
 #include <QLineF>
 #include <QSignalSpy>
@@ -169,6 +170,34 @@ class TestNodeEditor : public QObject {
     QTest::keyClick(&e, Qt::Key_Z);
     QTest::keyClick(&e, Qt::Key_E);
     QVERIFY(std::abs(e.zoom() - z0) < 1e-6);
+  }
+
+  void zoomSelected() {
+    NodeEditor e;
+    e.resize(800, 400);
+    e.setAttribute(Qt::WA_DontShowOnScreen);
+    e.setWorkflow(linnik());
+    e.show();
+    e.fitAll();
+    const double all = e.zoom();
+    // without a selection: all blocks
+    e.zoomSelected();
+    QVERIFY(std::abs(e.zoom() - all) < 1e-9);
+    // one block selected: it fills the view, centred
+    QGraphicsRectItem* sample = e.nodeItem(QStringLiteral("Sample"));
+    sample->setSelected(true);
+    QTest::keyClick(&e, Qt::Key_Z);
+    QTest::keyClick(&e, Qt::Key_S);
+    QVERIFY(e.zoom() > 2.0 * all);
+    const QPoint centre = e.mapFromScene(sample->sceneBoundingRect().center());
+    QVERIFY(std::abs(centre.x() - e.viewport()->width() / 2) < 3);
+    QVERIFY(std::abs(centre.y() - e.viewport()->height() / 2) < 3);
+    const QRect r = e.mapFromScene(sample->sceneBoundingRect()).boundingRect();
+    QVERIFY(e.viewport()->rect().contains(r));
+    // the editor takes Z, E and S before the main window's shortcuts
+    QKeyEvent override(QEvent::ShortcutOverride, Qt::Key_Z, Qt::NoModifier);
+    QApplication::sendEvent(&e, &override);
+    QVERIFY(override.isAccepted());
   }
 
   void snapshot() {

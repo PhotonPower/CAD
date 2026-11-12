@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "document/document.hpp"
+#include "document/selection.hpp"
 #include "pick/picking.hpp"
 #include "tessellation/tessellation_service.hpp"
 
@@ -31,6 +32,9 @@ class Scene : public QObject {
   }
   /// Bounds of all visible, tessellated items (invalid if there are none).
   [[nodiscard]] tessellation::Box3 bounds() const;
+  /// Bounds of selected entities and sub-elements (faces, edges, B-rep vertices); invalid if
+  /// none of them is visible and tessellated.
+  [[nodiscard]] tessellation::Box3 bounds(const std::vector<document::SelectionItem>& items) const;
   /// Visible, tessellated items for picking and snapping.
   [[nodiscard]] std::vector<pick::Target> pickTargets() const;
   /// Number of triangles of all tessellated items.
