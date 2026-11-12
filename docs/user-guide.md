@@ -103,6 +103,8 @@ undo step**.
    *Create environment…* makes a new venv.
 2. **Installing plugins** – *Plugins → Install plugin…* with a `.nfplugin` file, or open the
    file with the application. *Plugins → Uninstall plugin* removes it.
+   *Plugins → Show in the side panels* keeps a plugin out of the tool column and the Plugin
+   panel (check box per plugin, remembered); its actions stay in the *Plugins* menu.
 3. **Signatures** – only plugins signed by the publisher whose key is built into the
    application are loaded. *Developer mode* also loads unsigned plugins (for plugin
    developers); a red banner in the status bar shows that it is on.
