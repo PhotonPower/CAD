@@ -2,6 +2,7 @@
 
 #include <QHash>
 #include <QMainWindow>
+#include <optional>
 #include <QSet>
 
 #include <QElapsedTimer>
@@ -102,6 +103,7 @@ class MainWindow : public QMainWindow {
   /// Plugins kept out of the side panels (settings "plugins/hidden").
   [[nodiscard]] QSet<QString> hiddenPlugins() const;
   void setHiddenPlugins(const QSet<QString>& ids);
+  mutable std::optional<QSet<QString>> hidden_plugins_;
   void runPluginAction(plugins::PluginHost* host, const QString& action);
   void installPlugin(const QString& package = {});
   void checkForUpdates();
