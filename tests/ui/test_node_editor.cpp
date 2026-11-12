@@ -123,10 +123,11 @@ class TestNodeEditor : public QObject {
     QCOMPARE(e.linkItem(0)->pen().style(), Qt::DashLine);
     QCOMPARE(e.linkItem(1)->pen().style(), Qt::SolidLine);
     QVERIFY(e.nodeItem(node)->toolTip().contains(QStringLiteral("a → b: HR (field_to_rays)")));
-    // an edit makes the plan stale
+    // an edit makes the plan stale: it stays visible, grey, until the next check
     e.setMuted(node, true);
-    QVERIFY(!e.workflow().contains("plan"));
-    QCOMPARE(e.plannedRepresentation(0), QString());
+    QVERIFY(e.workflow()["plan"].toObject()["stale"].toBool());
+    QCOMPARE(e.plannedRepresentation(0), QStringLiteral("H"));
+    QVERIFY(e.linkItem(0)->toolTip().contains(QStringLiteral("before the last edit")));
   }
 
   void replaceAndParameters() {
@@ -298,6 +299,53 @@ class TestNodeEditor : public QObject {
     const bool sample_first = QLineF(start, start_before + QPointF(80.0, 120.0)).length() < 1e-6;
     QVERIFY(sample_last || sample_first);
     QVERIFY(sample_last ? QLineF(start, start_before).length() < 1e-6 : QLineF(end, end_before).length() < 1e-6);
+  }
+
+  void connectionDirections() {
+    // per direction a branch uses: an arrow and the planned representation; the tooltip names
+    // the blocks; after an edit the plan stays, marked out of date
+    NodeEditor e;
+    e.setWorkflow(model_linnik());
+    auto index_of = [&e](const QJsonArray& a, const QJsonArray& b) {
+      const QJsonArray connections = e.workflow()["model"].toObject()["connections"].toArray();
+      for (int k = 0; k < connections.size(); ++k) {
+        const QJsonArray ends = connections[k].toObject()["ports"].toArray();
+        if (ends.contains(a) && ends.contains(b)) return k;
+      }
+      return -1;
+    };
+    auto arrows = [&e](int k) {
+      QStringList out;
+      for (QGraphicsItem* child : e.connectionItem(k)->childItems()) {
+        for (QGraphicsItem* t : child->childItems()) {
+          if (auto* text = dynamic_cast<QGraphicsSimpleTextItem*>(t)) out << text->text();
+        }
+      }
+      return out;
+    };
+    const int both = index_of(QJsonArray{"Objective_A", "Sample"}, QJsonArray{"Sample", "Objective_A"});
+    const int one = index_of(QJsonArray{"source", "Illumination_stop"}, QJsonArray{"Illumination_stop", "source"});
+    QVERIFY(both >= 0 && one >= 0);
+    QStringList two = arrows(both);
+    QCOMPARE(two.size(), 2);  // there and back to the sample
+    QVERIFY(two.join(QLatin1Char(' ')).contains(QStringLiteral("▶")) && two.join(QLatin1Char(' ')).contains(QStringLiteral("◀")));
+    QCOMPARE(arrows(one).size(), 1);  // the source only sends
+    QVERIFY(e.connectionItem(both)->toolTip().contains(QStringLiteral("Objective A → Sample: R")));
+    QVERIFY(e.connectionItem(both)->toolTip().contains(QStringLiteral("Sample → Objective A: R")));
+    e.setParams(QStringLiteral("Sample"), QJsonObject{{"offset", QJsonArray{0, 0, 0.001}}});
+    QVERIFY(e.connectionItem(both)->toolTip().contains(QStringLiteral("(out of date)")));
+    QCOMPARE(arrows(both).size(), 2);  // still shown
+    // a fixed transport shows with a star
+    e.setConnectionTransport(both, QStringLiteral("forward"), QStringLiteral("H"));
+    QVERIFY(arrows(both).join(QLatin1Char(' ')).contains(QStringLiteral("H*")));  // also with an old plan
+    if (const QByteArray dir = qgetenv("NFCAD_SNAPSHOT_DIR"); !dir.isEmpty()) {
+      e.resize(1400, 700);
+      e.highlightBranch(QStringLiteral("measurement"));
+      e.scene()->clearSelection();
+      for (const char* id : {"Beam_splitter", "Objective_A", "Sample", "Objective_B"}) e.nodeItem(QString::fromLatin1(id))->setSelected(true);
+      e.zoomSelected();
+      e.grab().toImage().save(QString::fromLocal8Bit(dir) + QStringLiteral("/node_editor_directions.png"));
+    }
   }
 
   void connectionsAndTransports() {
