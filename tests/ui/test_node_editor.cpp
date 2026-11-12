@@ -1,4 +1,7 @@
 #include <QApplication>
+#include <QDialog>
+#include <QLineEdit>
+#include <QTimer>
 #include <QFile>
 #include <QGraphicsRectItem>
 #include <QImage>
@@ -114,6 +117,46 @@ class TestNodeEditor : public QObject {
     e.setMuted(node, true);
     QVERIFY(!e.workflow().contains("plan"));
     QCOMPARE(e.plannedRepresentation(0), QString());
+  }
+
+  void replaceAndParameters() {
+    // concept 1: the sample mirror becomes a FourierGrating sample, the links stay
+    NodeEditor e;
+    e.setWorkflow(linnik());
+    QVERIFY(e.replacementsFor(QStringLiteral("Sample")).contains(QStringLiteral("fusion.grating")));
+    QVERIFY(!e.replacementsFor(QStringLiteral("Beam_splitter")).contains(QStringLiteral("fusion.grating")));
+    QSignalSpy edited(&e, &NodeEditor::edited);
+    QVERIFY(e.replaceNode(QStringLiteral("Sample"), QStringLiteral("fusion.grating")));
+    QCOMPARE(edited.count(), 1);
+    QCOMPARE(e.linkCount(), 13);
+    const QJsonObject sample = node(e.workflow(), QStringLiteral("Sample"));
+    QCOMPARE(sample["type"].toString(), QStringLiteral("fusion.grating"));
+    QVERIFY(sample["params"].toObject().contains(QStringLiteral("table")));
+    int into = 0, out_of = 0;
+    for (const QJsonValue& v : e.workflow()["graph"].toObject()["links"].toArray()) {
+      const QJsonObject l = v.toObject();
+      if (l["to"].toArray() == QJsonArray{QStringLiteral("Sample"), QStringLiteral("in")}) ++into;
+      if (l["from"].toArray() == QJsonArray{QStringLiteral("Sample"), QStringLiteral("out")}) ++out_of;
+    }
+    QCOMPARE(into, 1);
+    QCOMPARE(out_of, 1);
+    // parameters: set directly and through the dialog
+    e.setParams(QStringLiteral("Sample"), QJsonObject{{"table", "/tmp/grating.json"}, {"orders", QJsonArray{-1, 0, 1}}});
+    QCOMPARE(node(e.workflow(), QStringLiteral("Sample"))["params"].toObject()["table"].toString(), QStringLiteral("/tmp/grating.json"));
+    QTimer::singleShot(0, &e, [] {
+      for (QWidget* w : QApplication::topLevelWidgets()) {
+        auto* d = qobject_cast<QDialog*>(w);
+        if (d == nullptr || !d->isVisible()) continue;
+        for (QLineEdit* line : d->findChildren<QLineEdit*>()) {
+          if (line->text() == QStringLiteral("/tmp/grating.json")) line->setText(QStringLiteral("/tmp/other.json"));
+        }
+        d->accept();
+      }
+    });
+    e.editParams(QStringLiteral("Sample"));
+    const QJsonObject p = node(e.workflow(), QStringLiteral("Sample"))["params"].toObject();
+    QCOMPARE(p["table"].toString(), QStringLiteral("/tmp/other.json"));
+    QCOMPARE(p["orders"].toArray(), (QJsonArray{-1, 0, 1}));
   }
 
   void savedWithTheDocument() {

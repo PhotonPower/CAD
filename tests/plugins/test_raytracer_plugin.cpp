@@ -175,6 +175,13 @@ class TestRaytracerPlugin : public QObject {
     const QJsonArray nodes = wf["graph"].toObject()["nodes"].toArray();
     QVERIFY(nodes.size() >= 3);  // source, sections, detector
     QVERIFY(!wf["types"].toArray().isEmpty());
+    QProcess has_grating;
+    has_grating.start(python_, {QStringLiteral("-c"), QStringLiteral("import rtt_fusion.graph.grating")});
+    if (has_grating.waitForFinished(30000) && has_grating.exitCode() == 0) {
+      bool grating = false;  // RTT-Fusion R19: the grating sample is in the block library
+      for (const QJsonValue& t : wf["types"].toArray()) grating = grating || t.toObject()["type"].toString() == QStringLiteral("fusion.grating");
+      QVERIFY(grating);
+    }
     bool detector = false;
     for (const QJsonValue& n : nodes) detector = detector || n.toObject()["type"].toString() == QStringLiteral("rtt.detector");
     QVERIFY(detector);
