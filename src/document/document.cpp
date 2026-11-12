@@ -1,5 +1,6 @@
 #include "document/document.hpp"
 
+#include <QJsonArray>
 #include <QUndoCommand>
 #include <algorithm>
 #include <set>
@@ -490,7 +491,18 @@ void Document::recordApplied(const QString& text, const LiveChanges& changes) {
   }
   std::optional<std::pair<QJsonObject, QJsonObject>> workflow;
   if (changes.old_workflow) {  // only a change of the model / graph itself (not of the checks)
-    auto content = [](const QJsonObject& w) { return QJsonObject{{"model", w["model"]}, {"graph", w["graph"]}}; };
+    // what a plugin derives for the editor (fields, the sockets and ports it fills in) is no edit
+    auto content = [](const QJsonObject& w) {
+      QJsonObject model = w["model"].toObject();
+      QJsonArray nodes;
+      for (const QJsonValue& v : model["nodes"].toArray()) {
+        QJsonObject n = v.toObject();
+        for (const char* key : {"fields", "sockets", "ports"}) n.remove(QLatin1String(key));
+        nodes.append(n);
+      }
+      model["nodes"] = nodes;
+      return QJsonObject{{"model", model}, {"graph", w["graph"]}};
+    };
     if (content(*changes.old_workflow) != content(workflow_)) workflow.emplace(*changes.old_workflow, workflow_);
   }
   if (add.empty() && groups.empty() && changes.removed.empty() && changes.removed_groups.empty() &&

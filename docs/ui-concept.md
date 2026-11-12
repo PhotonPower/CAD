@@ -131,6 +131,13 @@ a plugin run that changes the workflow is undone together with its drawing (one 
 *Save system* exports the workflow's system as .rtt.json. Without a workflow the plugin works on
 the loaded file as before.
 
+New Raytatouille parts come from *Add block*: *Raytatouille mirror*, *beam splitter*, *lens* and
+*detector* (`rtt.part.*`). Each is a real element of the system the workflow makes: give it its
+pose and data in *Parameters…* (position, rotation, aperture, interaction, glass, radii), connect
+its ports (mirror: front; splitter: front_a, front_b, back_a, back_b – leaving by the side the
+light came in is a reflection; lens: front, back; detector: in) and lead branches through it. It
+is drawn in the CAD view and computes like an imported element.
+
 ## Selection (M3)
 
 | Action | Effect |
