@@ -65,6 +65,8 @@ class NodeEditor : public QGraphicsView {
   [[nodiscard]] int linkCount() const;
   /// The item of a link (tooltip: transport, planned representation and reason, problems).
   [[nodiscard]] QGraphicsPathItem* linkItem(int index) const;
+  /// The link under a point of the view (also on its label), or −1.
+  [[nodiscard]] int linkAt(const QPoint& view_pos) const;
   /// The representation the planner chose for a link ("" without a plan).
   [[nodiscard]] QString plannedRepresentation(int index) const;
 

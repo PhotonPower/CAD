@@ -15,6 +15,9 @@
 #include <QSpinBox>
 #include <functional>
 #include <optional>
+#include <QPainterPathStroker>
+#include <QStyleOptionGraphicsItem>
+#include <QGraphicsSceneHoverEvent>
 #include <QContextMenuEvent>
 #include <QGraphicsEllipseItem>
 #include <QGraphicsPathItem>
@@ -179,7 +182,10 @@ class LinkItem : public QGraphicsPathItem {
       pen.setStyle(Qt::DashLine);
     }
     setPen(pen);
+    base_pen_ = pen;
     setZValue(-1);
+    setAcceptHoverEvents(true);
+    setFlag(ItemIsSelectable);
     QStringList tip;
     tip << (transport == QLatin1String("auto") ? QObject::tr("transport: auto (the planner chooses)")
                                                : QObject::tr("transport: %1 (fixed)").arg(transport));
@@ -222,6 +228,41 @@ class LinkItem : public QGraphicsPathItem {
   [[nodiscard]] int index() const { return index_; }
   [[nodiscard]] QString representation() const { return representation_; }
 
+  /// A wide band around the curve, so that a link can be hit with the mouse.
+  [[nodiscard]] QPainterPath shape() const override {
+    QPainterPathStroker stroker;
+    stroker.setWidth(12.0);
+    stroker.setCapStyle(Qt::RoundCap);
+    return stroker.createStroke(path());
+  }
+  [[nodiscard]] QRectF boundingRect() const override { return shape().boundingRect(); }
+
+ protected:
+  void hoverEnterEvent(QGraphicsSceneHoverEvent* event) override {
+    QPen p = base_pen_;
+    p.setWidthF(base_pen_.widthF() + 2.0);
+    p.setColor(base_pen_.color().lighter(130));
+    setPen(p);
+    QGraphicsPathItem::hoverEnterEvent(event);
+  }
+  void hoverLeaveEvent(QGraphicsSceneHoverEvent* event) override {
+    setPen(base_pen_);
+    QGraphicsPathItem::hoverLeaveEvent(event);
+  }
+  void paint(QPainter* painter, const QStyleOptionGraphicsItem* option, QWidget* widget) override {
+    QStyleOptionGraphicsItem o(*option);
+    o.state &= ~QStyle::State_Selected;  // no dashed selection rectangle
+    if (isSelected()) {
+      QPen p = pen();
+      p.setWidthF(std::max(p.widthF(), base_pen_.widthF() + 2.0));
+      p.setColor(QColor(255, 255, 255, 230));
+      painter->setPen(p);
+      painter->drawPath(path());
+      return;
+    }
+    QGraphicsPathItem::paint(painter, &o, widget);
+  }
+
  private:
   int index_;
   SocketItem* a_;
@@ -229,6 +270,7 @@ class LinkItem : public QGraphicsPathItem {
   QString transport_;
   QString representation_;
   QGraphicsSimpleTextItem* label_ = nullptr;
+  QPen base_pen_;
 };
 
 static QString link_key(const QJsonObject& l) {
@@ -411,6 +453,16 @@ QGraphicsPathItem* NodeEditor::linkItem(int index) const {
     if (l->index() == index) return l;
   }
   return nullptr;
+}
+
+int NodeEditor::linkAt(const QPoint& view_pos) const {
+  for (QGraphicsItem* item : items(view_pos)) {
+    for (QGraphicsItem* p = item; p != nullptr; p = p->parentItem()) {
+      if (dynamic_cast<NodeItem*>(p) != nullptr) return -1;  // a block lies on top
+      if (auto* l = dynamic_cast<LinkItem*>(p)) return l->index();
+    }
+  }
+  return -1;
 }
 
 QString NodeEditor::plannedRepresentation(int index) const {
@@ -1025,7 +1077,9 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
   LinkItem* link = nullptr;
   for (QGraphicsItem* item : items(view_pos)) {
     for (QGraphicsItem* p = item; p != nullptr && node == nullptr; p = p->parentItem()) node = dynamic_cast<NodeItem*>(p);
-    if (link == nullptr) link = dynamic_cast<LinkItem*>(item);
+    for (QGraphicsItem* p = item; p != nullptr && link == nullptr; p = p->parentItem()) {
+      link = dynamic_cast<LinkItem*>(p);  // also its label
+    }
     if (node != nullptr) break;
   }
   if (node != nullptr) {

@@ -170,6 +170,7 @@ class TestRaytracerPlugin : public QObject {
     QProcess probe;
     probe.start(python_, {QStringLiteral("-c"), QStringLiteral("import rtt_fusion.graph")});
     if (!probe.waitForFinished(30000) || probe.exitCode() != 0) QSKIP("rtt_fusion not installed in the plugin Python");
+    doc_.setWorkflow(QJsonObject{});  // a fresh import (the action keeps edits of an old one)
     run(QStringLiteral("workflow_from_system"));
     const QJsonObject wf = doc_.workflow();
     const QJsonArray nodes = wf["graph"].toObject()["nodes"].toArray();
@@ -242,11 +243,44 @@ class TestRaytracerPlugin : public QObject {
     QVERIFY(*std::max_element(values.begin(), values.end()) > 0.0);
   }
 
+  void workflowKeepsEdits() {
+    // "Workflow from system" again keeps the user's transports and added blocks
+    QProcess probe;
+    probe.start(python_, {QStringLiteral("-c"), QStringLiteral("import rtt_fusion.graph")});
+    if (!probe.waitForFinished(30000) || probe.exitCode() != 0) QSKIP("rtt_fusion not installed in the plugin Python");
+    doc_.setWorkflow(QJsonObject{});  // a fresh import (the action keeps edits of an old one)
+    run(QStringLiteral("workflow_from_system"));
+    QJsonObject wf = doc_.workflow();
+    QJsonObject graph = wf["graph"].toObject();
+    QJsonArray links = graph["links"].toArray();
+    QJsonObject last = links.last().toObject();
+    last["transport"] = QStringLiteral("H");
+    links[links.size() - 1] = last;
+    graph["links"] = links;
+    QJsonArray nodes = graph["nodes"].toArray();
+    nodes.append(QJsonObject{{"id", "my_sweep"}, {"type", "meta.sweep"}, {"params", QJsonObject{{"values", QJsonArray{1.0}}}}});
+    graph["nodes"] = nodes;
+    wf["graph"] = graph;
+    doc_.setWorkflow(wf);
+    run(QStringLiteral("workflow_from_system"));
+    const QJsonObject again = doc_.workflow()["graph"].toObject();
+    bool sweep = false;
+    for (const QJsonValue& n : again["nodes"].toArray()) sweep = sweep || n.toObject()["id"].toString() == QStringLiteral("my_sweep");
+    QVERIFY(sweep);
+    bool fixed = false;
+    for (const QJsonValue& l : again["links"].toArray()) {
+      const QJsonObject o = l.toObject();
+      fixed = fixed || (o["from"] == last["from"] && o["to"] == last["to"] && o["transport"].toString() == QStringLiteral("H"));
+    }
+    QVERIFY(fixed);
+  }
+
   void workflowSweep() {
     // RTT-Fusion R20: a meta block sweeps the offset of a block and collects the camera image
     QProcess probe;
     probe.start(python_, {QStringLiteral("-c"), QStringLiteral("import rtt_fusion.graph.meta")});
     if (!probe.waitForFinished(30000) || probe.exitCode() != 0) QSKIP("rtt_fusion without meta blocks");
+    doc_.setWorkflow(QJsonObject{});  // a fresh import (the action keeps edits of an old one)
     run(QStringLiteral("workflow_from_system"));
     QJsonObject wf = doc_.workflow();
     QJsonObject graph = wf["graph"].toObject();
