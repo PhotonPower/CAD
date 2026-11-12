@@ -927,8 +927,87 @@ class RaytracerPlugin(Plugin):
             plan["connections"] = self._connection_plan(graph, model, registry, topology, plan)
         for d in diagnostics:  # copies and blocks inside groups: the block of the model
             d["location"] = re.sub(r"@\d+", "", str(d["location"]))
-        return {"model": io.model_to_dict(model), "types": self._catalogue(registry),
+        data = io.model_to_dict(model)
+        for nd in data["nodes"]:  # the editable data of the system (ADR Nachtrag 1)
+            fields = self._rtt_fields(nd)
+            if fields:
+                nd["fields"] = fields
+        return {"model": data, "types": self._catalogue(registry),
                 "diagnostics": diagnostics, "plan": plan}
+
+    # keys that carry the structure (ids are referenced by the paths; a type changes the shape of
+    # the entry): shown nowhere, changed by the import or the library only
+    _STRUCTURE_KEYS = frozenset({"id", "type", "children", "schema_version", "units"})
+    _LENGTH_KEYS = frozenset({"radius", "inner_radius", "position", "pivot", "half_width_x",
+                              "half_width_y", "semi_axis_x", "semi_axis_y", "thickness", "distance",
+                              "normalization_radius", "value_mm"})
+    _VECTOR_KEYS = frozenset({"position", "pivot", "rotation_deg", "transmission_axis", "normal",
+                              "axis", "fast_axis", "optic_axis"})
+
+    @classmethod
+    def _rtt_fields(cls, node: dict) -> list:
+        """The editable fields of a node's Raytatouille data (ADR Nachtrag 1: the plugin says what
+        a node of it holds): one field per value, named by its JSON pointer into the node's
+        params, grouped by element; units from Raytatouille's conventions (lengths mm, angles in
+        degree where the key ends in _deg, wavelengths µm)."""
+        params = node.get("params", {})
+        out: list = []
+
+        def pointer(parts) -> str:
+            return "/" + "/".join(str(p).replace("~", "~0").replace("/", "~1") for p in parts)
+
+        def unit(key: str) -> str:
+            if key.endswith("_deg"):
+                return "deg"
+            if key in cls._LENGTH_KEYS:
+                return "mm"
+            return "µm" if key == "um" else ""
+
+        def add(path, kind, label, group, key):
+            out.append({"name": pointer(path), "type": kind, "label": label, "group": group,
+                        "unit": unit(key)})
+
+        def walk(value, path, label, group, key=""):
+            if isinstance(value, bool):
+                add(path, "boolean", label, group, key)
+            elif isinstance(value, int | float):
+                add(path, "number", label, group, key)
+            elif isinstance(value, str):
+                add(path, "text", label, group, key)
+            elif isinstance(value, dict):
+                if "value" in value and isinstance(value["value"], int | float) and not isinstance(value["value"], bool):
+                    add([*path, "value"], "number", label, group, key)  # a Raytatouille parameter
+                    if "variable" in value:
+                        add([*path, "variable"], "boolean", f"{label} variable", group, "")
+                    return
+                if set(value) == {"param"}:
+                    add([*path, "param"], "text", f"{label} (row of the parameter table)", group, "")
+                    return
+                for k, v in value.items():
+                    if k in cls._STRUCTURE_KEYS:
+                        continue
+                    walk(v, [*path, k], f"{label} · {k}" if label else k, group, k)
+            elif isinstance(value, list):
+                plain = all(isinstance(x, int | float) and not isinstance(x, bool) for x in value)
+                if plain and value:
+                    kind = "point" if len(value) == 3 and key in cls._VECTOR_KEYS else "numbers"
+                    add(path, kind, label, group, key)
+                    return
+                for i, item in enumerate(value):
+                    tag = item.get("id") or item.get("name") if isinstance(item, dict) else None
+                    walk(item, [*path, i], f"{label}[{i}]" + (f" ({tag})" if tag else ""), group, key)
+
+        for location, entry in params.get("rtt", {}).items():
+            group = str(entry.get("name") or entry.get("type") or location)
+            walk(entry, ["rtt", location], "", group)
+        for location, entry in params.get("rtt_tree", {}).items():
+            if location == "/root" and not {k for k in entry if k not in cls._STRUCTURE_KEYS}:
+                continue
+            group = str(entry.get("name") or entry.get("type") or location)
+            walk(entry, ["rtt_tree", location], "", group)
+        if "rtt_system" in params:
+            walk(params["rtt_system"], ["rtt_system"], "", "System")
+        return out
 
     @staticmethod
     def _connection_plan(graph, model, registry, topology, plan) -> dict:

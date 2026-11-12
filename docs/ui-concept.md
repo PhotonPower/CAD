@@ -116,6 +116,14 @@ edits (positions, parameters, replaced blocks with their ports, added blocks and
 transports, own branches). *Replace with* moves the connections and branch steps of a block to
 the ports of the new type (same name, else its only port).
 
+After the import the node workflow holds the whole system (ADR Nachtrag 1): *Parameters…* of a
+Raytatouille block shows a tab per element with its exact data – radii, conics, apertures,
+surface poses, glasses, interactions – as the Raytatouille plugin describes them (lengths in mm,
+angles in degree, a parameter's "variable" as a check box); the source shows the system's
+settings (wavelengths, fields, aperture, object) and the assemblies split over blocks. Only the
+values you change are written back (a value with more digits than shown stays exact). The CAD
+view keeps drawing NURBS derived from these exact data.
+
 ## Selection (M3)
 
 | Action | Effect |
