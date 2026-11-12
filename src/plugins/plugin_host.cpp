@@ -365,7 +365,10 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     return QJsonValue::Null;
   }
   if (method == QLatin1String("workflow.set")) {
-    doc_->setWorkflow(args["workflow"].toObject());  // not an undo step (like plugin parameters)
+    // part of the run's undo step when the run changes the model (ADR Nachtrag 1); the checks
+    // alone (diagnostics, plan) are none
+    if (active_job_ && !original_workflow_) original_workflow_ = doc_->workflow();
+    doc_->setWorkflow(args["workflow"].toObject());
     doc_->requestWorkflowShown();
     return QJsonValue::Null;
   }
@@ -468,6 +471,7 @@ int PluginHost::run(const QString& action, const QJsonObject& params) {
 
 void PluginHost::beginJob(int job) {
   active_job_ = job;
+  original_workflow_.reset();
   original_geometry_.clear();
   original_attributes_.clear();
   added_.clear();
@@ -487,6 +491,8 @@ void PluginHost::endJob(int job, bool ok, bool cancelled, const QString& message
   changes.removed_groups = std::move(removed_groups_);
   changes.old_geometry.assign(original_geometry_.begin(), original_geometry_.end());
   changes.old_attributes.assign(original_attributes_.begin(), original_attributes_.end());
+  changes.old_workflow = std::move(original_workflow_);
+  original_workflow_.reset();
   doc_->recordApplied(manifest_.name, changes);
   original_geometry_.clear();
   original_attributes_.clear();

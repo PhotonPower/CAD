@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include <QJsonObject>
 #include <QObject>
 #include <QUndoStack>
@@ -34,6 +36,9 @@ struct LiveChanges {
   std::vector<Group> removed_groups;                         ///< empty groups, in removal order
   std::vector<std::pair<EntityId, GeometryPtr>> old_geometry;
   std::vector<std::pair<EntityId, QVariantMap>> old_attributes;
+  /// the workflow before the run, if the run changed its model (ADR Nachtrag 1: the workflow
+  /// is the truth – a plugin writing into it, e.g. an optimisation, is undone with the run)
+  std::optional<QJsonObject> old_workflow;
 };
 
 struct Layer {
