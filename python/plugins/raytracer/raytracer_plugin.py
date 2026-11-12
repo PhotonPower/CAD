@@ -604,12 +604,13 @@ class RaytracerPlugin(Plugin):
         (a sample from a FourierGrating Jones table). Returns (registry, extra evaluators)."""
         registry = fg.builtin_registry()
         extra = {}
-        try:
-            import importlib
+        import importlib
 
-            extra = importlib.import_module("rtt_fusion.graph.grating").register(registry)
-        except ImportError:
-            pass
+        for module in ("rtt_fusion.graph.grating", "rtt_fusion.graph.meta"):  # R19, R20
+            try:
+                extra.update(importlib.import_module(module).register(registry))
+            except ImportError:
+                pass
         return registry, extra
 
     @staticmethod
@@ -678,8 +679,14 @@ class RaytracerPlugin(Plugin):
         system, _ = self._current(ctx)
         compiled = self._compile(system)
         detectors = [n for n in graph.nodes.values() if n.type_id == "rtt.detector"]
+        metas = [n for n in graph.nodes.values() if n.type_id.startswith("meta.")]
         if not detectors:
             raise UserError("The workflow has no detector block.")
+        if metas:
+            # a meta block repeats the graph in front of the output it collects; the detectors it
+            # collects are computed there (with the parameter changed), not once more here
+            collected = {str(m.params.get("collect", "")).split(".")[0] for m in metas}
+            detectors = [d for d in detectors if d.id not in collected]
         run = ctx.result_set(f"Workflow {Path(self.loaded_from or 'system').name.split('.')[0]}")
         made = []
         layouts = {L.id: L for L in rt.layout.surfaces(compiled)}
@@ -730,7 +737,54 @@ class RaytracerPlugin(Plugin):
                       description=f"{node.name or node.id}: {len(image.groups)} coherence group(s), "
                                   f"{nx}×{ny} px – amplitudes within a group, intensities across groups")
             made.append(f"{node.name or node.id} (peak {float(image.values.max()):.3g})")
+        for meta_node in metas:
+            ctx.check_cancel()
+            made.append(self._run_meta(ctx, run, graph, registry, evaluators, execute, backend_rtt,
+                                       system, compiled, layouts, meta_node))
         return "workflow: " + (", ".join(made) if made else "no detector got light")
+
+    def _run_meta(self, ctx, run, graph, registry, evaluators, execute, backend_rtt, system, compiled,
+                  layouts, node) -> str:
+        """A meta block (RTT-Fusion R20): the measure over the parameter as a curve; the mean image
+        of replicates and the best image of an optimisation in the Image window."""
+        target = str(node.params.get("collect", ""))
+        det = graph.nodes.get(target.split(".")[0])
+        pixels = [ctx.params["workflow_pixels"]] * 2
+        if det is not None and det.type_id == "rtt.detector":
+            window = float(ctx.params.get("workflow_window", 0.0) or 0.0)
+            if window > 0:
+                det.params["half_size"] = [window, window]
+        ex = execute.Executor(graph, registry, evaluators,
+                              {"system": system, "compiled": compiled, "materials": self.library,
+                               "rings": rings_for(ctx.params["workflow_rays"]), "pixels": pixels,
+                               "gaussian_waist": float(ctx.params.get("workflow_gaussian_waist", 0.0) or 0.0)},
+                              available=self._available(execute))
+        try:
+            out = ex.evaluate(node.id, "results")
+        except execute.ExecutionError as e:
+            raise UserError(f"{node.name or node.id}: {e}") from e
+        for line in ex.context.log:
+            ctx.log(line)
+        name = node.name or node.id
+        parameter = str(node.params.get("parameter", "parameter"))
+        ctx.curve(run, f"{name}: {out.measure} over {parameter}", out.values, out.measures,
+                  x_label=parameter, y_label=out.measure)
+
+        def show(image, label):
+            ny, nx = image.values.shape
+            ctx.image(run, f"{name}: {label}", image.values.reshape(-1), nx, ny, extent=image.extent,
+                      unit="W/mm² (rel.)", description=f"{name}: {label}")
+
+        if getattr(out, "mean", None) is not None and hasattr(out.mean, "values"):
+            show(out.mean, f"mean of {len(out.values)} replicates")
+            return f"{name}: mean of {len(out.values)} replicates"
+        if getattr(out, "best", None) is not None:
+            k = min(range(len(out.values)), key=lambda i: abs(out.values[i] - out.best))
+            if hasattr(out.results[k], "values"):
+                show(out.results[k], f"{parameter} = {out.best:.6g} (best)")
+            ctx.log(f"{name}: best {parameter} = {out.best:.9g} ({out.measure} {out.measures[k]:.4g})")
+            return f"{name}: best {parameter} = {out.best:.6g}"
+        return f"{name}: {len(out.values)} values"
 
     @action("Optimise", description="Raytatouille's optimiser; the surfaces update after every iteration")
     def optimise(self, ctx):
