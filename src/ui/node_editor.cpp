@@ -72,6 +72,8 @@ QJsonObject node_of(const QJsonObject& graph, const QString& id) {
   return {};
 }
 
+QString tr_(const char* text) { return QObject::tr(text); }
+
 QString type_category(const QString& type_id) {
   if (type_id.endsWith(QLatin1String("source"))) return QStringLiteral("source");
   if (type_id.endsWith(QLatin1String("splitter"))) return QStringLiteral("splitter");
@@ -236,6 +238,7 @@ class LinkItem : public QGraphicsPathItem {
       label_->setFont(f);
       label_->setBrush(QColor(20, 20, 20));
       auto* back = new QGraphicsRectItem(label_->boundingRect().adjusted(-3, -1, 3, 1), label_);
+      label_back_ = back;
       back->setBrush(pen.color());
       back->setPen(Qt::NoPen);
       back->setFlag(QGraphicsItem::ItemStacksBehindParent);
@@ -261,17 +264,64 @@ class LinkItem : public QGraphicsPathItem {
       const QPointF m = path.pointAtPercent(0.5);
       label_->setPos(m - label_->boundingRect().center());
     }
+    for (Arrow& a : arrows_) {  // in the middle of the band: forward above it, back below it
+      const double at = 0.5;
+      const QPointF m = path.pointAtPercent(at);
+      double angle = path.angleAtPercent(at);  // degrees, counter-clockwise, y up
+      if (a.reverse) angle += 180.0;
+      const double rad = angle * M_PI / 180.0;
+      const bool right = std::cos(rad) >= 0.0;
+      // ▶ / ◀ as seen on the screen: the direction's horizontal sense
+      a.text->setText((right ? QStringLiteral("▶ ") : QStringLiteral("◀ ")) + a.text->text().section(QLatin1Char(' '), -1));
+      a.box->setRect(a.text->boundingRect().adjusted(-3, -1, 3, 1));
+      const double h = a.box->rect().height();
+      const double shift = arrows_.size() == 1 ? 0.0 : (a.reverse ? 0.5 : -0.5) * (h + 2.0);
+      a.box->setPos(m - a.box->rect().center() + QPointF(0.0, shift));
+    }
   }
   [[nodiscard]] int index() const { return index_; }
   [[nodiscard]] QString representation() const { return representation_; }
+  /// The plan was made before the last edit: its label grey, the tooltip says so.
+  void markStale() {
+    if (label_back_ != nullptr) label_back_->setBrush(QColor(120, 120, 120));
+    setToolTip(toolTip() + QObject::tr("\n(planned before the last edit – Check workflow renews it)"));
+  }
   /// A connection of two ports (R24) rather than a directed link.
   [[nodiscard]] bool isConnection() const { return connection_; }
   void setConnection(bool on) { connection_ = on; }
-  void setHighlight(const QColor& color) {
+  /// `direction`: the arrow of a highlighted branch (0 forward, 1 back, −1 none) gets its colour.
+  void setHighlight(const QColor& color, int direction = -1) {
     base_pen_.setColor(color);
     base_pen_.setWidthF(base_pen_.widthF() + 2.5);
     setPen(base_pen_);
     setZValue(-0.5);
+    for (Arrow& a : arrows_) {
+      if (direction >= 0 && a.reverse == (direction == 1)) a.box->setBrush(color);
+    }
+  }
+  /// Labels of a connection, one per direction it carries: an arrow along the band (forward:
+  /// from the first end to the second) and the representation, grey when the plan is out of date.
+  void setDirections(const QString& forward, const QString& back, bool forward_used, bool back_used, bool stale) {
+    for (Arrow& a : arrows_) delete a.box;
+    arrows_.clear();
+    if (label_ != nullptr) label_->hide();  // the single label of a link is replaced
+    auto make = [this, stale](const QString& text, bool reverse, bool used) {
+      if (text.isEmpty()) return;
+      auto* box = new QGraphicsRectItem(this);
+      box->setPen(Qt::NoPen);
+      box->setBrush(stale ? QColor(120, 120, 120) : base_pen_.color());
+      auto* t = new QGraphicsSimpleTextItem(text, box);
+      QFont f = t->font();
+      f.setBold(true);
+      f.setPointSizeF(f.pointSizeF() * 0.85);
+      t->setFont(f);
+      t->setBrush(QColor(20, 20, 20));
+      box->setRect(t->boundingRect().adjusted(-3, -1, 3, 1));
+      arrows_.append(Arrow{box, t, reverse, used});
+    };
+    make(forward, false, forward_used);
+    make(back, true, back_used);
+    update();
   }
 
   /// A wide band around the curve, so that a link can be hit with the mouse.
@@ -316,8 +366,16 @@ class LinkItem : public QGraphicsPathItem {
   QString transport_;
   QString representation_;
   QGraphicsSimpleTextItem* label_ = nullptr;
+  QGraphicsRectItem* label_back_ = nullptr;
   QPen base_pen_;
   bool connection_ = false;
+  struct Arrow {
+    QGraphicsRectItem* box;
+    QGraphicsSimpleTextItem* text;
+    bool reverse;
+    bool used;
+  };
+  QList<Arrow> arrows_;
 };
 
 static QString link_key(const QJsonObject& l) {
@@ -588,6 +646,7 @@ void NodeEditor::rebuild() {
     auto* link = new LinkItem(k, sa, sb, l["transport"].toString(QStringLiteral("auto")),
                               sa->kind() == QLatin1String("light"), planned_links[key].toObject(),
                               link_problems.value(key).trimmed());
+    if (plan["stale"].toBool()) link->markStale();
     scene()->addItem(link);
     links_.append(link);
   }
@@ -603,22 +662,46 @@ void NodeEditor::rebuild() {
     SocketItem* sa = a != nullptr ? a->socket(ends.at(0).toArray().at(1).toString()) : nullptr;
     SocketItem* sb = b != nullptr ? b->socket(ends.at(1).toArray().at(1).toString()) : nullptr;
     if (sa == nullptr || sb == nullptr) continue;
-    QString transport = c["transport"].toString(QStringLiteral("auto"));
-    if (c["transport"].isObject()) {
-      transport = c["transport"].toObject()["forward"].toString() + QLatin1Char('/') + c["transport"].toObject()["back"].toString();
-    }
+    const bool per_direction = c["transport"].isObject();
+    const QString fixed_forward = per_direction ? c["transport"].toObject()["forward"].toString() : c["transport"].toString(QStringLiteral("auto"));
+    const QString fixed_back = per_direction ? c["transport"].toObject()["back"].toString() : fixed_forward;
+    const QString transport = fixed_forward == fixed_back ? fixed_forward : fixed_forward + QLatin1Char('/') + fixed_back;
     const QJsonObject reps = planned_connections[QString::number(k)].toObject();
-    QStringList shown;
-    for (const char* side : {"forward", "back"}) {
-      const QString r = reps[QLatin1String(side)].toString();
-      if (!r.isEmpty() && !shown.contains(r)) shown << r;
+    const bool stale = plan["stale"].toBool();
+    const QString name_a = node_of(g, ends.at(0).toArray().at(0).toString())["name"].toString(ends.at(0).toArray().at(0).toString());
+    const QString name_b = node_of(g, ends.at(1).toArray().at(0).toString())["name"].toString(ends.at(1).toArray().at(0).toString());
+    // which directions the branches use
+    bool forward_used = false;
+    bool back_used = false;
+    for (const QJsonValue& br : g["branches"].toArray()) {
+      const QJsonArray steps = br.toObject()["steps"].toArray();
+      for (int s = 0; s + 1 < steps.size(); ++s) {
+        const QJsonArray from{steps[s].toArray().at(0), steps[s].toArray().at(2)};
+        const QJsonArray to{steps[s + 1].toArray().at(0), steps[s + 1].toArray().at(1)};
+        forward_used = forward_used || (from == ends.at(0).toArray() && to == ends.at(1).toArray());
+        back_used = back_used || (from == ends.at(1).toArray() && to == ends.at(0).toArray());
+      }
     }
-    QJsonObject planned;
-    if (!shown.isEmpty()) {
-      planned["representation"] = shown.join(QLatin1Char('/'));
-      planned["reason"] = tr("forward %1, back %2").arg(reps["forward"].toString(QStringLiteral("–")),
-                                                        reps["back"].toString(QStringLiteral("–")));
-    }
+    // per direction: the planned representation, else a fixed transport (marked *)
+    auto text_of = [&reps](const char* side, const QString& fixed, bool used) {
+      if (!used) return QString();
+      if (fixed != QLatin1String("auto")) return fixed + QStringLiteral("*");  // the planner keeps it
+      return reps[QLatin1String(side)].toString();
+    };
+    const QString forward_text = text_of("forward", fixed_forward, forward_used);
+    const QString back_text = text_of("back", fixed_back, back_used);
+    QJsonObject planned;  // the tooltip
+    auto line = [&reps, stale](const QString& from, const QString& to, const char* side, const QString& fixed, bool used) {
+      QString r = reps[QLatin1String(side)].toString();
+      QString t = QStringLiteral("%1 → %2: ").arg(from, to);
+      if (!used) return t + tr_("no branch");
+      t += r.isEmpty() ? QStringLiteral("–") : r + (stale ? tr_(" (out of date)") : QString());
+      t += fixed == QLatin1String("auto") ? tr_(", transport auto") : tr_(", transport fixed %1").arg(fixed);
+      return t;
+    };
+    planned["reason"] = line(name_a, name_b, "forward", fixed_forward, forward_used) + QLatin1Char('\n') +
+                        line(name_b, name_a, "back", fixed_back, back_used);
+    planned["representation"] = QString();
     // problems of the connection's checks are reported at "a.p — b.q"
     const QString where = QStringLiteral("%1.%2 — %3.%4").arg(ends.at(0).toArray().at(0).toString(), ends.at(0).toArray().at(1).toString(),
                                                             ends.at(1).toArray().at(0).toString(), ends.at(1).toArray().at(1).toString());
@@ -628,6 +711,8 @@ void NodeEditor::rebuild() {
     }
     auto* item = new LinkItem(k, sa, sb, transport, true, planned, problem.trimmed());
     item->setConnection(true);
+    item->setToolTip(planned["reason"].toString() + (problem.isEmpty() ? QString() : QStringLiteral("\n\n") + problem.trimmed()));
+    item->setDirections(forward_text, back_text, forward_used, back_used, stale);
     scene()->addItem(item);
     connections_.append(item);
   }
@@ -642,9 +727,8 @@ void NodeEditor::rebuild() {
         const QJsonArray ends = graph()["connections"].toArray().at(c->index()).toObject()["ports"].toArray();
         const QJsonArray from{s.at(0), s.at(2)};
         const QJsonArray to{next.at(0), next.at(1)};
-        if ((ends.at(0).toArray() == from && ends.at(1).toArray() == to) || (ends.at(1).toArray() == from && ends.at(0).toArray() == to)) {
-          c->setHighlight(color);
-        }
+        if (ends.at(0).toArray() == from && ends.at(1).toArray() == to) c->setHighlight(color, 0);
+        if (ends.at(1).toArray() == from && ends.at(0).toArray() == to) c->setHighlight(color, 1);
       }
     }
   };
@@ -728,7 +812,11 @@ void NodeEditor::setGraph(const QJsonObject& graph) {
     invalidate(seeds);
   }
   workflow_.remove(QStringLiteral("diagnostics"));  // stale after an edit; the next check renews it
-  workflow_.remove(QStringLiteral("plan"));
+  if (workflow_.contains(QStringLiteral("plan"))) {  // the last plan stays visible, marked out of date
+    QJsonObject plan = workflow_["plan"].toObject();
+    plan["stale"] = true;
+    workflow_["plan"] = plan;
+  }
   rebuild();
   emit edited(workflow_);
 }
@@ -1547,9 +1635,14 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
   NodeItem* node = nullptr;
   LinkItem* link = nullptr;
   if (const int c = connectionAt(view_pos); c >= 0) {  // a connection of two ports (R24)
-    QMenu* both = menu.addMenu(tr("Transport"));
-    QMenu* forward = menu.addMenu(tr("Transport forward only"));
-    QMenu* back = menu.addMenu(tr("Transport back only"));
+    const QJsonArray ends = graph()["connections"].toArray().at(c).toObject()["ports"].toArray();
+    auto name = [this](const QJsonValue& end) {
+      const QString id = end.toArray().at(0).toString();
+      return node_of(graph(), id)["name"].toString(id);
+    };
+    QMenu* both = menu.addMenu(tr("Transport (both directions)"));
+    QMenu* forward = menu.addMenu(tr("Transport %1 → %2").arg(name(ends.at(0)), name(ends.at(1))));
+    QMenu* back = menu.addMenu(tr("Transport %1 → %2").arg(name(ends.at(1)), name(ends.at(0))));
     for (const char* t : {"auto", "R", "H", "G", "S", "T", "P"}) {
       const QString name = QString::fromLatin1(t);
       both->addAction(name, this, [this, c, name] { setConnectionTransport(c, QStringLiteral("both"), name); });

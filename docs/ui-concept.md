@@ -101,9 +101,13 @@ next run computes only the red blocks, *Check workflow* and every run report the
 
 With RTT-Fusion R24 *Workflow from system* makes a **model**: a block shows one point per light
 port (on the left where the light first comes in, on the right where it leaves or comes back),
-a connection joins two ports and carries both directions (no arrow; its label shows the planned
-representation, "R/H" if the two directions differ; right-click: *Transport* for both
-directions or one, *Delete connection*); data sockets (drive, pose, image, results) stay
+a connection joins two ports and carries both directions: for each direction a branch uses it
+shows a label with an arrow (▶ / ◀ as on the screen; the one above the band is the first-named
+direction, the one below the other) and the representation – the planned one, or a fixed
+transport with a star (H*); the tooltip names the blocks ("Objective A → Sample: H, transport
+fixed H"); the arrows of a highlighted branch take its colour; right-click: *Transport (both
+directions)*, *Transport A → B*, *Transport B → A*, *Delete connection*. After an edit the last
+plan stays visible in grey ("out of date") until *Check workflow* renews it; data sockets (drive, pose, image, results) stay
 directed, and a port dragged onto a display block makes an observer link. Drag from a port to a
 port to connect them – a port has one connection. The **Branches** list next to the editor
 shows the branches of the model: exactly these are computed (the import makes one per path of
