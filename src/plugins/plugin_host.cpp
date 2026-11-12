@@ -356,6 +356,10 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     return QJsonValue::Null;
   }
   if (method == QLatin1String("workflow.get")) return doc_->workflow();
+  if (method == QLatin1String("workflow.status")) {
+    doc_->reportWorkflowRunning(args["node"].toString());
+    return QJsonValue::Null;
+  }
   if (method == QLatin1String("workflow.set")) {
     doc_->setWorkflow(args["workflow"].toObject());  // not an undo step (like plugin parameters)
     doc_->requestWorkflowShown();
@@ -420,8 +424,10 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     im.unit = args["unit"].toString();
     im.description = args["description"].toString();
     im.range = range_of(args);
-    return static_cast<qint64>(results_->addImage(static_cast<results::ResultId>(args["set"].toInteger()),
-                                                  args["name"].toString(), std::move(im)));
+    const auto id = results_->addImage(static_cast<results::ResultId>(args["set"].toInteger()),
+                                       args["name"].toString(), std::move(im));
+    if (args.contains("key")) results_->setKey(id, args["key"].toString());
+    return static_cast<qint64>(id);
   }
   if (method == QLatin1String("results.curve")) {
     results::Curve c;
@@ -429,8 +435,10 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     for (const QJsonValue& v : args["y"].toArray()) c.y.push_back(v.toDouble());
     c.x_label = args["x_label"].toString();
     c.y_label = args["y_label"].toString();
-    return static_cast<qint64>(results_->addCurve(static_cast<results::ResultId>(args["set"].toInteger()),
-                                                  args["name"].toString(), std::move(c)));
+    const auto id = results_->addCurve(static_cast<results::ResultId>(args["set"].toInteger()),
+                                       args["name"].toString(), std::move(c));
+    if (args.contains("key")) results_->setKey(id, args["key"].toString());
+    return static_cast<qint64>(id);
   }
   if (method == QLatin1String("results.append")) {
     results_->appendToCurve(static_cast<results::ResultId>(args["item"].toInteger()), args["x"].toDouble(),

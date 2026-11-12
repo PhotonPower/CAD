@@ -83,6 +83,10 @@ class Context:
         be empty); the node editor writes the user's edits into "graph"."""
         return self._host.request("workflow.get", {}) or {}
 
+    def workflow_running(self, node: str) -> None:
+        """Marks the block of the node workflow that is computed now ("" : none) in the editor."""
+        self._host.send({"type": "notify", "method": "workflow.status", "args": {"node": str(node)}})
+
     def set_workflow(self, workflow: dict) -> None:
         """Replaces the document's node workflow (shown in the node editor)."""
         self._host.request("workflow.set", {"workflow": workflow})
@@ -119,7 +123,7 @@ class Context:
     def image(self, result_set: int, name: str, values, width: int, height: int, *,
               extent: tuple[float, float, float, float] | None = None, x_label: str = "x / mm",
               y_label: str = "y / mm", colormap: str = "inferno", unit: str = "",
-              value_range: tuple[float, float] | None = None, description: str = "") -> int:
+              value_range: tuple[float, float] | None = None, description: str = "", key: str = "") -> int:
         """A 2D image in the *Image* dock (e.g. a camera image): values[j * width + i], row 0 at
         y0; extent = (x0, x1, y0, y1) of the grid (cell edges), e.g. in mm."""
         args: dict[str, Any] = {"set": result_set, "name": name, "width": int(width), "height": int(height),
@@ -129,12 +133,18 @@ class Context:
             args["extent"] = [float(v) for v in extent]
         if value_range is not None:
             args["range"] = [float(value_range[0]), float(value_range[1])]
+        if key:
+            args["key"] = key
         return self._host.request("results.image", args)
 
-    def curve(self, result_set: int, name: str, x=(), y=(), *, x_label: str = "", y_label: str = "") -> int:
-        return self._host.request("results.curve", {"set": result_set, "name": name,
-                                                    "x": [float(v) for v in x], "y": [float(v) for v in y],
-                                                    "x_label": x_label, "y_label": y_label})
+    def curve(self, result_set: int, name: str, x=(), y=(), *, x_label: str = "", y_label: str = "",
+              key: str = "") -> int:
+        """A curve in the *Plot* dock; `key` ties it to a display window (e.g. "workflow:<block>")."""
+        args = {"set": result_set, "name": name, "x": [float(v) for v in x], "y": [float(v) for v in y],
+                "x_label": x_label, "y_label": y_label}
+        if key:
+            args["key"] = key
+        return self._host.request("results.curve", args)
 
     def append(self, curve: int, x: float, y: float) -> None:
         self._host.send({"type": "notify", "method": "results.append",

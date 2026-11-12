@@ -60,6 +60,9 @@ class NodeEditor : public QGraphicsView {
   void setParams(const QString& id, const QJsonObject& params);
   /// Dialog with the type's parameters (number, integer, boolean, text, file, numbers, point).
   void editParams(const QString& id);
+  /// Marks the block that is computed now (empty: none) – a bright frame and "running …".
+  void setRunning(const QString& id);
+  [[nodiscard]] QString running() const { return running_; }
   /// The item of a block (its pen marks problems; tooltip: type, parameters, problems).
   [[nodiscard]] QGraphicsRectItem* nodeItem(const QString& id) const;
   [[nodiscard]] int linkCount() const;
@@ -72,6 +75,8 @@ class NodeEditor : public QGraphicsView {
 
  signals:
   void edited(const QJsonObject& workflow);
+  /// A display block (type display.*) asks for its window (double-click, context menu).
+  void displayRequested(const QString& id, const QString& type, const QString& title);
 
  protected:
   void mousePressEvent(QMouseEvent* event) override;
@@ -110,7 +115,8 @@ class NodeEditor : public QGraphicsView {
   bool right_down_ = false;
   bool right_dragged_ = false;
   QPointF right_from_;
-  bool z_pressed_ = false;  ///< first key of the sequences Z E (extents) and Z S (selected)
+  bool z_pressed_ = false;
+  QString running_;  ///< first key of the sequences Z E (extents) and Z S (selected)
 };
 
 }  // namespace nfcad::ui

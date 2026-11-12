@@ -606,7 +606,8 @@ class RaytracerPlugin(Plugin):
         extra = {}
         import importlib
 
-        for module in ("rtt_fusion.graph.grating", "rtt_fusion.graph.particle", "rtt_fusion.graph.meta"):  # R19, R20
+        for module in ("rtt_fusion.graph.grating", "rtt_fusion.graph.particle", "rtt_fusion.graph.meta",
+                       "rtt_fusion.graph.display"):  # R19, R20, R21
             try:
                 extra.update(importlib.import_module(module).register(registry))
             except ImportError:
@@ -724,12 +725,16 @@ class RaytracerPlugin(Plugin):
             # collects are computed there (with the parameter changed), not once more here
             collected = {str(m.params.get("collect", "")).split(".")[0] for m in metas}
             detectors = [d for d in detectors if d.id not in collected]
+        displays = [n for n in graph.nodes.values() if n.type_id.startswith("display.")]
         run = ctx.result_set(f"Workflow {Path(self.loaded_from or 'system').name.split('.')[0]}")
         made = []
         layouts = {L.id: L for L in rt.layout.surfaces(compiled)}
+        tasks = max(len(detectors) + len(metas) + len(displays), 1)
+        computed: dict = {}  # (block, socket) -> value, reused by the display blocks
+        task = 0
         for k, node in enumerate(detectors):
             ctx.check_cancel()
-            ctx.progress(k / len(detectors), f"workflow: {node.name or node.id}")
+            ctx.progress(task / tasks, f"workflow: {node.name or node.id}")
             surface = (node.params.get("surfaces") or [None])[0]
             L = layouts.get(surface)
             hu, hv = 1.0, 1.0
@@ -748,10 +753,13 @@ class RaytracerPlugin(Plugin):
                                    "rings": rings_for(ctx.params["workflow_rays"]), "pixels": pixels,
                                    "gaussian_waist": float(ctx.params.get("workflow_gaussian_waist", 0.0) or 0.0)},
                                   available=self._available(execute))
+            self._hook(ctx, ex, task / tasks, (task + 1) / tasks)
+            task += 1
             try:
                 image = ex.evaluate(node.id, "image")
             except execute.ExecutionError as e:
                 raise UserError(f"The workflow cannot be computed: {e}") from e
+            computed[(node.id, "image")] = image
             for line in ex.context.log:
                 ctx.log(line)
             if not image.groups:
@@ -777,11 +785,80 @@ class RaytracerPlugin(Plugin):
         for meta_node in metas:
             ctx.check_cancel()
             made.append(self._run_meta(ctx, run, graph, registry, evaluators, execute, backend_rtt,
-                                       system, compiled, layouts, meta_node))
+                                       system, compiled, layouts, meta_node,
+                                       (task / tasks, (task + 1) / tasks), computed))
+            task += 1
+        if displays:
+            made += self._run_displays(ctx, run, graph, registry, evaluators, execute, system, compiled,
+                                       displays, computed, task / tasks)
+        ctx.workflow_running("")
         return "workflow: " + (", ".join(made) if made else "no detector got light")
 
+    @staticmethod
+    def _hook(ctx, ex, a: float, b: float) -> None:
+        """Progress of an executor (RTT-Fusion R21) into a part a … b of the job, the running
+        block into the node editor; every report checks for Cancel."""
+        last = {"node": None}
+
+        def progress(part: float, text: str) -> None:
+            ctx.check_cancel()
+            ctx.progress(a + (b - a) * part, text)
+
+        def on_node(node_id: str) -> None:
+            if node_id != last["node"]:
+                last["node"] = node_id
+                ctx.workflow_running(node_id)
+
+        if hasattr(ex.context, "progress"):
+            ex.context.progress = progress
+            ex.context.on_node = on_node
+
+    def _run_displays(self, ctx, run, graph, registry, evaluators, execute, system, compiled, displays,
+                      computed, start: float) -> list:
+        """Display blocks (RTT-Fusion R21): their views as results with the key "workflow:<block>",
+        shown in the block's window (double-click). Images and meta results computed above are
+        reused; light probes run here."""
+        made = []
+        ex = execute.Executor(graph, registry, evaluators,
+                              {"system": system, "compiled": compiled, "materials": self.library,
+                               "rings": rings_for(ctx.params["workflow_rays"]),
+                               "pixels": [ctx.params["workflow_pixels"]] * 2,
+                               "gaussian_waist": float(ctx.params.get("workflow_gaussian_waist", 0.0) or 0.0)},
+                              available=self._available(execute))
+        for k, node in enumerate(displays):
+            ctx.check_cancel()
+            a = start + (1 - start) * k / len(displays)
+            b = start + (1 - start) * (k + 1) / len(displays)
+            self._hook(ctx, ex, a, b)
+            ctx.progress(a, f"display: {node.name or node.id}")
+            links = graph.links_to(node.id)
+            try:
+                if links and (links[0].source[0], links[0].source[1]) in computed:
+                    ctx.workflow_running(node.id)
+                    value = computed[(links[0].source[0], links[0].source[1])]
+                    view = evaluators[node.type_id](ex.context, node, "view", {"in": value})
+                else:
+                    view = ex.evaluate(node.id, "view")
+            except execute.ExecutionError as e:
+                ctx.log(f"{node.name or node.id}: {e}")
+                continue
+            key = f"workflow:{node.id}"
+            if view.kind == "image" and view.image is not None:
+                ny, nx = view.image.values.shape
+                ctx.image(run, view.title, view.image.values.reshape(-1), nx, ny, extent=view.image.extent,
+                          x_label=view.x_label, y_label=view.y_label, unit=view.unit,
+                          description=f"{view.title}: {nx}×{ny} px", key=key)
+            else:
+                for c in view.curves:
+                    ctx.curve(run, f"{view.title}: {c.name}", c.x, c.y, x_label=view.x_label,
+                              y_label=view.y_label, key=key)
+            made.append(f"{node.name or node.id} (display)")
+        for line in ex.context.log:
+            ctx.log(line)
+        return made
+
     def _run_meta(self, ctx, run, graph, registry, evaluators, execute, backend_rtt, system, compiled,
-                  layouts, node) -> str:
+                  layouts, node, span=(0.0, 1.0), computed=None) -> str:
         """A meta block (RTT-Fusion R20): the measure over the parameter as a curve; the mean image
         of replicates and the best image of an optimisation in the Image window."""
         target = str(node.params.get("collect", ""))
@@ -796,10 +873,13 @@ class RaytracerPlugin(Plugin):
                                "rings": rings_for(ctx.params["workflow_rays"]), "pixels": pixels,
                                "gaussian_waist": float(ctx.params.get("workflow_gaussian_waist", 0.0) or 0.0)},
                               available=self._available(execute))
+        self._hook(ctx, ex, *span)
         try:
             out = ex.evaluate(node.id, "results")
         except execute.ExecutionError as e:
             raise UserError(f"{node.name or node.id}: {e}") from e
+        if computed is not None:
+            computed[(node.id, "results")] = out
         for line in ex.context.log:
             ctx.log(line)
         name = node.name or node.id

@@ -418,6 +418,13 @@ void MainWindow::createPanels() {
   connect(doc_, &document::Document::workflowChanged, this, [show_workflow] { show_workflow(false); });
   connect(doc_, &document::Document::documentReset, this, [show_workflow] { show_workflow(true); });
   connect(node_editor_, &ui::NodeEditor::edited, doc_, &document::Document::setWorkflow);
+  // the block a plugin computes now
+  connect(doc_, &document::Document::workflowRunning, this, [this, workflow](const QString& node) {
+    node_editor_->setRunning(node);
+    workflow->setWindowTitle(node.isEmpty() ? tr("Node workflow") : tr("Node workflow – running"));
+  });
+  // display blocks: a dockable window each, with the results the run gave them
+  connect(node_editor_, &ui::NodeEditor::displayRequested, this, &MainWindow::openDisplay);
   // a plugin set the workflow (also unchanged, e.g. "Workflow from system" again after the
   // window was closed): show it
   connect(doc_, &document::Document::workflowShowRequested, this, [this, workflow] {
@@ -518,6 +525,32 @@ void MainWindow::showAbout() {
           .arg(QStringLiteral(NFCAD_VERSION),
                QString::fromStdString(kernel::nurbforge_version()),
                kernel_ok ? tr("passed") : tr("FAILED"), QString::fromLatin1(qVersion())));
+}
+
+QDockWidget* MainWindow::openDisplay(const QString& id, const QString& type, const QString& title) {
+  QDockWidget* dock = display_docks_.value(id);
+  if (dock == nullptr) {
+    dock = new QDockWidget(this);
+    dock->setObjectName(QStringLiteral("display_") + id);
+    const QString key = QStringLiteral("workflow:") + id;
+    if (type == QLatin1String("display.plot")) {
+      auto* plot = new ui::PlotWidget(results_, dock);
+      plot->setKey(key);
+      dock->setWidget(plot);
+    } else {
+      auto* image = new ui::ImageView(results_, dock);
+      image->setKey(key);
+      dock->setWidget(image);
+    }
+    addDockWidget(Qt::RightDockWidgetArea, dock);
+    dock->setFloating(true);  // docks anywhere by dragging its title bar
+    dock->resize(480, 400);
+    display_docks_.insert(id, dock);
+  }
+  dock->setWindowTitle(tr("Display: %1").arg(title));
+  dock->show();
+  dock->raise();
+  return dock;
 }
 
 }  // namespace nfcad::app

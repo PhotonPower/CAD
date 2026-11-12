@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QMainWindow>
 
 #include <QElapsedTimer>
@@ -57,6 +58,8 @@ namespace nfcad::app {
 class MainWindow : public QMainWindow {
   Q_OBJECT
  public:
+  /// The window of a display block of the node workflow (created on first use; dockable).
+  QDockWidget* openDisplay(const QString& id, const QString& type, const QString& title);
   explicit MainWindow(QWidget* parent = nullptr);
   ~MainWindow() override;
 
@@ -128,6 +131,7 @@ class MainWindow : public QMainWindow {
   QLabel* developer_banner_ = nullptr;
   ui::ImageView* image_view_ = nullptr;
   ui::NodeEditor* node_editor_ = nullptr;
+  QHash<QString, QDockWidget*> display_docks_;
   std::uint64_t last_image_ = 0;
   snap::SnapEngine* snap_engine_ = nullptr;
   class CommandController* commands_ = nullptr;

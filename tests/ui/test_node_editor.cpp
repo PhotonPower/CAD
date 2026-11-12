@@ -180,6 +180,37 @@ class TestNodeEditor : public QObject {
     QCOMPARE(e.linkAt(QPoint(5, 5)), -1);
   }
 
+  void displayBlocksAndRunning() {
+    QJsonObject wf = linnik();
+    QJsonObject g = wf["graph"].toObject();
+    QJsonArray nodes = g["nodes"].toArray();
+    nodes.append(QJsonObject{{"id", "show"}, {"type", "display.image"}, {"name", "Camera window"}, {"position", QJsonArray{0, 600}}});
+    g["nodes"] = nodes;
+    wf["graph"] = g;
+    QJsonArray types = wf["types"].toArray();
+    types.append(QJsonObject{{"type", "display.image"}, {"category", "analysis"},
+                             {"sockets", QJsonArray{QJsonObject{{"name", "in"}, {"direction", "in"}, {"kind", "data"}, {"accepts", QJsonArray{"result"}}},
+                                                    QJsonObject{{"name", "view"}, {"direction", "out"}, {"kind", "data"}, {"accepts", QJsonArray{"result"}}}}}});
+    wf["types"] = types;
+    NodeEditor e;
+    e.resize(1500, 600);
+    e.setAttribute(Qt::WA_DontShowOnScreen);
+    e.setWorkflow(wf);
+    e.show();
+    e.fitAll();
+    QSignalSpy requested(&e, &NodeEditor::displayRequested);
+    const QPoint at = e.mapFromScene(e.nodeItem(QStringLiteral("show"))->sceneBoundingRect().center());
+    QTest::mouseDClick(e.viewport(), Qt::LeftButton, {}, at);
+    QCOMPARE(requested.count(), 1);
+    QCOMPARE(requested.at(0).at(0).toString(), QStringLiteral("show"));
+    QCOMPARE(requested.at(0).at(1).toString(), QStringLiteral("display.image"));
+    // the running block: a bright, wide frame
+    e.setRunning(QStringLiteral("Sample"));
+    QVERIFY(e.nodeItem(QStringLiteral("Sample"))->pen().widthF() >= 3.0);
+    e.setRunning({});
+    QVERIFY(e.nodeItem(QStringLiteral("Sample"))->pen().widthF() < 2.0);
+  }
+
   void savedWithTheDocument() {
     nfcad::document::Document doc;
     doc.setWorkflow(linnik());

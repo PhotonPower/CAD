@@ -85,6 +85,9 @@ struct ResultItem {
   enum class Kind { Lines, Field, Curve, Image };
   ResultId id = 0;
   QString name;
+  /// Optional key of the producer, e.g. "workflow:<block id>" – a display window shows the items
+  /// with its key from the newest result set that has them.
+  QString key;
   Kind kind = Kind::Lines;
   bool visible = true;
   std::shared_ptr<const LineSet> lines;

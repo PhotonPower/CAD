@@ -127,11 +127,16 @@ PlotWidget::PlotWidget(const results::ResultStore* store, QWidget* parent)
   connect(store_, &results::ResultStore::curveUpdated, this, qOverload<>(&QWidget::update));
 }
 
+std::vector<const results::ResultItem*> PlotWidget::curves() const {
+  return key_.isEmpty() ? store_->visibleItems(results::ResultItem::Kind::Curve)
+                        : store_->itemsWithKey(key_, results::ResultItem::Kind::Curve);
+}
+
 void PlotWidget::paintEvent(QPaintEvent* /*event*/) {
   QPainter p(this);
   p.fillRect(rect(), QColor(28, 31, 36));
   p.setRenderHint(QPainter::Antialiasing);
-  const auto curves = store_->visibleItems(results::ResultItem::Kind::Curve);
+  const auto curves = this->curves();
   p.setPen(QColor(150, 155, 165));
   if (curves.empty()) {
     p.drawText(rect(), Qt::AlignCenter, tr("No curves (e.g. the merit function of an optimisation)"));

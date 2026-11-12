@@ -127,6 +127,7 @@ void MainWindow::connectPlugin(plugins::PluginHost* host) {
           [this, host](int, bool ok, bool cancelled, const QString& message, bool user_error) {
             if (active_plugin_ == host) active_plugin_ = nullptr;
             plugin_panel_->setBusy(false);
+            doc_->reportWorkflowRunning({});  // no block runs any more
             if (std::exchange(plugin_started_on_empty_, false) && !doc_->entities().empty()) {
               QTimer::singleShot(0, this, [this] {
                 for (viewport::Viewport* v : grid_->views()) v->zoomExtents();
