@@ -7,6 +7,7 @@
 #include <QImage>
 #include <QJsonArray>
 #include <QListWidget>
+#include <QTabWidget>
 #include <QKeyEvent>
 #include <QJsonDocument>
 #include <QLineF>
@@ -413,6 +414,53 @@ class TestNodeEditor : public QObject {
         }
       }
     }
+  }
+
+  void fieldsOfAPluginNode() {
+    // ADR Nachtrag 1: the plugin describes the data of a node (JSON pointers into its params);
+    // the dialog edits them in a tab per element and writes back only what was changed
+    const QString radius = QStringLiteral("/rtt/~1root~1children~11/surfaces/0/shape/base/radius/value");
+    const QString coeff = QStringLiteral("/rtt/~1root~1children~11/surfaces/0/shape/base/coefficients/0");
+    QJsonObject lens{{"type", "lens"},
+                     {"name", "L1"},
+                     {"surfaces", QJsonArray{QJsonObject{{"id", "S1"},
+                                                         {"shape", QJsonObject{{"base", QJsonObject{{"type", "even_asphere"},
+                                                                                                    {"radius", QJsonObject{{"value", 30.0}, {"variable", true}}},
+                                                                                                    {"coefficients", QJsonArray{1.2345678901234567e-06}}}}}}}}}};
+    QJsonObject node{{"id", "L"},
+                     {"type", "rtt.section"},
+                     {"params", QJsonObject{{"rtt", QJsonObject{{"/root/children/1", lens}}}}},
+                     {"fields", QJsonArray{QJsonObject{{"name", radius}, {"type", "number"}, {"label", "S1 radius"}, {"group", "L1"}, {"unit", "mm"}},
+                                           QJsonObject{{"name", coeff}, {"type", "number"}, {"label", "S1 a4"}, {"group", "L1"}}}}};
+    QJsonObject model{{"format", "rtt-fusion-graph"}, {"version", 2}, {"nodes", QJsonArray{node}},
+                      {"connections", QJsonArray{}}, {"links", QJsonArray{}}, {"branches", QJsonArray{}}};
+    NodeEditor e;
+    e.setWorkflow(QJsonObject{{"model", model}});
+    auto value = [&e](const QString& pointer) {
+      QJsonValue v = e.workflow()["model"].toObject()["nodes"].toArray()[0].toObject()["params"];
+      for (QString part : pointer.mid(1).split(QLatin1Char('/'))) {
+        part.replace(QStringLiteral("~1"), QStringLiteral("/"));
+        v = v.isArray() ? v.toArray().at(part.toInt()) : v.toObject()[part];
+      }
+      return v;
+    };
+    e.setParams(QStringLiteral("L"), QJsonObject{{radius, 31.5}});
+    QCOMPARE(value(radius).toDouble(), 31.5);
+    QCOMPARE(value(radius.chopped(5) + QStringLiteral("variable")).toBool(), true);  // the rest stays
+    QTimer::singleShot(0, &e, [radius] {
+      for (QWidget* w : QApplication::topLevelWidgets()) {
+        auto* d = qobject_cast<QDialog*>(w);
+        if (d == nullptr || !d->isVisible()) continue;
+        QVERIFY(d->findChild<QTabWidget*>() != nullptr);  // a tab per element
+        auto* line = d->findChild<QLineEdit*>(radius);
+        QVERIFY(line != nullptr);
+        line->setText(QStringLiteral("42"));
+        d->accept();
+      }
+    });
+    e.editParams(QStringLiteral("L"));
+    QCOMPARE(value(radius).toDouble(), 42.0);
+    QCOMPARE(value(coeff).toDouble(), 1.2345678901234567e-06);  // shown with 12 digits, not rewritten
   }
 
   void savedWithTheDocument() {

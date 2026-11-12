@@ -13,6 +13,9 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QVBoxLayout>
+#include <QScrollArea>
+#include <QTabWidget>
 #include <functional>
 #include <optional>
 #include <QPainterPathStroker>
@@ -1093,6 +1096,36 @@ void NodeEditor::setRunning(const QString& id) {
   rebuild();
 }
 
+namespace {
+/// The parts of a JSON pointer ("/a/b~1c" -> a, b/c).
+QStringList pointer_parts(const QString& pointer) {
+  QStringList parts = pointer.mid(1).split(QLatin1Char('/'));
+  for (QString& p : parts) p = p.replace(QStringLiteral("~1"), QStringLiteral("/")).replace(QStringLiteral("~0"), QStringLiteral("~"));
+  return parts;
+}
+
+QJsonValue value_at(const QJsonValue& root, const QStringList& parts, int k = 0) {
+  if (k == parts.size()) return root;
+  if (root.isObject()) return value_at(root.toObject()[parts[k]], parts, k + 1);
+  if (root.isArray()) return value_at(root.toArray().at(parts[k].toInt()), parts, k + 1);
+  return {};
+}
+
+QJsonValue with_value(const QJsonValue& root, const QStringList& parts, const QJsonValue& value, int k = 0) {
+  if (k == parts.size()) return value;
+  if (root.isArray()) {
+    QJsonArray a = root.toArray();
+    const int i = parts[k].toInt();
+    while (a.size() <= i) a.append(QJsonValue());
+    a[i] = with_value(a.at(i), parts, value, k + 1);
+    return a;
+  }
+  QJsonObject o = root.toObject();
+  o[parts[k]] = with_value(o[parts[k]], parts, value, k + 1);
+  return o;
+}
+}  // namespace
+
 void NodeEditor::setParams(const QString& id, const QJsonObject& params) {
   QJsonObject g = graph();
   QJsonArray nodes = g["nodes"].toArray();
@@ -1100,7 +1133,13 @@ void NodeEditor::setParams(const QString& id, const QJsonObject& params) {
     QJsonObject n = nodes[k].toObject();
     if (n["id"].toString() != id) continue;
     QJsonObject p = n["params"].toObject();
-    for (auto it = params.begin(); it != params.end(); ++it) p[it.key()] = it.value();
+    for (auto it = params.begin(); it != params.end(); ++it) {
+      if (it.key().startsWith(QLatin1Char('/'))) {  // a JSON pointer into the params (fields)
+        p = with_value(p, pointer_parts(it.key()), it.value()).toObject();
+      } else {
+        p[it.key()] = it.value();
+      }
+    }
     n["params"] = p;
     nodes[k] = n;
   }
@@ -1111,36 +1150,74 @@ void NodeEditor::setParams(const QString& id, const QJsonObject& params) {
 void NodeEditor::editParams(const QString& id) {
   const QJsonObject node = node_of(graph(), id);
   const QJsonObject t = type_of(workflow_, node["type"].toString());
-  const QJsonArray specs = t["params"].toArray();
+  // the type's parameters and the fields the plugin describes for this node (ADR Nachtrag 1:
+  // e.g. the radii, apertures, poses and glasses of a Raytatouille block), grouped
+  QJsonArray specs;
+  for (const QJsonValue& v : t["params"].toArray()) {
+    if (v.toObject()["type"].toString() != QLatin1String("data")) specs.append(v);
+  }
+  for (const QJsonValue& v : node["fields"].toArray()) specs.append(v);
   QDialog dialog(this);
   dialog.setWindowTitle(tr("Parameters of %1").arg(node["name"].toString(id)));
-  auto* form = new QFormLayout(&dialog);
+  auto* outer = new QVBoxLayout(&dialog);
+  QTabWidget* tabs = node["fields"].toArray().isEmpty() ? nullptr : new QTabWidget(&dialog);
+  QHash<QString, QFormLayout*> forms;
+  auto form_of = [&](const QString& group) -> QFormLayout* {
+    const QString name = group.isEmpty() ? tr("Block") : group;
+    if (QFormLayout* f = forms.value(name)) return f;
+    auto* page = new QWidget;
+    auto* f = new QFormLayout(page);
+    if (tabs != nullptr) {
+      auto* scroll = new QScrollArea;
+      scroll->setWidgetResizable(true);
+      scroll->setWidget(page);
+      tabs->addTab(scroll, name);
+    } else {
+      outer->addWidget(page);
+    }
+    forms.insert(name, f);
+    return f;
+  };
+  if (tabs != nullptr) {
+    outer->addWidget(tabs);
+    dialog.resize(560, 520);
+  }
   const QJsonObject current = node["params"].toObject();
   std::vector<std::function<void(QJsonObject&)>> readers;
   for (const QJsonValue& v : specs) {
     const QJsonObject p = v.toObject();
     const QString name = p["name"].toString();
     const QString type = p["type"].toString();
-    const QJsonValue value = current.contains(name) ? current[name] : p["default"];
+    const bool pointer = name.startsWith(QLatin1Char('/'));
+    const QJsonValue value = pointer ? value_at(current, pointer_parts(name))
+                                     : current.contains(name) ? current[name] : p["default"];
+    QFormLayout* form = form_of(p["group"].toString());
     QString label = p["label"].toString(name);
     if (!p["unit"].toString().isEmpty()) label += QStringLiteral(" (%1)").arg(p["unit"].toString());
     QWidget* editor = nullptr;
     if (type == QLatin1String("boolean")) {
       auto* box = new QCheckBox(&dialog);
       box->setChecked(value.toBool());
-      readers.emplace_back([box, name](QJsonObject& o) { o[name] = box->isChecked(); });
+      readers.emplace_back([box, name, init = box->isChecked()](QJsonObject& o) {
+        if (box->isChecked() != init) o[name] = box->isChecked();
+      });
       editor = box;
     } else if (type == QLatin1String("integer")) {
       auto* spin = new QSpinBox(&dialog);
       spin->setRange(p.contains("minimum") ? p["minimum"].toInt() : -1000000000,
                      p.contains("maximum") ? p["maximum"].toInt() : 1000000000);
       spin->setValue(value.toInt());
-      readers.emplace_back([spin, name](QJsonObject& o) { o[name] = spin->value(); });
+      readers.emplace_back([spin, name, init = spin->value()](QJsonObject& o) {
+        if (spin->value() != init) o[name] = spin->value();
+      });
       editor = spin;
     } else if (type == QLatin1String("number")) {
       auto* line = new QLineEdit(QString::number(value.toDouble(), 'g', 12), &dialog);
       line->setValidator(new QDoubleValidator(line));
-      readers.emplace_back([line, name](QJsonObject& o) { o[name] = line->text().toDouble(); });
+      // only what was edited is written back: a value with more digits than shown stays exact
+      readers.emplace_back([line, name, init = line->text()](QJsonObject& o) {
+        if (line->text() != init) o[name] = line->text().toDouble();
+      });
       editor = line;
     } else if (type == QLatin1String("numbers") || type == QLatin1String("point")) {
       QStringList parts;
@@ -1150,7 +1227,8 @@ void NodeEditor::editParams(const QString& id) {
       }
       auto* line = new QLineEdit(parts.join(QStringLiteral(", ")), &dialog);
       line->setPlaceholderText(tr("comma-separated numbers"));
-      readers.emplace_back([line, name](QJsonObject& o) {
+      readers.emplace_back([line, name, init = line->text()](QJsonObject& o) {
+        if (line->text() == init) return;
         const QJsonDocument doc = QJsonDocument::fromJson("[" + line->text().toUtf8() + "]");
         o[name] = doc.isArray() ? doc.array() : QJsonArray{};
       });
@@ -1167,27 +1245,32 @@ void NodeEditor::editParams(const QString& id) {
         const QString f = QFileDialog::getOpenFileName(&dialog, tr("Choose a file"), line->text());
         if (!f.isEmpty()) line->setText(f);
       });
-      readers.emplace_back([line, name](QJsonObject& o) { o[name] = line->text(); });
+      readers.emplace_back([line, name, init = line->text()](QJsonObject& o) {
+        if (line->text() != init) o[name] = line->text();
+      });
       editor = row;
     } else {
       auto* line = new QLineEdit(value.isString() ? value.toString()
                                                   : QString::fromUtf8(QJsonDocument(QJsonArray{value}).toJson(QJsonDocument::Compact)).mid(1).chopped(1),
                                  &dialog);
-      readers.emplace_back([line, name](QJsonObject& o) { o[name] = line->text(); });
+      readers.emplace_back([line, name, init = line->text()](QJsonObject& o) {
+        if (line->text() != init) o[name] = line->text();
+      });
       editor = line;
     }
-    editor->setToolTip(p["description"].toString());
+    editor->setToolTip(p["description"].toString(name));
+    editor->setObjectName(name);
     form->addRow(label, editor);
   }
-  if (specs.isEmpty()) form->addRow(new QLabel(tr("This block has no parameters."), &dialog));
+  if (specs.isEmpty()) form_of({})->addRow(new QLabel(tr("This block has no parameters."), &dialog));
   auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
   connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
   connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-  form->addRow(buttons);
+  outer->addWidget(buttons);
   if (dialog.exec() != QDialog::Accepted || specs.isEmpty()) return;
   QJsonObject params;
   for (auto& read : readers) read(params);
-  setParams(id, params);
+  if (!params.isEmpty()) setParams(id, params);
 }
 
 QString NodeEditor::addNode(const QString& type, const QPointF& position) {

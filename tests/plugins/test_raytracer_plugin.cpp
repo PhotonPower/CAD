@@ -205,6 +205,21 @@ class TestRaytracerPlugin : public QObject {
     if (part() == QStringLiteral("model")) {  // RTT-Fusion R24: the system's paths are the branches
       QVERIFY(!wf["model"].toObject()["branches"].toArray().isEmpty());
       QVERIFY(!wf["model"].toObject()["connections"].toArray().isEmpty());
+      // ADR Nachtrag 1: the data of the system are in the nodes, the plugin describes the fields
+      bool system = false, element = false;
+      for (const QJsonValue& n : nodes) {
+        for (const QJsonValue& f : n.toObject()["fields"].toArray()) {
+          system = system || f.toObject()["group"].toString() == QStringLiteral("System");
+          element = element || (f.toObject()["name"].toString().startsWith(QStringLiteral("/rtt/")) &&
+                                f.toObject()["unit"].toString() == QStringLiteral("mm"));
+        }
+      }
+      QProcess has_data;
+      has_data.start(python_, {QStringLiteral("-c"), QStringLiteral("from rtt_fusion.graph.importer import system_from_model")});
+      if (has_data.waitForFinished(30000) && has_data.exitCode() == 0) {
+        QVERIFY(system);
+        QVERIFY(element);
+      }
     }
     QVERIFY(!wf["types"].toArray().isEmpty());
     QProcess has_grating;
