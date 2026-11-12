@@ -278,6 +278,27 @@ class TestNodeEditor : public QObject {
     }
   }
 
+  void connectionsFollowMovedBlocks() {
+    NodeEditor e;
+    e.setWorkflow(model_linnik());
+    int index = -1;  // the connection objective A – sample
+    const QJsonArray connections = e.workflow()["model"].toObject()["connections"].toArray();
+    for (int k = 0; k < connections.size(); ++k) {
+      if (connections[k].toObject()["ports"].toArray().contains(QJsonArray{"Sample", "Objective_A"})) index = k;
+    }
+    QVERIFY(index >= 0);
+    const QPointF end_before = e.connectionItem(index)->path().pointAtPercent(1.0);
+    const QPointF start_before = e.connectionItem(index)->path().pointAtPercent(0.0);
+    e.nodeItem(QStringLiteral("Sample"))->moveBy(80.0, 120.0);  // as a drag does
+    const QPointF end = e.connectionItem(index)->path().pointAtPercent(1.0);
+    const QPointF start = e.connectionItem(index)->path().pointAtPercent(0.0);
+    // the end at the sample moved with it, the end at the objective stayed
+    const bool sample_last = QLineF(end, end_before + QPointF(80.0, 120.0)).length() < 1e-6;
+    const bool sample_first = QLineF(start, start_before + QPointF(80.0, 120.0)).length() < 1e-6;
+    QVERIFY(sample_last || sample_first);
+    QVERIFY(sample_last ? QLineF(start, start_before).length() < 1e-6 : QLineF(end, end_before).length() < 1e-6);
+  }
+
   void connectionsAndTransports() {
     NodeEditor e;
     e.setWorkflow(model_linnik());
