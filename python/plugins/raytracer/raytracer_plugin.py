@@ -703,8 +703,8 @@ class RaytracerPlugin(Plugin):
         return (f"workflow: {n_err} error(s), {len(diagnostics) - n_err} warning(s); "
                 f"planned {''.join(planned) or '–'}, {len(wf['plan']['conversions'])} conversion(s)")
 
-    @action("Run workflow", description="Compute the node workflow (RTT-Fusion): coherent camera images; links "
-                                         "set to H are computed as fields (field tracing)")
+    @action("Run workflow", description="Compute what the display blocks of the node workflow show (RTT-Fusion): "
+                                         "camera images, sweep curves, beam probes; links set to H as fields")
     def run_workflow(self, ctx):
         _require_rt()
         fg, backend_rtt, execute, io, validate = self._fusion()
@@ -714,85 +714,23 @@ class RaytracerPlugin(Plugin):
         graph = io.from_dict(wf["graph"])
         registry, extra = self._registry(fg)
         evaluators = {**backend_rtt.EVALUATORS, **extra}
+        displays = [n for n in graph.nodes.values() if n.type_id.startswith("display.")]
+        if not displays:
+            raise UserError("Nothing to show: attach a display block (right-click on the canvas → Add block → "
+                            "analysis → display.image / display.plot / display.beam) to a camera, a phase "
+                            "shifter or a component output, then run again. Only what the displays need is "
+                            "computed.")
         system, _ = self._current(ctx)
         compiled = self._compile(system)
-        detectors = [n for n in graph.nodes.values() if n.type_id == "rtt.detector"]
-        metas = [n for n in graph.nodes.values() if n.type_id.startswith("meta.")]
-        if not detectors:
-            raise UserError("The workflow has no detector block.")
-        if metas:
-            # a meta block repeats the graph in front of the output it collects; the detectors it
-            # collects are computed there (with the parameter changed), not once more here
-            collected = {str(m.params.get("collect", "")).split(".")[0] for m in metas}
-            detectors = [d for d in detectors if d.id not in collected]
-        displays = [n for n in graph.nodes.values() if n.type_id.startswith("display.")]
+        window = float(ctx.params.get("workflow_window", 0.0) or 0.0)
+        if window > 0:
+            for n in graph.nodes.values():
+                if n.type_id == "rtt.detector":
+                    n.params["half_size"] = [window, window]
         run = ctx.result_set(f"Workflow {Path(self.loaded_from or 'system').name.split('.')[0]}")
-        made = []
-        layouts = {L.id: L for L in rt.layout.surfaces(compiled)}
-        tasks = max(len(detectors) + len(metas) + len(displays), 1)
-        computed: dict = {}  # (block, socket) -> value, reused by the display blocks
-        task = 0
-        for k, node in enumerate(detectors):
-            ctx.check_cancel()
-            ctx.progress(task / tasks, f"workflow: {node.name or node.id}")
-            surface = (node.params.get("surfaces") or [None])[0]
-            L = layouts.get(surface)
-            hu, hv = 1.0, 1.0
-            if L is not None and L.aperture is not None:
-                kind, a = L.aperture
-                hu, hv = (a["half_width_x"], a["half_width_y"]) if kind == "rectangular" else \
-                    (a.get("radius", a.get("semi_axis_x", 1.0)), a.get("radius", a.get("semi_axis_y", 1.0)))
-            window = float(ctx.params.get("workflow_window", 0.0) or 0.0)
-            if window > 0:
-                hu = hv = window
-                node.params["half_size"] = [window, window]
-            n = ctx.params["workflow_pixels"]
-            pixels = [n, max(1, round(n * hv / hu))] if hu >= hv else [max(1, round(n * hu / hv)), n]
-            ex = execute.Executor(graph, registry, evaluators,
-                                  {"system": system, "compiled": compiled, "materials": self.library,
-                                   "rings": rings_for(ctx.params["workflow_rays"]), "pixels": pixels,
-                                   "gaussian_waist": float(ctx.params.get("workflow_gaussian_waist", 0.0) or 0.0)},
-                                  available=self._available(execute))
-            self._hook(ctx, ex, task / tasks, (task + 1) / tasks)
-            task += 1
-            try:
-                image = ex.evaluate(node.id, "image")
-            except execute.ExecutionError as e:
-                raise UserError(f"The workflow cannot be computed: {e}") from e
-            computed[(node.id, "image")] = image
-            for line in ex.context.log:
-                ctx.log(line)
-            if not image.groups:
-                ctx.log(f"{node.id}: no light reaches the detector")
-                continue
-            if float(image.values.max()) <= 0.0:
-                hint = ("set the link into it to H (right-click on the link → Transport → H) and choose a "
-                        "small image window" if "H" in self._available(execute) else
-                        "a field is needed there: install fieldtracing in the plugin environment, then set "
-                        "the link into it to H")
-                ctx.log(f"{node.id}: the light focuses into less than a pixel (or a caustic) – {hint}")
-            ny, nx = image.values.shape
-            links = graph.links_to(node.id)
-            rep = (ex.plan.representations.get(f"{links[0].source[0]}.{links[0].source[1]} -> "
-                                               f"{links[0].target[0]}.{links[0].target[1]}", "R")
-                   if ex.plan is not None and links else "R")
-            kind = "field" if rep == "H" else "rays"
-            ctx.image(run, f"{node.name or node.id} (coherent, {kind})", image.values.reshape(-1), nx, ny,
-                      extent=image.extent, unit="W/mm² (rel.)",
-                      description=f"{node.name or node.id}: {len(image.groups)} coherence group(s), "
-                                  f"{nx}×{ny} px – amplitudes within a group, intensities across groups")
-            made.append(f"{node.name or node.id} (peak {float(image.values.max()):.3g})")
-        for meta_node in metas:
-            ctx.check_cancel()
-            made.append(self._run_meta(ctx, run, graph, registry, evaluators, execute, backend_rtt,
-                                       system, compiled, layouts, meta_node,
-                                       (task / tasks, (task + 1) / tasks), computed))
-            task += 1
-        if displays:
-            made += self._run_displays(ctx, run, graph, registry, evaluators, execute, system, compiled,
-                                       displays, computed, task / tasks)
+        made = self._run_displays(ctx, run, graph, registry, evaluators, execute, system, compiled, displays)
         ctx.workflow_running("")
-        return "workflow: " + (", ".join(made) if made else "no detector got light")
+        return "workflow: " + (", ".join(made) if made else "nothing computed")
 
     @staticmethod
     def _hook(ctx, ex, a: float, b: float) -> None:
@@ -813,11 +751,10 @@ class RaytracerPlugin(Plugin):
             ex.context.progress = progress
             ex.context.on_node = on_node
 
-    def _run_displays(self, ctx, run, graph, registry, evaluators, execute, system, compiled, displays,
-                      computed, start: float) -> list:
-        """Display blocks (RTT-Fusion R21): their views as results with the key "workflow:<block>",
-        shown in the block's window (double-click). Images and meta results computed above are
-        reused; light probes run here."""
+    def _run_displays(self, ctx, run, graph, registry, evaluators, execute, system, compiled, displays) -> list:
+        """Display blocks (RTT-Fusion R21) and everything in front of them, in one executor (shared
+        blocks are computed once); their views as results with the key "workflow:<block>", shown in
+        the block's window (double-click)."""
         made = []
         ex = execute.Executor(graph, registry, evaluators,
                               {"system": system, "compiled": compiled, "materials": self.library,
@@ -827,24 +764,23 @@ class RaytracerPlugin(Plugin):
                               available=self._available(execute))
         for k, node in enumerate(displays):
             ctx.check_cancel()
-            a = start + (1 - start) * k / len(displays)
-            b = start + (1 - start) * (k + 1) / len(displays)
+            a, b = k / len(displays), (k + 1) / len(displays)
             self._hook(ctx, ex, a, b)
             ctx.progress(a, f"display: {node.name or node.id}")
-            links = graph.links_to(node.id)
             try:
-                if links and (links[0].source[0], links[0].source[1]) in computed:
-                    ctx.workflow_running(node.id)
-                    value = computed[(links[0].source[0], links[0].source[1])]
-                    view = evaluators[node.type_id](ex.context, node, "view", {"in": value})
-                else:
-                    view = ex.evaluate(node.id, "view")
+                view = ex.evaluate(node.id, "view")
             except execute.ExecutionError as e:
                 ctx.log(f"{node.name or node.id}: {e}")
                 continue
             key = f"workflow:{node.id}"
             if view.kind == "image" and view.image is not None:
                 ny, nx = view.image.values.shape
+                if float(view.image.values.max()) <= 0.0:
+                    hint = ("set the link into the camera to H (right-click on the link → Transport → H) and "
+                            "choose a small image window" if "H" in self._available(execute) else
+                            "install fieldtracing in the plugin environment, then set the link into the "
+                            "camera to H")
+                    ctx.log(f"{node.name or node.id}: dark – the light focuses into less than a pixel; {hint}")
                 ctx.image(run, view.title, view.image.values.reshape(-1), nx, ny, extent=view.image.extent,
                           x_label=view.x_label, y_label=view.y_label, unit=view.unit,
                           description=f"{view.title}: {nx}×{ny} px", key=key)
@@ -852,56 +788,10 @@ class RaytracerPlugin(Plugin):
                 for c in view.curves:
                     ctx.curve(run, f"{view.title}: {c.name}", c.x, c.y, x_label=view.x_label,
                               y_label=view.y_label, key=key)
-            made.append(f"{node.name or node.id} (display)")
+            made.append(f"{node.name or node.id}")
         for line in ex.context.log:
             ctx.log(line)
         return made
-
-    def _run_meta(self, ctx, run, graph, registry, evaluators, execute, backend_rtt, system, compiled,
-                  layouts, node, span=(0.0, 1.0), computed=None) -> str:
-        """A meta block (RTT-Fusion R20): the measure over the parameter as a curve; the mean image
-        of replicates and the best image of an optimisation in the Image window."""
-        target = str(node.params.get("collect", ""))
-        det = graph.nodes.get(target.split(".")[0])
-        pixels = [ctx.params["workflow_pixels"]] * 2
-        if det is not None and det.type_id == "rtt.detector":
-            window = float(ctx.params.get("workflow_window", 0.0) or 0.0)
-            if window > 0:
-                det.params["half_size"] = [window, window]
-        ex = execute.Executor(graph, registry, evaluators,
-                              {"system": system, "compiled": compiled, "materials": self.library,
-                               "rings": rings_for(ctx.params["workflow_rays"]), "pixels": pixels,
-                               "gaussian_waist": float(ctx.params.get("workflow_gaussian_waist", 0.0) or 0.0)},
-                              available=self._available(execute))
-        self._hook(ctx, ex, *span)
-        try:
-            out = ex.evaluate(node.id, "results")
-        except execute.ExecutionError as e:
-            raise UserError(f"{node.name or node.id}: {e}") from e
-        if computed is not None:
-            computed[(node.id, "results")] = out
-        for line in ex.context.log:
-            ctx.log(line)
-        name = node.name or node.id
-        parameter = str(node.params.get("parameter", "parameter"))
-        ctx.curve(run, f"{name}: {out.measure} over {parameter}", out.values, out.measures,
-                  x_label=parameter, y_label=out.measure)
-
-        def show(image, label):
-            ny, nx = image.values.shape
-            ctx.image(run, f"{name}: {label}", image.values.reshape(-1), nx, ny, extent=image.extent,
-                      unit="W/mm² (rel.)", description=f"{name}: {label}")
-
-        if getattr(out, "mean", None) is not None and hasattr(out.mean, "values"):
-            show(out.mean, f"mean of {len(out.values)} replicates")
-            return f"{name}: mean of {len(out.values)} replicates"
-        if getattr(out, "best", None) is not None:
-            k = min(range(len(out.values)), key=lambda i: abs(out.values[i] - out.best))
-            if hasattr(out.results[k], "values"):
-                show(out.results[k], f"{parameter} = {out.best:.6g} (best)")
-            ctx.log(f"{name}: best {parameter} = {out.best:.9g} ({out.measure} {out.measures[k]:.4g})")
-            return f"{name}: best {parameter} = {out.best:.6g}"
-        return f"{name}: {len(out.values)} values"
 
     @action("Optimise", description="Raytatouille's optimiser; the surfaces update after every iteration")
     def optimise(self, ctx):

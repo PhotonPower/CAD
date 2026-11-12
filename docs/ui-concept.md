@@ -87,8 +87,9 @@ block's parameters in a dialog generated from its type, *Replace with* exchanges
 type and keeps its links (each linked socket moves to the socket of the same name, else to the
 only one of the same direction and kind – e.g. the sample mirror of a Linnik becomes a
 `fusion.grating` sample with its Jones table). Display blocks (`display.image` at a camera, `display.plot` at a
-meta block, `display.beam` as a probe at any light output) show what *Run workflow* computed for
-them: a double-click opens their own dockable window (floating at first; drag its title bar onto
+meta block, `display.beam` as a probe at any light output) decide what *Run workflow* computes:
+only the displays and what lies in front of them (like viewer nodes in Blender) – cameras and
+meta blocks give no results of their own. A display shows what the run computed for it: a double-click opens their own dockable window (floating at first; drag its title bar onto
 a side to dock it); *Parameters…* is in their context menu. While a workflow runs, the status bar
 shows the progress per path, field point, wavelength and value (Cancel works between these steps),
 the block being computed has a bright frame and "running …", and the window title says

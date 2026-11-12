@@ -165,6 +165,27 @@ class TestRaytracerPlugin : public QObject {
     run(QStringLiteral("trace"));  // with the optimised system
   }
 
+  /// Attaches a display block to an output of the workflow in the document.
+  void attachDisplay(const QString& id, const QString& type, const QString& from, const QString& socket) {
+    QJsonObject wf = doc_.workflow();
+    QJsonObject graph = wf["graph"].toObject();
+    QJsonArray nodes = graph["nodes"].toArray();
+    nodes.append(QJsonObject{{"id", id}, {"type", type}});
+    graph["nodes"] = nodes;
+    QJsonArray links = graph["links"].toArray();
+    links.append(QJsonObject{{"from", QJsonArray{from, socket}}, {"to", QJsonArray{id, QStringLiteral("in")}}});
+    graph["links"] = links;
+    wf["graph"] = graph;
+    doc_.setWorkflow(wf);
+  }
+
+  QString detectorId() const {
+    for (const QJsonValue& n : doc_.workflow()["graph"].toObject()["nodes"].toArray()) {
+      if (n.toObject()["type"].toString() == QStringLiteral("rtt.detector")) return n.toObject()["id"].toString();
+    }
+    return {};
+  }
+
   void workflow() {
     // RTT-Fusion node workflow: graph from the system's paths, then a coherent camera image
     QProcess probe;
@@ -200,12 +221,20 @@ class TestRaytracerPlugin : public QObject {
     for (const QJsonValue& v : doc_.workflow()["plan"].toObject()["links"].toObject()) {
       QCOMPARE(v.toObject()["representation"].toString(), QStringLiteral("R"));  // "auto": rays
     }
+    // only what a display block shows is computed (no automatic camera images)
+    const std::size_t sets_before = results_.sets().size();
+    QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
+    QVERIFY(host_->run(QStringLiteral("run_workflow"), params_) != 0);
+    QVERIFY(finished.wait(60000));
+    QVERIFY(!finished.at(0).at(1).toBool());
+    QVERIFY(finished.at(0).at(3).toString().contains(QStringLiteral("attach a display block")));
+    QVERIFY(results_.sets().size() <= sets_before + 1);
+    attachDisplay(QStringLiteral("show"), QStringLiteral("display.image"), detectorId(), QStringLiteral("image"));
     run(QStringLiteral("run_workflow"));
     const auto& items = results_.sets().back().items;
-    QVERIFY(!items.empty());
+    QCOMPARE(items.size(), std::size_t{1});
     QCOMPARE(items[0].kind, results::ResultItem::Kind::Image);
-    QVERIFY(items[0].image->description.contains(QStringLiteral("coherence group")));
-    QVERIFY(items[0].name.contains(QStringLiteral("rays")));
+    QCOMPARE(items[0].key, QStringLiteral("workflow:show"));
 
     // field tracing (RTT-Fusion R18b): the link into the detector as H, a small window around
     // the focus – the rays meet in less than a pixel, the field shows the focal spot
@@ -238,7 +267,7 @@ class TestRaytracerPlugin : public QObject {
     run(QStringLiteral("run_workflow"));
     const auto& field_items = results_.sets().back().items;
     QVERIFY(!field_items.empty());
-    QVERIFY(field_items[0].name.contains(QStringLiteral("field")));
+    QCOMPARE(field_items[0].key, QStringLiteral("workflow:show"));
     const auto& values = field_items[0].image->values;
     QVERIFY(*std::max_element(values.begin(), values.end()) > 0.0);
   }
@@ -346,11 +375,12 @@ class TestRaytracerPlugin : public QObject {
     params_.insert(QStringLiteral("workflow_rays"), 500);
     params_.insert(QStringLiteral("workflow_pixels"), 32);
     params_.insert(QStringLiteral("workflow_window"), 0.0);
+    attachDisplay(QStringLiteral("curve"), QStringLiteral("display.plot"), QStringLiteral("sweep"), QStringLiteral("results"));
     run(QStringLiteral("run_workflow"));
     const auto& items = results_.sets().back().items;
     bool curve = false;
     for (const auto& item : items) {
-      if (item.kind == results::ResultItem::Kind::Curve && item.name.contains(QStringLiteral("over"))) {
+      if (item.kind == results::ResultItem::Kind::Curve && item.key == QStringLiteral("workflow:curve")) {
         curve = true;
         QCOMPARE(item.curve->x.size(), std::size_t{3});
       }
