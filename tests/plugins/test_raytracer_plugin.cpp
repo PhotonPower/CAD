@@ -235,6 +235,47 @@ class TestRaytracerPlugin : public QObject {
     QVERIFY(*std::max_element(values.begin(), values.end()) > 0.0);
   }
 
+  void workflowSweep() {
+    // RTT-Fusion R20: a meta block sweeps the offset of a block and collects the camera image
+    QProcess probe;
+    probe.start(python_, {QStringLiteral("-c"), QStringLiteral("import rtt_fusion.graph.meta")});
+    if (!probe.waitForFinished(30000) || probe.exitCode() != 0) QSKIP("rtt_fusion without meta blocks");
+    run(QStringLiteral("workflow_from_system"));
+    QJsonObject wf = doc_.workflow();
+    QJsonObject graph = wf["graph"].toObject();
+    QString section;
+    QString camera;
+    for (const QJsonValue& n : graph["nodes"].toArray()) {
+      const QJsonObject o = n.toObject();
+      if (o["type"].toString() == QStringLiteral("rtt.section") && section.isEmpty()) section = o["id"].toString();
+      if (o["type"].toString() == QStringLiteral("rtt.detector")) camera = o["id"].toString();
+    }
+    QVERIFY(!section.isEmpty() && !camera.isEmpty());
+    QJsonArray nodes = graph["nodes"].toArray();
+    nodes.append(QJsonObject{{"id", "sweep"},
+                             {"type", "meta.sweep"},
+                             {"params", QJsonObject{{"parameter", section + QStringLiteral(".offset[2]")},
+                                                    {"collect", camera + QStringLiteral(".image")},
+                                                    {"measure", "power"},
+                                                    {"values", QJsonArray{0.0, 0.5, 1.0}}}}});
+    graph["nodes"] = nodes;
+    wf["graph"] = graph;
+    doc_.setWorkflow(wf);
+    params_.insert(QStringLiteral("workflow_rays"), 500);
+    params_.insert(QStringLiteral("workflow_pixels"), 32);
+    params_.insert(QStringLiteral("workflow_window"), 0.0);
+    run(QStringLiteral("run_workflow"));
+    const auto& items = results_.sets().back().items;
+    bool curve = false;
+    for (const auto& item : items) {
+      if (item.kind == results::ResultItem::Kind::Curve && item.name.contains(QStringLiteral("over"))) {
+        curve = true;
+        QCOMPARE(item.curve->x.size(), std::size_t{3});
+      }
+    }
+    QVERIFY(curve);
+  }
+
   void save() {
     QTemporaryDir dir;
     params_.insert(QStringLiteral("save_as"), dir.filePath(QStringLiteral("out.rtt.json")));
