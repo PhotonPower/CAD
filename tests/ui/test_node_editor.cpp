@@ -511,6 +511,130 @@ class TestNodeEditor : public QObject {
     QCOMPARE(value(coeff).toDouble(), 1.2345678901234567e-06);  // shown with 12 digits, not rewritten
   }
 
+  // ---------------------------------------------------------------- groups and channels (R28)
+
+  void groupsFromTheSelection() {
+    NodeEditor e;
+    e.setWorkflow(model_linnik());
+    const QJsonObject before = e.workflow()["model"].toObject();
+    QString why;
+    QVERIFY(e.groupBlocks({QStringLiteral("source"), QStringLiteral("Illumination_stop")}, QStringLiteral("x"), &why).isEmpty());
+    QVERIFY(why.contains(QStringLiteral("source")));  // branches begin outside a group
+    const QString gid = e.groupBlocks({QStringLiteral("Objective_A"), QStringLiteral("Sample")}, QStringLiteral("Measuring arm"));
+    QCOMPARE(gid, QStringLiteral("Measuring_arm"));
+    if (const QByteArray dir = qgetenv("NFCAD_SNAPSHOT_DIR"); !dir.isEmpty()) {  // for a check with RTT-Fusion
+      QFile out(QString::fromLocal8Bit(dir) + QStringLiteral("/grouped_arm.json"));
+      if (out.open(QIODevice::WriteOnly)) out.write(QJsonDocument(e.workflow()["model"].toObject()).toJson());
+    }
+    QVERIFY(e.nodeItem(gid) != nullptr && e.nodeItem(QStringLiteral("Sample")) == nullptr);
+    const QJsonObject model = e.workflow()["model"].toObject();
+    const QJsonObject group = node(QJsonObject{{"graph", model}}, gid);
+    const QJsonObject inner = group["variants"].toObject()["main"].toObject();
+    QCOMPARE(inner["nodes"].toArray().size(), 2);
+    QCOMPARE(inner["connections"].toArray().size(), 1);  // objective – sample
+    QCOMPARE(inner["ports"].toObject().keys(), QStringList{QStringLiteral("Objective_A.Beam_splitter")});
+    QCOMPARE(inner["branches"].toArray().size(), 1);  // the measuring arm and its pupil branch share it
+    for (const QJsonValue& b : model["branches"].toArray()) {
+      for (const QJsonValue& st : b.toObject()["steps"].toArray()) {
+        if (st.toArray().at(0).toString() == gid) {
+          QCOMPARE(st.toArray(), (QJsonArray{gid, "Objective_A.Beam_splitter", "Objective_A.Beam_splitter", "measurement"}));
+        }
+      }
+    }
+    // inside the group: its blocks and its inner branch; edits land in the variant
+    QVERIFY(e.enterGroup(gid));
+    QCOMPARE(e.scope(), QStringList{gid});
+    QVERIFY(e.nodeItem(QStringLiteral("Sample")) != nullptr);
+    QCOMPARE(e.branchNames(), QStringList{QStringLiteral("measurement")});
+    e.setParams(QStringLiteral("Sample"), QJsonObject{{"offset", QJsonArray{0, 0, 0.002}}});
+    e.leaveGroup();
+    QVERIFY(e.scope().isEmpty());
+    const QJsonObject edited = node(QJsonObject{{"graph", e.workflow()["model"].toObject()}}, gid);
+    const QJsonArray inner_nodes = edited["variants"].toObject()["main"].toObject()["nodes"].toArray();
+    bool offset = false;
+    for (const QJsonValue& n : inner_nodes) offset = offset || n.toObject()["params"].toObject().contains("offset");
+    QVERIFY(offset);
+    // ungroup: the blocks and the branches as before (the offset stays)
+    QVERIFY(e.ungroup(gid));
+    const QJsonObject again = e.workflow()["model"].toObject();
+    QCOMPARE(again["branches"], before["branches"]);
+    QCOMPARE(again["connections"].toArray().size(), before["connections"].toArray().size());
+    QVERIFY(e.nodeItem(QStringLiteral("Sample")) != nullptr);
+  }
+
+  void variantsAndCondensing() {
+    NodeEditor e;
+    e.setWorkflow(model_linnik());
+    const QString gid = e.groupBlocks({QStringLiteral("Objective_B"), QStringLiteral("Reference")}, QStringLiteral("ref"));
+    QJsonObject wf = e.workflow();
+    QJsonObject model = wf["model"].toObject();
+    QJsonArray nodes = model["nodes"].toArray();
+    for (int k = 0; k < nodes.size(); ++k) {
+      QJsonObject n = nodes[k].toObject();
+      if (n["id"].toString() != gid) continue;
+      QJsonObject variants = n["variants"].toObject();
+      variants["copy"] = variants["main"];  // a second variant with the same ports
+      n["variants"] = variants;
+      nodes[k] = n;
+    }
+    model["nodes"] = nodes;
+    wf["model"] = model;
+    e.setWorkflow(wf);
+    QCOMPARE(e.variants(gid), (QStringList{"copy", "main"}));
+    e.setVariant(gid, QStringLiteral("copy"));
+    QCOMPARE(node(QJsonObject{{"graph", e.workflow()["model"].toObject()}}, gid)["variant"].toString(), QStringLiteral("copy"));
+    e.setCondensed(gid, true);
+    QVERIFY(node(QJsonObject{{"graph", e.workflow()["model"].toObject()}}, gid).contains("condense"));
+    e.setCondensed(gid, false);
+    QVERIFY(!node(QJsonObject{{"graph", e.workflow()["model"].toObject()}}, gid).contains("condense"));
+  }
+
+  void stepChannels() {
+    NodeEditor e;
+    e.setWorkflow(model_linnik());
+    // a Raytatouille section offers ghosts at its surfaces
+    const QStringList ghosts = e.channelChoices(QStringLiteral("measurement"), 3);  // Objective_A
+    QCOMPARE(ghosts.first(), QString());
+    QVERIFY(ghosts.size() > 1 && ghosts[1].startsWith(QStringLiteral("ghost:")));
+    e.setStepChannel(QStringLiteral("measurement"), 3, ghosts[1]);
+    QCOMPARE(e.branchSteps(QStringLiteral("measurement"))[3].toArray().at(3).toString(), ghosts[1]);
+    e.setStepChannel(QStringLiteral("measurement"), 3, QString());
+    QCOMPARE(e.branchSteps(QStringLiteral("measurement"))[3].toArray().size(), 3);
+    // a group offers its inner branches; recording through it picks the fitting one
+    const QString gid = e.groupBlocks({QStringLiteral("Objective_B"), QStringLiteral("Reference")}, QStringLiteral("ref"));
+    int at = -1;
+    const QJsonArray steps = e.branchSteps(QStringLiteral("reference"));
+    for (int k = 0; k < steps.size(); ++k) {
+      if (steps[k].toArray().at(0).toString() == gid) at = k;
+    }
+    QCOMPARE(e.channelChoices(QStringLiteral("reference"), at), (QStringList{QString(), QStringLiteral("reference")}));
+    e.beginBranch();
+    for (const auto& [n, p] : std::initializer_list<std::pair<QString, QString>>{
+             {QStringLiteral("source"), QStringLiteral("Illumination_stop")},
+             {QStringLiteral("Illumination_stop"), QStringLiteral("Beam_splitter")},
+             {QStringLiteral("Beam_splitter"), QStringLiteral("Objective_B")},
+             {gid, QStringLiteral("Objective_B.Beam_splitter")},
+             {QStringLiteral("Beam_splitter"), QStringLiteral("Pupil_camera")}}) {
+      QVERIFY2(e.recordPort(n, p), qPrintable(n));
+    }
+    QVERIFY(e.recordDetector(QStringLiteral("Pupil_camera")));
+    QVERIFY(e.finishBranch(QStringLiteral("reference_pupil")));
+    const QJsonArray recorded = e.branchSteps(QStringLiteral("reference_pupil"));
+    QCOMPARE(recorded[3].toArray(), (QJsonArray{gid, "Objective_B.Beam_splitter", "Objective_B.Beam_splitter", "reference"}));
+    // the branch list shows the steps; a double-click sets the channel
+    nfcad::ui::BranchPanel panel(&e);
+    panel.ask_channel = [](const QStringList& choices, const QString&) { return choices.last(); };
+    e.highlightBranch(QStringLiteral("measurement"));
+    panel.refresh();
+    QCOMPARE(panel.steps()->count(), e.branchSteps(QStringLiteral("measurement")).size());
+    emit panel.steps()->itemDoubleClicked(panel.steps()->item(3));
+    QVERIFY(e.branchSteps(QStringLiteral("measurement"))[3].toArray().at(3).toString().startsWith(QStringLiteral("ghost:")));
+    if (const QByteArray dir = qgetenv("NFCAD_SNAPSHOT_DIR"); !dir.isEmpty()) {  // for a check with RTT-Fusion
+      QFile out(QString::fromLocal8Bit(dir) + QStringLiteral("/grouped_model.json"));
+      if (out.open(QIODevice::WriteOnly)) out.write(QJsonDocument(e.workflow()["model"].toObject()).toJson());
+    }
+  }
+
   void savedWithTheDocument() {
     nfcad::document::Document doc;
     doc.setWorkflow(linnik());
