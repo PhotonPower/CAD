@@ -173,7 +173,8 @@ class RaytracerPlugin(Plugin):
         except ImportError:
             return None
         stamp = str(abs(hash(json.dumps(
-            [[n.get("id"), {k: n.get("params", {}).get(k) for k in ("rtt", "runs", "rtt_system", "rtt_tree", "rtt_paths")}]
+            [[n.get("id"), {k: n.get("params", {}).get(k)
+                            for k in ("rtt", "runs", "rtt_system", "rtt_tree", "rtt_paths", "rtt_new")}]
              for n in model.get("nodes", [])] + [model.get("branches")], sort_keys=True))))
         cached = getattr(self, "_made", None)
         if cached is not None and cached[1] == stamp:
@@ -1049,6 +1050,9 @@ class RaytracerPlugin(Plugin):
         for location, entry in params.get("rtt", {}).items():
             group = str(entry.get("name") or entry.get("type") or location)
             walk(entry, ["rtt", location], "", group)
+        new = params.get("rtt_new")  # a new part of the library (S4): its element
+        if isinstance(new, dict):
+            walk(new, ["rtt_new"], "", str(new.get("name") or new.get("type") or "Element"))
         for location, entry in params.get("rtt_tree", {}).items():
             if location == "/root" and not {k for k in entry if k not in cls._STRUCTURE_KEYS}:
                 continue

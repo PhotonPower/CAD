@@ -545,6 +545,39 @@ class TestRaytracerPlugin : public QObject {
     QVERIFY(std::abs(workflowRadius() - edited) < 1e-12);
     doc_.undoStack()->redo();
     QVERIFY(std::abs(workflowRadius() - optimised) < 1e-12);
+    // S4: a part of the library has editable fields after the check
+    QProcess has_parts;
+    has_parts.start(python_, {QStringLiteral("-c"), QStringLiteral("import rtt_fusion.graph.parts")});
+    if (has_parts.waitForFinished(30000) && has_parts.exitCode() == 0) {
+      bool listed = false;
+      for (const QJsonValue& t : doc_.workflow()["types"].toArray()) listed = listed || t.toObject()["type"].toString() == QStringLiteral("rtt.part.splitter");
+      QVERIFY(listed);
+      QJsonObject wf = doc_.workflow();
+      QJsonObject model = wf["model"].toObject();
+      QJsonArray nodes = model["nodes"].toArray();
+      QJsonObject part{{"id", "new_bs"}, {"type", "rtt.part.splitter"}};
+      for (const QJsonValue& t : wf["types"].toArray()) {
+        if (t.toObject()["type"].toString() != QStringLiteral("rtt.part.splitter")) continue;
+        for (const QJsonValue& p : t.toObject()["params"].toArray()) part["params"] = QJsonObject{{p.toObject()["name"].toString(), p.toObject()["default"]}};
+      }
+      nodes.append(part);
+      model["nodes"] = nodes;
+      wf["model"] = model;
+      doc_.setWorkflow(wf);
+      run(QStringLiteral("check_workflow"));  // the new part is drawn (a step of its own)
+      QVERIFY(surface(QStringLiteral("new_bs.BS")) != nullptr);
+      const int steps = doc_.undoStack()->count();
+      run(QStringLiteral("check_workflow"));
+      QCOMPARE(doc_.undoStack()->count(), steps);  // a check without a change: no undo step
+      bool fields = false;
+      for (const QJsonValue& n : doc_.workflow()["model"].toObject()["nodes"].toArray()) {
+        if (n.toObject()["id"].toString() != QStringLiteral("new_bs")) continue;
+        for (const QJsonValue& f : n.toObject()["fields"].toArray()) {
+          fields = fields || f.toObject()["name"].toString().startsWith(QStringLiteral("/rtt_new/pose/rotation_deg"));
+        }
+      }
+      QVERIFY(fields);
+    }
     // Save system exports the workflow's system
     QTemporaryDir dir;
     params_.insert(QStringLiteral("save_as"), dir.filePath(QStringLiteral("export.rtt.json")));
