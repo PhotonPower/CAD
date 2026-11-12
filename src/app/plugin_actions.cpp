@@ -247,11 +247,17 @@ void MainWindow::rebuildPluginUi() {
 }
 
 QSet<QString> MainWindow::hiddenPlugins() const {
-  const QStringList ids = QSettings().value(QStringLiteral("plugins/hidden")).toStringList();
-  return {ids.begin(), ids.end()};
+  if (!hidden_plugins_) {
+    // read once; the window keeps the state itself (QSettings may not be writable, e.g. without
+    // an organisation name in tests)
+    const QStringList ids = QSettings().value(QStringLiteral("plugins/hidden")).toStringList();
+    hidden_plugins_ = QSet<QString>(ids.begin(), ids.end());
+  }
+  return *hidden_plugins_;
 }
 
 void MainWindow::setHiddenPlugins(const QSet<QString>& ids) {
+  hidden_plugins_ = ids;
   QStringList list(ids.begin(), ids.end());
   list.sort();
   QSettings().setValue(QStringLiteral("plugins/hidden"), list);
