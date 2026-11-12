@@ -18,6 +18,7 @@ continues with the system of that revision.
 from __future__ import annotations
 
 import glob
+import importlib
 import math
 import os
 import warnings
@@ -595,7 +596,8 @@ class RaytracerPlugin(Plugin):
         for t in registry.types():
             out.append({"type": t.type_id, "category": t.category.value, "description": t.description,
                         "sockets": [s.to_dict() for s in t.sockets],
-                        "params": [p.to_dict() for p in t.params]})
+                        "params": [p.to_dict() for p in t.params],
+                        "through": {o: list(ins) for o, ins in t.through}})
         return out
 
     @staticmethod
@@ -695,6 +697,16 @@ class RaytracerPlugin(Plugin):
         wf["types"] = self._catalogue(registry)
         wf["diagnostics"], wf["plan"] = self._checked(fg, execute, validate, graph, registry)
         ctx.set_workflow(wf)
+        if not any(d["severity"] == "error" for d in wf["diagnostics"]) and self.loaded_from:
+            try:  # which blocks the kept results still cover
+                system, _ = self._current(ctx)
+                _, extra = self._registry(fg)
+                backend_rtt = importlib.import_module("rtt_fusion.graph.backend_rtt")
+                ex = self._executor(ctx, graph, registry, {**backend_rtt.EVALUATORS, **extra}, execute,
+                                    system, None)
+                self._send_status(ctx, ex)
+            except Exception as e:  # noqa: BLE001 - only a hint
+                ctx.log(f"workflow state: {e}")
         diagnostics = wf["diagnostics"]
         n_err = sum(1 for d in diagnostics if d["severity"] == "error")
         for d in diagnostics:
@@ -756,12 +768,7 @@ class RaytracerPlugin(Plugin):
         blocks are computed once); their views as results with the key "workflow:<block>", shown in
         the block's window (double-click)."""
         made = []
-        ex = execute.Executor(graph, registry, evaluators,
-                              {"system": system, "compiled": compiled, "materials": self.library,
-                               "rings": rings_for(ctx.params["workflow_rays"]),
-                               "pixels": [ctx.params["workflow_pixels"]] * 2,
-                               "gaussian_waist": float(ctx.params.get("workflow_gaussian_waist", 0.0) or 0.0)},
-                              available=self._available(execute))
+        ex = self._executor(ctx, graph, registry, evaluators, execute, system, compiled)
         for k, node in enumerate(displays):
             ctx.check_cancel()
             a, b = k / len(displays), (k + 1) / len(displays)
@@ -791,7 +798,51 @@ class RaytracerPlugin(Plugin):
             made.append(f"{node.name or node.id}")
         for line in ex.context.log:
             ctx.log(line)
+        cache = getattr(ex, "cache", None)
+        for line in getattr(cache, "warnings", [])[-3:]:
+            ctx.log(line)
+        if cache is not None and hasattr(cache, "warnings"):
+            cache.warnings.clear()
+        self._send_status(ctx, ex)
         return made
+
+    def _executor(self, ctx, graph, registry, evaluators, execute, system, compiled):
+        """An executor with the results of earlier runs (RTT-Fusion R23): only what changed is
+        computed again. The environment covers what the results depend on outside the graph."""
+        shared = {"system": system, "compiled": compiled, "materials": self.library,
+                  "rings": rings_for(ctx.params["workflow_rays"]),
+                  "pixels": [ctx.params["workflow_pixels"]] * 2,
+                  "gaussian_waist": float(ctx.params.get("workflow_gaussian_waist", 0.0) or 0.0)}
+        if compiled is None:
+            shared.pop("compiled")  # the backend compiles when it needs to
+        kwargs = {"available": self._available(execute)}
+        if hasattr(execute, "ResultCache"):
+            if getattr(self, "_workflow_cache", None) is None:
+                self._workflow_cache = execute.ResultCache(limit_bytes=1 << 30)
+            path = self.loaded_from or ""
+            try:
+                stamp = os.path.getmtime(path) if path else 0.0
+            except OSError:
+                stamp = 0.0
+            kwargs["cache"] = self._workflow_cache
+            kwargs["environment"] = {
+                "system": path, "modified": stamp,
+                "system_json_hash": hash(system.to_json()) if hasattr(system, "to_json") else 0,
+                "rings": shared["rings"], "pixels": shared["pixels"], "window": ctx.params.get("workflow_window"),
+                "gaussian": shared["gaussian_waist"], "catalogs": list(ctx.params.get("catalogs") or []),
+                "available": sorted(kwargs["available"]),
+            }
+        return execute.Executor(graph, registry, evaluators, shared, **kwargs)
+
+    @staticmethod
+    def _send_status(ctx, ex) -> None:
+        """Up to date / out of date per block (RTT-Fusion R23) for the node editor."""
+        if not hasattr(ex, "status"):
+            return
+        try:
+            ctx.workflow_state({k: bool(v) for k, v in ex.status().items()})
+        except Exception as e:  # noqa: BLE001 - the state is a display hint only
+            ctx.log(f"workflow state: {e}")
 
     @action("Optimise", description="Raytatouille's optimiser; the surfaces update after every iteration")
     def optimise(self, ctx):

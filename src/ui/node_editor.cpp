@@ -91,7 +91,7 @@ class SocketItem : public QGraphicsEllipseItem {
 class NodeItem : public QGraphicsRectItem {
  public:
   NodeItem(NodeEditor* editor, const QJsonObject& node, const QJsonArray& sockets, const QString& category,
-           const QString& problem, const QStringList& conversions = {}, bool running = false)
+           const QString& problem, const QStringList& conversions = {}, bool running = false, int state = -1)
       : editor_(editor), id_(node["id"].toString()) {
     setFlags(ItemIsMovable | ItemIsSelectable | ItemSendsGeometryChanges);
     QJsonArray ins;
@@ -114,6 +114,21 @@ class NodeItem : public QGraphicsRectItem {
     text->setText(fm.elidedText(shown, Qt::ElideRight, static_cast<int>(kWidth - 12)));
     text->setBrush(QColor(240, 240, 240));
     text->setPos(6, 4);
+    if (state >= 0) {  // results of the last run: still valid (tick) or out of date (cross)
+      auto* badge = new QGraphicsEllipseItem(-7, -7, 14, 14, this);
+      badge->setBrush(state == 1 ? QColor(60, 170, 90) : QColor(200, 60, 60));
+      badge->setPen(QPen(QColor(20, 20, 20), 1.0));
+      auto* glyph = new QGraphicsSimpleTextItem(state == 1 ? QStringLiteral("✓") : QStringLiteral("✗"), badge);
+      QFont f = glyph->font();
+      f.setBold(true);
+      f.setPointSizeF(f.pointSizeF() * 0.8);
+      glyph->setFont(f);
+      glyph->setBrush(QColor(255, 255, 255));
+      glyph->setPos(-glyph->boundingRect().width() / 2, -glyph->boundingRect().height() / 2);
+      badge->setToolTip(state == 1 ? QObject::tr("Up to date: kept from the last run")
+                                   : QObject::tr("Out of date: computed again at the next run"));
+      badge->setZValue(2);
+    }
     auto place = [this](const QJsonArray& list, bool input) {
       for (int k = 0; k < list.size(); ++k) {
         const QJsonObject spec = list[k].toObject();
@@ -514,7 +529,8 @@ void NodeEditor::rebuild() {
     const QString type = n["type"].toString();
     auto* item = new NodeItem(this, n, socketsOf(n), categories.value(type, type_category(type)),
                               problems.value(n["id"].toString()).trimmed(), conversions.value(n["id"].toString()),
-                              n["id"].toString() == running_);
+                              n["id"].toString() == running_,
+                              states_.contains(n["id"].toString()) ? (states_.value(n["id"].toString()) ? 1 : 0) : -1);
     scene()->addItem(item);
     nodes_.insert(item->id(), item);
   }
@@ -556,7 +572,30 @@ void NodeEditor::nodeMoved() {
 }
 
 void NodeEditor::setGraph(const QJsonObject& graph) {
+  // what changed (not the position): those blocks and everything behind them are out of date
+  const QJsonObject before = this->graph();
+  QSet<QString> seeds;
+  QHash<QString, QJsonObject> old_nodes;
+  for (const QJsonValue& v : before["nodes"].toArray()) {
+    QJsonObject n = v.toObject();
+    n.remove(QStringLiteral("position"));
+    old_nodes.insert(n["id"].toString(), n);
+  }
+  for (const QJsonValue& v : graph["nodes"].toArray()) {
+    QJsonObject n = v.toObject();
+    n.remove(QStringLiteral("position"));
+    if (old_nodes.value(n["id"].toString()) != n) seeds.insert(n["id"].toString());
+  }
+  const QJsonArray old_links = before["links"].toArray();
+  const QJsonArray new_links = graph["links"].toArray();
+  for (const QJsonValue& v : new_links) {
+    if (!old_links.contains(v)) seeds.insert(v.toObject()["to"].toArray().at(0).toString());
+  }
+  for (const QJsonValue& v : old_links) {
+    if (!new_links.contains(v)) seeds.insert(v.toObject()["to"].toArray().at(0).toString());
+  }
   workflow_["graph"] = graph;
+  invalidate(seeds);
   workflow_.remove(QStringLiteral("diagnostics"));  // stale after an edit; the next check renews it
   workflow_.remove(QStringLiteral("plan"));
   rebuild();
@@ -748,6 +787,74 @@ bool NodeEditor::replaceNode(const QString& id, const QString& type) {
   g["links"] = links;
   setGraph(g);
   return true;
+}
+
+void NodeEditor::setStates(const QJsonObject& states) {
+  states_.clear();
+  for (auto it = states.begin(); it != states.end(); ++it) states_.insert(it.key(), it.value().toBool());
+  rebuild();
+}
+
+int NodeEditor::state(const QString& id) const {
+  return states_.contains(id) ? (states_.value(id) ? 1 : 0) : -1;
+}
+
+void NodeEditor::invalidate(const QSet<QString>& seeds) {
+  if (states_.isEmpty() || seeds.isEmpty()) return;
+  const QJsonObject g = graph();
+  // outputs of a block and, per output, the inputs it depends on ("through" of the block or of
+  // its type; without it every output depends on every input)
+  auto outputs = [this, &g](const QString& id) {
+    QStringList out;
+    for (const QJsonValue& s : socketsOf(node_of(g, id))) {
+      if (s.toObject()["direction"].toString() == QLatin1String("out")) out << s.toObject()["name"].toString();
+    }
+    return out;
+  };
+  auto depends = [this, &g](const QString& id, const QString& out, const QString& in) {
+    const QJsonObject n = node_of(g, id);
+    QJsonObject through = n["through"].toObject();
+    if (through.isEmpty()) through = type_of(workflow_, n["type"].toString())["through"].toObject();
+    if (through.isEmpty() || !through.contains(out)) return through.isEmpty();
+    return through[out].toArray().contains(in);
+  };
+  auto is_drive = [this, &g](const QString& id, const QString& socket) {
+    for (const QJsonValue& s : socketsOf(node_of(g, id))) {
+      const QJsonObject o = s.toObject();
+      if (o["name"].toString() == socket) return o["accepts"].toArray().contains(QStringLiteral("drive"));
+    }
+    return false;
+  };
+  QSet<QString> stale(seeds.begin(), seeds.end());
+  QSet<QString> done;
+  QStringList todo;  // "node\nsocket" of out-of-date outputs
+  for (const QString& id : seeds) {
+    for (const QString& o : outputs(id)) todo << id + QLatin1Char('\n') + o;
+  }
+  while (!todo.isEmpty()) {
+    const QString item = todo.takeLast();
+    if (done.contains(item)) continue;
+    done.insert(item);
+    const QString id = item.section(QLatin1Char('\n'), 0, 0);
+    const QString socket = item.section(QLatin1Char('\n'), 1);
+    if (is_drive(id, socket)) continue;  // a drive carries no value between runs
+    for (const QJsonValue& v : g["links"].toArray()) {
+      const QJsonObject l = v.toObject();
+      if (l["from"].toArray().at(0).toString() != id || l["from"].toArray().at(1).toString() != socket) continue;
+      const QString to = l["to"].toArray().at(0).toString();
+      const QString in = l["to"].toArray().at(1).toString();
+      const QStringList outs = outputs(to);
+      bool any = outs.isEmpty();
+      for (const QString& o : outs) {
+        if (depends(to, o, in)) {
+          todo << to + QLatin1Char('\n') + o;
+          any = true;
+        }
+      }
+      if (any) stale.insert(to);
+    }
+  }
+  for (const QString& id : stale) states_.insert(id, false);
 }
 
 void NodeEditor::setRunning(const QString& id) {

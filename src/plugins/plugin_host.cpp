@@ -356,6 +356,10 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     return QJsonValue::Null;
   }
   if (method == QLatin1String("workflow.get")) return doc_->workflow();
+  if (method == QLatin1String("workflow.state")) {
+    doc_->reportWorkflowState(args["states"].toObject());
+    return QJsonValue::Null;
+  }
   if (method == QLatin1String("workflow.status")) {
     doc_->reportWorkflowRunning(args["node"].toString());
     return QJsonValue::Null;

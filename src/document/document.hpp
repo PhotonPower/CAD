@@ -117,6 +117,8 @@ class Document : public QObject {
   void requestWorkflowShown() { emit workflowShowRequested(); }
   /// The block of the node workflow that a plugin computes now (empty: none); not stored.
   void reportWorkflowRunning(const QString& node) { emit workflowRunning(node); }
+  /// Up to date (true) / out of date (false) per block, from the plugin's kept results.
+  void reportWorkflowState(const QJsonObject& states) { emit workflowState(states); }
 
   // ---- user operations (undoable)
   /// Adds entities in one undo step; returns their ids.
@@ -159,6 +161,7 @@ class Document : public QObject {
   void workflowChanged();
   void workflowShowRequested();
   void workflowRunning(const QString& node);
+  void workflowState(const QJsonObject& states);
   /// Everything changed (clear / load): views rebuild from scratch.
   void documentReset();
 

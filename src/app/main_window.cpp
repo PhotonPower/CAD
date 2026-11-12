@@ -425,6 +425,8 @@ void MainWindow::createPanels() {
   });
   // display blocks: a dockable window each, with the results the run gave them
   connect(node_editor_, &ui::NodeEditor::displayRequested, this, &MainWindow::openDisplay);
+  connect(doc_, &document::Document::workflowState, node_editor_, &ui::NodeEditor::setStates);
+  connect(doc_, &document::Document::documentReset, node_editor_, [this] { node_editor_->setStates({}); });
   // a plugin set the workflow (also unchanged, e.g. "Workflow from system" again after the
   // window was closed): show it
   connect(doc_, &document::Document::workflowShowRequested, this, [this, workflow] {

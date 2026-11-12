@@ -345,6 +345,41 @@ class TestRaytracerPlugin : public QObject {
     QCOMPARE(results_.itemsWithKey(QStringLiteral("workflow:show"), results::ResultItem::Kind::Image).size(), std::size_t{1});
   }
 
+  void workflowKeepsResults() {
+    // RTT-Fusion R23: results kept across runs; the editor gets up to date / out of date marks
+    QProcess probe;
+    probe.start(python_, {QStringLiteral("-c"), QStringLiteral("from rtt_fusion.graph.execute import ResultCache")});
+    if (!probe.waitForFinished(30000) || probe.exitCode() != 0) QSKIP("rtt_fusion without the result cache");
+    doc_.setWorkflow(QJsonObject{});
+    run(QStringLiteral("workflow_from_system"));
+    attachDisplay(QStringLiteral("shown"), QStringLiteral("display.image"), detectorId(), QStringLiteral("image"));
+    params_.insert(QStringLiteral("workflow_rays"), 500);
+    params_.insert(QStringLiteral("workflow_pixels"), 32);
+    params_.insert(QStringLiteral("workflow_window"), 0.0);
+    QSignalSpy states(&doc_, &document::Document::workflowState);
+    run(QStringLiteral("run_workflow"));
+    QVERIFY(!states.isEmpty());
+    QVERIFY(states.last().at(0).toJsonObject()["shown"].toBool());
+    QVERIFY(states.last().at(0).toJsonObject()[detectorId()].toBool());
+    // a change behind the camera: the display is out of date, the camera not
+    QJsonObject wf = doc_.workflow();
+    QJsonObject graph = wf["graph"].toObject();
+    QJsonArray nodes = graph["nodes"].toArray();
+    for (int k = 0; k < nodes.size(); ++k) {
+      QJsonObject n = nodes[k].toObject();
+      if (n["id"].toString() == QStringLiteral("shown")) n["params"] = QJsonObject{{"title", "renamed"}};
+      nodes[k] = n;
+    }
+    graph["nodes"] = nodes;
+    wf["graph"] = graph;
+    doc_.setWorkflow(wf);
+    states.clear();
+    run(QStringLiteral("check_workflow"));
+    QVERIFY(!states.isEmpty());
+    QVERIFY(!states.last().at(0).toJsonObject()["shown"].toBool());
+    QVERIFY(states.last().at(0).toJsonObject()[detectorId()].toBool());
+  }
+
   void workflowSweep() {
     // RTT-Fusion R20: a meta block sweeps the offset of a block and collects the camera image
     QProcess probe;
