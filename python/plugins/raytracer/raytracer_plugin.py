@@ -21,6 +21,7 @@ import glob
 import importlib
 import math
 import os
+import re
 import warnings
 from pathlib import Path
 
@@ -592,12 +593,20 @@ class RaytracerPlugin(Plugin):
 
     @staticmethod
     def _catalogue(registry) -> list[dict]:
+        try:
+            topology = importlib.import_module("rtt_fusion.graph.topology")
+            node_cls = importlib.import_module("rtt_fusion.graph.model").Node
+        except ImportError:
+            topology = None
         out = []
         for t in registry.types():
-            out.append({"type": t.type_id, "category": t.category.value, "description": t.description,
-                        "sockets": [s.to_dict() for s in t.sockets],
-                        "params": [p.to_dict() for p in t.params],
-                        "through": {o: list(ins) for o, ins in t.through}})
+            entry = {"type": t.type_id, "category": t.category.value, "description": t.description,
+                     "sockets": [s.to_dict() for s in t.sockets],
+                     "params": [p.to_dict() for p in t.params],
+                     "through": {o: list(ins) for o, ins in t.through}}
+            if topology is not None:  # light ports (RTT-Fusion R24): one dot per port in the editor
+                entry["ports"] = [p.to_dict() for p in topology.node_ports(node_cls("x", t.type_id), registry)]
+            out.append(entry)
         return out
 
     @staticmethod
@@ -638,6 +647,14 @@ class RaytracerPlugin(Plugin):
         _require_rt()
         fg, _, execute, io, validate = self._fusion()
         system, _ = self._current(ctx)
+        if self._has_model(fg):  # RTT-Fusion R24: ports, connections, the system's paths as branches
+            registry, _ = self._registry(fg)
+            model = fg.model_from_raytatouille(system)
+            kept = self._keep_model_edits(fg, io, model, ctx.workflow(), registry)
+            wf = self._model_workflow(fg, execute, io, validate, model, registry)
+            ctx.set_workflow(wf)
+            return (f"workflow: {len(model.nodes)} blocks, {len(model.connections)} connections, "
+                    f"{len(model.branches)} branches" + (f"; kept {kept}" if kept else ""))
         graph = fg.graph_from_raytatouille(system)
         registry, _ = self._registry(fg)
         # every node with its effective sockets, so the editor needs no type knowledge
@@ -690,14 +707,22 @@ class RaytracerPlugin(Plugin):
     def check_workflow(self, ctx):
         fg, _, execute, io, validate = self._fusion()
         wf = ctx.workflow()
-        if not wf.get("graph"):
+        if not wf.get("graph") and not wf.get("model"):
             raise UserError("No node workflow yet – Workflow from system creates one.")
-        graph = io.from_dict(wf["graph"])
         registry, _ = self._registry(fg)
-        wf["types"] = self._catalogue(registry)
-        wf["diagnostics"], wf["plan"] = self._checked(fg, execute, validate, graph, registry)
+        if wf.get("model"):
+            model = io.model_from_dict(wf["model"], registry)
+            wf = {**wf, **self._model_workflow(fg, execute, io, validate, model, registry)}
+            graph = fg.unroll(model, registry) if not any(
+                d["severity"] == "error" for d in wf["diagnostics"]) else None
+            self._model_ids = set(model.nodes)
+        else:
+            graph = io.from_dict(wf["graph"])
+            wf["types"] = self._catalogue(registry)
+            wf["diagnostics"], wf["plan"] = self._checked(fg, execute, validate, graph, registry)
+            self._model_ids = None
         ctx.set_workflow(wf)
-        if not any(d["severity"] == "error" for d in wf["diagnostics"]) and self.loaded_from:
+        if graph is not None and not any(d["severity"] == "error" for d in wf["diagnostics"]) and self.loaded_from:
             try:  # which blocks the kept results still cover
                 system, _ = self._current(ctx)
                 _, extra = self._registry(fg)
@@ -711,7 +736,7 @@ class RaytracerPlugin(Plugin):
         n_err = sum(1 for d in diagnostics if d["severity"] == "error")
         for d in diagnostics:
             ctx.log(f"{d['severity']}: {d['code']} – {d['message']} ({d['location']})")
-        planned = sorted(set(v["representation"] for v in wf["plan"]["links"].values()))
+        planned = sorted(set(v["representation"] for v in wf["plan"].get("links", {}).values()))
         return (f"workflow: {n_err} error(s), {len(diagnostics) - n_err} warning(s); "
                 f"planned {''.join(planned) or '–'}, {len(wf['plan']['conversions'])} conversion(s)")
 
@@ -721,10 +746,21 @@ class RaytracerPlugin(Plugin):
         _require_rt()
         fg, backend_rtt, execute, io, validate = self._fusion()
         wf = ctx.workflow()
-        if not wf.get("graph"):
+        if not wf.get("graph") and not wf.get("model"):
             raise UserError("No node workflow yet – Workflow from system creates one.")
-        graph = io.from_dict(wf["graph"])
         registry, extra = self._registry(fg)
+        if wf.get("model"):  # RTT-Fusion R24: exactly the branches of the model, unrolled
+            model = io.model_from_dict(wf["model"], registry)
+            try:
+                graph = fg.unroll(model, registry)
+            except fg.ModelError as e:
+                for d in e.diagnostics:
+                    ctx.log(f"{d.severity}: {d.code} – {d.message} ({d.location})")
+                raise UserError(f"The workflow has errors – Check workflow marks them: {e}") from e
+            self._model_ids = set(model.nodes)
+        else:
+            graph = io.from_dict(wf["graph"])
+            self._model_ids = None
         evaluators = {**backend_rtt.EVALUATORS, **extra}
         displays = [n for n in graph.nodes.values() if n.type_id.startswith("display.")]
         if not displays:
@@ -755,6 +791,7 @@ class RaytracerPlugin(Plugin):
             ctx.progress(a + (b - a) * part, text)
 
         def on_node(node_id: str) -> None:
+            node_id = RaytracerPlugin._model_id(node_id)
             if node_id != last["node"]:
                 last["node"] = node_id
                 ctx.workflow_running(node_id)
@@ -834,15 +871,151 @@ class RaytracerPlugin(Plugin):
             }
         return execute.Executor(graph, registry, evaluators, shared, **kwargs)
 
-    @staticmethod
-    def _send_status(ctx, ex) -> None:
-        """Up to date / out of date per block (RTT-Fusion R23) for the node editor."""
+    def _send_status(self, ctx, ex) -> None:
+        """Up to date / out of date per block (RTT-Fusion R23) for the node editor; with a model
+        (R24) per block of the model: all its copies (id@k) and the blocks of a group."""
         if not hasattr(ex, "status"):
             return
         try:
-            ctx.workflow_state({k: bool(v) for k, v in ex.status().items()})
+            states = {k: bool(v) for k, v in ex.status().items()}
+            ids = getattr(self, "_model_ids", None)
+            if ids is not None:
+                merged: dict = {}
+                for k, v in states.items():
+                    m = self._model_id(k)
+                    if m in ids:
+                        merged[m] = merged.get(m, True) and v
+                states = merged
+            ctx.workflow_state(states)
         except Exception as e:  # noqa: BLE001 - the state is a display hint only
             ctx.log(f"workflow state: {e}")
+
+    # ------------------------------------------------------------------ the model (RTT-Fusion R24)
+    @staticmethod
+    def _has_model(fg) -> bool:
+        return hasattr(fg, "model_from_raytatouille") and hasattr(fg, "unroll")
+
+    @staticmethod
+    def _model_id(unrolled: str) -> str:
+        """The block of the model behind a block of the unrolled graph: a copy "x@2" is "x", a block
+        "g/x" inside a group is the group "g"."""
+        return unrolled.split("@")[0].split("/")[0]
+
+    def _model_workflow(self, fg, execute, io, validate, model, registry) -> dict:
+        """The workflow of a model: the model (every block with its sockets and ports, so the
+        editor needs no type knowledge), the block library, the checks of the model and of the
+        unrolled graph, and the plan – per link of the unrolled graph and per connection of the
+        model (direction "forward" a -> b, "back")."""
+        topology = importlib.import_module("rtt_fusion.graph.topology")
+        for node in model.nodes.values():  # with the inputs every block has (drive, pose)
+            node.sockets = tuple(validate.node_sockets(node, registry))
+            if not node.ports:
+                node.ports = topology.node_ports(node, registry)
+        diagnostics = [d.__dict__ for d in fg.validate_model(model, registry)]
+        plan: dict = {"links": {}, "conversions": [], "connections": {}}
+        if not any(d["severity"] == "error" for d in diagnostics):
+            graph = fg.unroll(model, registry)
+            checked, plan = self._checked(fg, execute, validate, graph, registry)
+            diagnostics += checked
+            plan["connections"] = self._connection_plan(graph, model, registry, topology, plan)
+        for d in diagnostics:  # copies and blocks inside groups: the block of the model
+            d["location"] = re.sub(r"@\d+", "", str(d["location"]))
+        return {"model": io.model_to_dict(model), "types": self._catalogue(registry),
+                "diagnostics": diagnostics, "plan": plan}
+
+    @staticmethod
+    def _connection_plan(graph, model, registry, topology, plan) -> dict:
+        out: dict = {}
+        ports = {nid: topology.node_ports(n, registry) for nid, n in model.nodes.items()}
+        for lk in graph.links:
+            key = f"{lk.source[0]}.{lk.source[1]} -> {lk.target[0]}.{lk.target[1]}"
+            if key not in plan.get("links", {}):
+                continue
+            a, b = RaytracerPlugin._model_id(lk.source[0]), RaytracerPlugin._model_id(lk.target[0])
+            pa = next((p.name for p in ports.get(a, ()) if p.out_socket == lk.source[1]), None)
+            pb = next((p.name for p in ports.get(b, ()) if p.in_socket == lk.target[1]), None)
+            for i, c in enumerate(model.connections):
+                if {c.a, c.b} == {(a, pa), (b, pb)}:
+                    side = "forward" if c.a == (a, pa) else "back"
+                    out.setdefault(str(i), {})[side] = plan["links"][key]["representation"]
+        return out
+
+    @staticmethod
+    def _keep_model_edits(fg, io, model, old_wf, registry) -> str:
+        """The user's edits of the previous workflow (a model, or an old socket graph converted)
+        on a new import: positions, muted blocks, parameters, replaced blocks (with their ports),
+        added blocks and their links, transports of connections, and branches the import does
+        not make."""
+        try:
+            if old_wf.get("model"):
+                previous = io.model_from_dict(old_wf["model"], registry)
+            elif old_wf.get("graph"):
+                previous = fg.model_from_graph(io.from_dict(old_wf["graph"]), registry)
+            else:
+                return ""
+        except Exception:  # noqa: BLE001 - an unreadable old workflow is simply replaced
+            return ""
+        counts = {"blocks": 0, "transports": 0, "added": 0, "branches": 0}
+        replaced: dict = {}
+        for nid, node in previous.nodes.items():
+            if nid in model.nodes:
+                new = model.nodes[nid]
+                new.position, new.muted = node.position, node.muted
+                if node.type_id != new.type_id or node.params != new.params:
+                    if node.type_id != new.type_id:  # replaced in the editor (e.g. a grating)
+                        replaced[nid] = node
+                    new.params = dict(node.params)
+                    counts["blocks"] += 1
+            else:
+                model.add(node)
+                counts["added"] += 1
+                if nid in previous.groups:
+                    model.groups[nid] = previous.groups[nid]
+        for nid, old_node in replaced.items():  # its ports: matched over the neighbours
+            new = model.nodes[nid]
+            mapping = {}
+            for c in model.connections:
+                for end, other in ((c.a, c.b), (c.b, c.a)):
+                    if end[0] != nid:
+                        continue
+                    before = next((o for o in previous.connections for e, f in ((o.a, o.b), (o.b, o.a))
+                                   if e[0] == nid and f[0] == other[0]), None)
+                    if before is not None:
+                        mine = before.a if before.a[0] == nid else before.b
+                        mapping[end[1]] = mine[1]
+            new.type_id, new.sockets, new.through, new.ports = (old_node.type_id, old_node.sockets,
+                                                                old_node.through, old_node.ports)
+            model.connections = [
+                type(c)((c.a[0], mapping.get(c.a[1], c.a[1])) if c.a[0] == nid else c.a,
+                        (c.b[0], mapping.get(c.b[1], c.b[1])) if c.b[0] == nid else c.b,
+                        c.transport, c.transport_back)
+                for c in model.connections]
+            model.branches = [
+                type(b)(b.name, tuple(
+                    type(s)(s.node, mapping.get(s.port_in, s.port_in), mapping.get(s.port_out, s.port_out),
+                            "") if s.node == nid else s for s in b.steps))
+                for b in model.branches]
+        for old in previous.connections:
+            for i, c in enumerate(model.connections):
+                if {c.a, c.b} == {old.a, old.b} and (c.transport, c.transport_back) != (old.transport,
+                                                                                       old.transport_back):
+                    forward = old.transport if c.a == old.a else (old.transport_back or old.transport)
+                    back = (old.transport_back or old.transport) if c.a == old.a else old.transport
+                    model.connections[i] = type(c)(c.a, c.b, forward, None if back == forward else back)
+                    counts["transports"] += 1
+        known = {(lk.source, lk.target) for lk in model.links}
+        for lk in previous.links:
+            if (lk.source, lk.target) not in known and lk.source[0] in model.nodes \
+                    and lk.target[0] in model.nodes:
+                model.links.append(lk)
+        names = {b.name for b in model.branches}
+        for b in previous.branches:
+            if b.name not in names and all(s.node in model.nodes for s in b.steps):
+                model.branches.append(b)
+                counts["branches"] += 1
+        for target, branch in previous.observe_branch.items():
+            model.observe_branch.setdefault(target, branch)
+        return ", ".join(f"{v} {k}" for k, v in counts.items() if v)
 
     @action("Optimise", description="Raytatouille's optimiser; the surfaces update after every iteration")
     def optimise(self, ctx):

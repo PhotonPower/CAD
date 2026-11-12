@@ -6,6 +6,7 @@
 #include <QGraphicsRectItem>
 #include <QImage>
 #include <QJsonArray>
+#include <QListWidget>
 #include <QKeyEvent>
 #include <QJsonDocument>
 #include <QLineF>
@@ -18,6 +19,7 @@
 
 #include "document/document.hpp"
 #include "document/nfcad_io.hpp"
+#include "ui/branch_panel.hpp"
 #include "ui/node_editor.hpp"
 
 using nfcad::ui::NodeEditor;
@@ -26,6 +28,13 @@ namespace {
 QJsonObject linnik() {
   // made by RTT-Fusion from its Linnik structure (graph_from_raytatouille + catalogue)
   QFile f(QStringLiteral(NFCAD_TEST_DATA "/workflow_linnik.json"));
+  if (!f.open(QIODevice::ReadOnly)) return {};
+  return QJsonDocument::fromJson(f.readAll()).object();
+}
+
+QJsonObject model_linnik() {
+  // made by the Raytracer plugin from RTT-Fusion's Linnik structure (R24: model, branches)
+  QFile f(QStringLiteral(NFCAD_TEST_DATA "/workflow_model_linnik.json"));
   if (!f.open(QIODevice::ReadOnly)) return {};
   return QJsonDocument::fromJson(f.readAll()).object();
 }
@@ -242,6 +251,147 @@ class TestNodeEditor : public QObject {
     QCOMPARE(e.state(QStringLiteral("Sample")), 1);  // the other arm
     e.setStates({});
     QCOMPARE(e.state(QStringLiteral("Sample")), -1);
+  }
+
+  // ---------------------------------------------------------------- model (RTT-Fusion R24)
+
+  void modelShowsPorts() {
+    NodeEditor e;
+    e.setWorkflow(model_linnik());
+    QVERIFY(e.modelMode());
+    QCOMPARE(e.connectionCount(), 9);  // one per pair of neighbours (13 directed links before)
+    QCOMPARE(e.linkCount(), 0);        // no data links yet
+    for (int k = 0; k < 9; ++k) QVERIFY(e.connectionItem(k) != nullptr);
+    // the objective: one point per port, light comes in from the splitter (left), the sample right
+    QVERIFY(e.portOnLeft(QStringLiteral("Objective_A"), QStringLiteral("Beam_splitter")));
+    QVERIFY(!e.portOnLeft(QStringLiteral("Objective_A"), QStringLiteral("Sample")));
+    QCOMPARE(e.branchNames(), (QStringList{"measurement", "reference", "measurement_pupil"}));
+    if (const QByteArray dir = qgetenv("NFCAD_SNAPSHOT_DIR"); !dir.isEmpty()) {
+      e.resize(1400, 700);
+      e.highlightBranch(QStringLiteral("measurement"));
+      e.fitAll();
+      e.grab().toImage().save(QString::fromLocal8Bit(dir) + QStringLiteral("/node_editor_model.png"));
+      e.scene()->clearSelection();
+      for (const char* id : {"Beam_splitter", "Objective_A", "Sample", "Objective_B"}) e.nodeItem(QString::fromLatin1(id))->setSelected(true);
+      e.zoomSelected();
+      e.grab().toImage().save(QString::fromLocal8Bit(dir) + QStringLiteral("/node_editor_model_zoom.png"));
+    }
+  }
+
+  void connectionsAndTransports() {
+    NodeEditor e;
+    e.setWorkflow(model_linnik());
+    QSignalSpy edited(&e, &NodeEditor::edited);
+    QVERIFY(!e.addConnection(QStringLiteral("Objective_A"), QStringLiteral("Sample"), QStringLiteral("Reference"),
+                             QStringLiteral("Objective_B")));  // both ports are taken
+    e.removeConnection(3);
+    QCOMPARE(e.connectionCount(), 8);
+    QVERIFY(e.addConnection(QStringLiteral("Objective_A"), QStringLiteral("Sample"), QStringLiteral("Sample"),
+                            QStringLiteral("Objective_A")));
+    QCOMPARE(e.connectionCount(), 9);
+    const int last = 8;
+    e.setConnectionTransport(last, QStringLiteral("forward"), QStringLiteral("H"));
+    QJsonObject t = e.workflow()["model"].toObject()["connections"].toArray()[last].toObject()["transport"].toObject();
+    QCOMPARE(t["forward"].toString(), QStringLiteral("H"));
+    QCOMPARE(t["back"].toString(), QStringLiteral("auto"));
+    e.setConnectionTransport(last, QStringLiteral("both"), QStringLiteral("auto"));
+    QVERIFY(!e.workflow()["model"].toObject()["connections"].toArray()[last].toObject().contains("transport"));
+    QVERIFY(edited.count() >= 4);
+  }
+
+  void branchesHighlightAndRecord() {
+    NodeEditor e;
+    e.setWorkflow(model_linnik());
+    e.highlightBranch(QStringLiteral("reference"));
+    QCOMPARE(e.nodeItem(QStringLiteral("Objective_B"))->pen().widthF(), 3.0);
+    QVERIFY(e.nodeItem(QStringLiteral("Objective_A"))->pen().widthF() < 3.0);  // not on it
+    // record the reference arm to the pupil camera: click the port each block is left by
+    e.beginBranch();
+    QVERIFY(!e.recordPort(QStringLiteral("Beam_splitter"), QStringLiteral("Objective_B")));  // not a source
+    QVERIFY(e.recordPort(QStringLiteral("source"), QStringLiteral("Illumination_stop")));
+    QVERIFY(e.recordPort(QStringLiteral("Illumination_stop"), QStringLiteral("Beam_splitter")));
+    QVERIFY(!e.recordPort(QStringLiteral("Objective_B"), QStringLiteral("Reference")));  // light is at the splitter
+    QVERIFY(e.recordPort(QStringLiteral("Beam_splitter"), QStringLiteral("Objective_B")));
+    QVERIFY(e.recordPort(QStringLiteral("Objective_B"), QStringLiteral("Reference")));
+    QVERIFY(e.recordPort(QStringLiteral("Reference"), QStringLiteral("Objective_B")));
+    QVERIFY(e.recordPort(QStringLiteral("Objective_B"), QStringLiteral("Beam_splitter")));
+    QVERIFY(e.recordPort(QStringLiteral("Beam_splitter"), QStringLiteral("Pupil_camera")));
+    QVERIFY(!e.branchComplete());
+    QSignalSpy recorded(&e, &NodeEditor::branchRecorded);
+    QVERIFY(e.recordDetector(QStringLiteral("Pupil_camera")));
+    QCOMPARE(recorded.count(), 1);
+    QVERIFY(!e.finishBranch(QStringLiteral("reference")));  // the name is taken
+    QVERIFY(e.finishBranch(QStringLiteral("reference_pupil")));
+    QVERIFY(e.branchNames().contains(QStringLiteral("reference_pupil")));
+    const QJsonArray steps = e.workflow()["model"].toObject()["branches"].toArray().last().toObject()["steps"].toArray();
+    QCOMPARE(steps.size(), 8);
+    QCOMPARE(steps[4].toArray(), (QJsonArray{"Reference", "Objective_B", "Objective_B"}));  // the mirror
+    QVERIFY(steps.last().toArray().at(2).isNull());
+    e.removeBranch(QStringLiteral("measurement"));
+    QVERIFY(!e.branchNames().contains(QStringLiteral("measurement")));
+    // Escape cancels a recording
+    e.beginBranch();
+    QVERIFY(e.recordingBranch());
+    QKeyEvent esc(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QApplication::sendEvent(&e, &esc);
+    QVERIFY(!e.recordingBranch());
+  }
+
+  void branchPanel() {
+    NodeEditor e;
+    nfcad::ui::BranchPanel panel(&e);
+    panel.ask_name = [](const QString& suggestion) { return suggestion; };
+    e.setWorkflow(model_linnik());
+    QCOMPARE(panel.list()->count(), 3);
+    panel.list()->setCurrentRow(1);
+    QCOMPARE(e.highlightedBranch(), QStringLiteral("reference"));
+    e.beginBranch();
+    for (const auto& [n, p] : std::initializer_list<std::pair<const char*, const char*>>{
+             {"source", "Illumination_stop"}, {"Illumination_stop", "Beam_splitter"},
+             {"Beam_splitter", "Objective_A"}, {"Objective_A", "Sample"}, {"Sample", "Objective_A"},
+             {"Objective_A", "Beam_splitter"}, {"Beam_splitter", "Pupil_camera"}}) {
+      QVERIFY(e.recordPort(QString::fromLatin1(n), QString::fromLatin1(p)));
+    }
+    QVERIFY(e.recordDetector(QStringLiteral("Pupil_camera")));  // the panel names it "branch 1"
+    QCOMPARE(panel.list()->count(), 4);
+    QVERIFY(e.branchNames().contains(QStringLiteral("branch 1")));
+  }
+
+  void modelUpToDateMarks() {
+    NodeEditor e;
+    e.setWorkflow(model_linnik());
+    QJsonObject all;
+    for (const QJsonValue& v : e.workflow()["model"].toObject()["nodes"].toArray()) all[v.toObject()["id"].toString()] = true;
+    e.setStates(all);
+    e.setParams(QStringLiteral("Sample"), QJsonObject{{"offset", QJsonArray{0, 0, 0.001}}});
+    for (const char* stale : {"Sample", "Objective_A", "Beam_splitter", "Camera", "Pupil_camera"}) {
+      QCOMPARE(e.state(QString::fromLatin1(stale)), 0);
+    }
+    QCOMPARE(e.state(QStringLiteral("source")), 1);
+    QCOMPARE(e.state(QStringLiteral("Illumination_stop")), 1);
+  }
+
+  void modelReplaceKeepsPorts() {
+    NodeEditor e;
+    e.setWorkflow(model_linnik());
+    if (!e.replacementsFor(QStringLiteral("Sample")).contains(QStringLiteral("fusion.grating"))) {
+      QSKIP("the block library of the fixture has no grating");
+    }
+    QVERIFY(e.replaceNode(QStringLiteral("Sample"), QStringLiteral("fusion.grating")));
+    const QJsonObject m = e.workflow()["model"].toObject();
+    bool connected = false;
+    for (const QJsonValue& v : m["connections"].toArray()) {
+      const QJsonArray ends = v.toObject()["ports"].toArray();
+      connected = connected || ends.contains(QJsonArray{"Sample", "front"});
+    }
+    QVERIFY(connected);  // the objective's connection moved to the grating's port
+    for (const QJsonValue& b : m["branches"].toArray()) {
+      for (const QJsonValue& s : b.toObject()["steps"].toArray()) {
+        if (s.toArray().at(0).toString() == QStringLiteral("Sample")) {
+          QCOMPARE(s.toArray(), (QJsonArray{"Sample", "front", "front"}));
+        }
+      }
+    }
   }
 
   void savedWithTheDocument() {

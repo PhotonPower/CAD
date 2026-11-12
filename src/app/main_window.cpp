@@ -15,6 +15,7 @@
 #include <QSettings>
 #include <QShortcut>
 #include <QStatusBar>
+#include <QSplitter>
 #include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
@@ -32,6 +33,7 @@
 #include "snap/snap_engine.hpp"
 #include "support/crash_handler.hpp"
 #include "ui/image_view.hpp"
+#include "ui/branch_panel.hpp"
 #include "ui/node_editor.hpp"
 #include "ui/layer_panel.hpp"
 #include "ui/model_tree_panel.hpp"
@@ -400,13 +402,20 @@ void MainWindow::createPanels() {
   // node workflow (RTT-Fusion): appears when the document gets a workflow
   auto* workflow = new QDockWidget(tr("Node workflow"), this);
   workflow->setObjectName(QStringLiteral("workflowDock"));
-  node_editor_ = new ui::NodeEditor(workflow);
-  workflow->setWidget(node_editor_);
+  auto* workflow_split = new QSplitter(Qt::Horizontal, workflow);
+  node_editor_ = new ui::NodeEditor(workflow_split);
+  auto* branches = new ui::BranchPanel(node_editor_, workflow_split);  // RTT-Fusion R24
+  workflow_split->addWidget(node_editor_);
+  workflow_split->addWidget(branches);
+  workflow_split->setStretchFactor(0, 4);
+  workflow_split->setStretchFactor(1, 1);
+  workflow->setWidget(workflow_split);
   addDockWidget(Qt::BottomDockWidgetArea, workflow);
   workflow->hide();
   auto show_workflow = [this, workflow](bool fit) {
     if (node_editor_->workflow() == doc_->workflow()) return;  // our own edit
-    const bool first = node_editor_->workflow()["graph"].toObject().isEmpty();
+    const bool first = node_editor_->workflow()["graph"].toObject().isEmpty() &&
+                       node_editor_->workflow()["model"].toObject().isEmpty();
     node_editor_->setWorkflow(doc_->workflow());
     if (doc_->workflow().isEmpty()) return;
     if (!workflow->isVisible()) {

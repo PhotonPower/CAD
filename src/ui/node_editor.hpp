@@ -16,6 +16,11 @@ class LinkItem;
 
 /// Node editor of the RTT-Fusion workflow (RTT-Fusion docs/konzept-node-workflow.md, R16).
 ///
+/// With a model (RTT-Fusion R24: {"model": rtt-fusion-graph version 2, …}) a block shows one
+/// point per light port, connections join two ports without a direction, data links stay
+/// directed, and the branches of the model can be listed, highlighted, recorded (click the port
+/// the light leaves each block by) and deleted – the modeller gives every branch.
+///
 /// Shows the working graph of the document – {"graph": rtt-fusion-graph, "types": [...],
 /// "diagnostics": [...], "plan": planner result} – as blocks with sockets and links, and lets the user edit it: move blocks
 /// (links follow), drag a link from an output to an input socket, delete links and blocks, mute a
@@ -78,8 +83,42 @@ class NodeEditor : public QGraphicsView {
   /// The representation the planner chose for a link ("" without a plan).
   [[nodiscard]] QString plannedRepresentation(int index) const;
 
+  // ---- model (RTT-Fusion R24): ports, connections, branches
+  /// The workflow is a model (ports and branches) rather than a socket graph.
+  [[nodiscard]] bool modelMode() const { return workflow_.contains(QStringLiteral("model")); }
+  /// Joins two ports (each port has at most one connection).
+  bool addConnection(const QString& a, const QString& port_a, const QString& b, const QString& port_b);
+  void removeConnection(int index);
+  /// Transport of a connection for "both" directions, "forward" (as listed, a → b) or "back".
+  void setConnectionTransport(int index, const QString& direction, const QString& transport);
+  [[nodiscard]] int connectionCount() const;
+  [[nodiscard]] QGraphicsPathItem* connectionItem(int index) const;
+  /// The connection under a point of the view, or −1.
+  [[nodiscard]] int connectionAt(const QPoint& view_pos) const;
+  /// Whether a port of a block is drawn on its left side (where the light comes in first).
+  [[nodiscard]] bool portOnLeft(const QString& node, const QString& port) const;
+  [[nodiscard]] QStringList branchNames() const;
+  /// Highlights a branch in the editor (empty: none).
+  void highlightBranch(const QString& name);
+  [[nodiscard]] QString highlightedBranch() const { return highlighted_; }
+  void removeBranch(const QString& name);
+  /// Recording a branch: click the source's port, then the port each block is left by, then
+  /// the detector; Escape cancels.
+  void beginBranch();
+  void cancelBranch();
+  [[nodiscard]] bool recordingBranch() const { return recording_; }
+  bool recordPort(const QString& node, const QString& port);
+  bool recordDetector(const QString& node);
+  [[nodiscard]] bool branchComplete() const;
+  /// Adds the recorded branch under `name` (unique, not empty).
+  bool finishBranch(const QString& name);
+
  signals:
   void edited(const QJsonObject& workflow);
+  void branchesChanged();
+  /// A recorded branch reached a detector: it needs a name (`finishBranch`).
+  void branchRecorded();
+  void recordingChanged(bool on, const QString& hint);
   /// A display block (type display.*) asks for its window (double-click, context menu).
   void displayRequested(const QString& id, const QString& type, const QString& title);
 
@@ -100,7 +139,17 @@ class NodeEditor : public QGraphicsView {
   void updateLinks();
   void commit();  ///< writes the graph back into workflow_ and emits `edited`
   [[nodiscard]] QJsonArray socketsOf(const QJsonObject& node) const;
-  [[nodiscard]] QJsonObject graph() const { return workflow_["graph"].toObject(); }
+  [[nodiscard]] QString key() const { return modelMode() ? QStringLiteral("model") : QStringLiteral("graph"); }
+  [[nodiscard]] QJsonObject graph() const { return workflow_[key()].toObject(); }
+  /// Sockets as drawn: the sockets, or with a model the data sockets plus one entry per port.
+  [[nodiscard]] QJsonArray shownSockets(const QJsonObject& node) const;
+  [[nodiscard]] QJsonArray portsOf(const QJsonObject& node) const;
+  /// The port whose channel is the light socket `socket` ("" if none).
+  [[nodiscard]] QString portOfSocket(const QJsonObject& node, const QString& socket) const;
+  [[nodiscard]] QString categoryOf(const QString& node) const;
+  void invalidateModel(const QSet<QString>& seeds);
+  [[nodiscard]] QHash<QString, QPointF> layoutModel(const QJsonObject& model) const;
+  void recordingHint();
   void setGraph(const QJsonObject& graph);
   void nodeMoved();
   void showMenu(const QPoint& view_pos, const QPoint& global_pos);
@@ -123,6 +172,10 @@ class NodeEditor : public QGraphicsView {
   bool z_pressed_ = false;
   QString running_;
   QHash<QString, bool> states_;
+  QList<LinkItem*> connections_;
+  QString highlighted_;
+  bool recording_ = false;
+  QJsonArray recorded_;  ///< steps [node, port in | null, port out | null]
   /// Marks `seeds` and every block behind them (along links, not along "drive") out of date.
   void invalidate(const QSet<QString>& seeds);  ///< first key of the sequences Z E (extents) and Z S (selected)
 };
