@@ -29,6 +29,9 @@ class ImageView : public QWidget {
   /// The image shown (null if none).
   [[nodiscard]] const results::ResultItem* current() const;
   void setLogScale(bool on);
+  /// Shows only the items with this key (a display window of the node workflow); empty: all
+  /// visible images.
+  void setKey(const QString& key);
 
  private:
   void rebuild();
@@ -40,6 +43,7 @@ class ImageView : public QWidget {
   ImageCanvas* canvas_ = nullptr;
   results::ResultId shown_ = 0;
   results::ResultId newest_ = 0;
+  QString key_;
 };
 
 /// The drawing area of the image dock.

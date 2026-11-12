@@ -1,6 +1,9 @@
 #pragma once
 
 #include <QWidget>
+#include <vector>
+
+#include "results/result_types.hpp"
 
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -39,12 +42,20 @@ class PlotWidget : public QWidget {
  public:
   explicit PlotWidget(const results::ResultStore* store, QWidget* parent = nullptr);
   [[nodiscard]] QSize sizeHint() const override { return {420, 220}; }
+  /// Plots only the curves with this key (a display window); empty: all visible curves.
+  void setKey(const QString& key) {
+    key_ = key;
+    update();
+  }
+  /// The curves plotted now.
+  [[nodiscard]] std::vector<const results::ResultItem*> curves() const;
 
  protected:
   void paintEvent(QPaintEvent* event) override;
 
  private:
   const results::ResultStore* store_;
+  QString key_;
 };
 
 }  // namespace nfcad::ui

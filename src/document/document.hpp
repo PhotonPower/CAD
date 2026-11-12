@@ -115,6 +115,8 @@ class Document : public QObject {
   void setWorkflowLoaded(const QJsonObject& workflow) { workflow_ = workflow; }  ///< loading
   /// Asks the GUI to show the node workflow (a plugin set it, even if it did not change).
   void requestWorkflowShown() { emit workflowShowRequested(); }
+  /// The block of the node workflow that a plugin computes now (empty: none); not stored.
+  void reportWorkflowRunning(const QString& node) { emit workflowRunning(node); }
 
   // ---- user operations (undoable)
   /// Adds entities in one undo step; returns their ids.
@@ -156,6 +158,7 @@ class Document : public QObject {
   /// The node workflow was replaced or edited.
   void workflowChanged();
   void workflowShowRequested();
+  void workflowRunning(const QString& node);
   /// Everything changed (clear / load): views rebuild from scratch.
   void documentReset();
 

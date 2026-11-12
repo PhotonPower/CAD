@@ -275,6 +275,47 @@ class TestRaytracerPlugin : public QObject {
     QVERIFY(fixed);
   }
 
+  void workflowDisplays() {
+    // RTT-Fusion R21: display blocks give results with the key "workflow:<block>"
+    QProcess probe;
+    probe.start(python_, {QStringLiteral("-c"), QStringLiteral("import rtt_fusion.graph.display")});
+    if (!probe.waitForFinished(30000) || probe.exitCode() != 0) QSKIP("rtt_fusion without display blocks");
+    doc_.setWorkflow(QJsonObject{});
+    run(QStringLiteral("workflow_from_system"));
+    QJsonObject wf = doc_.workflow();
+    QJsonObject graph = wf["graph"].toObject();
+    QString camera, section, section_out;
+    for (const QJsonValue& n : graph["nodes"].toArray()) {
+      const QJsonObject o = n.toObject();
+      if (o["type"].toString() == QStringLiteral("rtt.detector")) camera = o["id"].toString();
+      if (o["type"].toString() == QStringLiteral("rtt.section") && section.isEmpty()) {
+        section = o["id"].toString();
+        for (const QJsonValue& sk : o["sockets"].toArray()) {
+          if (sk.toObject()["direction"].toString() == QStringLiteral("out") && section_out.isEmpty()) section_out = sk.toObject()["name"].toString();
+        }
+      }
+    }
+    QVERIFY(!camera.isEmpty() && !section.isEmpty() && !section_out.isEmpty());
+    QJsonArray nodes = graph["nodes"].toArray();
+    nodes.append(QJsonObject{{"id", "show"}, {"type", "display.image"}, {"name", "Camera window"}});
+    graph["nodes"] = nodes;
+    QJsonArray links = graph["links"].toArray();
+    links.append(QJsonObject{{"from", QJsonArray{camera, QStringLiteral("image")}}, {"to", QJsonArray{"show", "in"}}});
+    graph["links"] = links;
+    wf["graph"] = graph;
+    doc_.setWorkflow(wf);
+    params_.insert(QStringLiteral("workflow_rays"), 500);
+    params_.insert(QStringLiteral("workflow_pixels"), 32);
+    params_.insert(QStringLiteral("workflow_window"), 0.0);
+    run(QStringLiteral("run_workflow"));
+    bool keyed = false;
+    for (const auto& item : results_.sets().back().items) {
+      keyed = keyed || (item.key == QStringLiteral("workflow:show") && item.kind == results::ResultItem::Kind::Image);
+    }
+    QVERIFY(keyed);
+    QCOMPARE(results_.itemsWithKey(QStringLiteral("workflow:show"), results::ResultItem::Kind::Image).size(), std::size_t{1});
+  }
+
   void workflowSweep() {
     // RTT-Fusion R20: a meta block sweeps the offset of a block and collects the camera image
     QProcess probe;

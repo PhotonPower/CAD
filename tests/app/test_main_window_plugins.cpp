@@ -19,6 +19,8 @@
 #include "plugins/plugin_manager.hpp"
 #include "ui/plugin_panel.hpp"
 #include "ui/plugin_settings_dialog.hpp"
+#include "results/result_store.hpp"
+#include "ui/image_view.hpp"
 #include "ui/results_panel.hpp"
 #include "ui/tool_box.hpp"
 
@@ -62,6 +64,34 @@ class TestMainWindowPlugins : public QObject {
     dock->close();
     dock->toggleViewAction()->trigger();
     QVERIFY(dock->isVisible());
+  }
+
+  void displayWindow() {
+    // a display block's window shows the results with its key, dockable
+    QStandardPaths::setTestModeEnabled(true);
+    nfcad::app::MainWindow w;
+    w.setAttribute(Qt::WA_DontShowOnScreen);
+    w.show();
+    auto* store = w.findChild<nfcad::results::ResultStore*>();
+    QVERIFY(store != nullptr);
+    const auto set = store->createSet(QStringLiteral("Workflow"));
+    nfcad::results::Image im;
+    im.width = 2;
+    im.height = 2;
+    im.values = {0, 1, 2, 3};
+    im.x1 = 1;
+    im.y1 = 1;
+    store->addImage(set, QStringLiteral("other"), im);
+    const auto keyed = store->addImage(set, QStringLiteral("camera"), im);
+    store->setKey(keyed, QStringLiteral("workflow:show"));
+    QDockWidget* dock = w.openDisplay(QStringLiteral("show"), QStringLiteral("display.image"), QStringLiteral("Camera"));
+    QVERIFY(dock != nullptr && dock->isVisible());
+    QVERIFY(dock->windowTitle().contains(QStringLiteral("Camera")));
+    QVERIFY(dock->features().testFlag(QDockWidget::DockWidgetFloatable) && dock->features().testFlag(QDockWidget::DockWidgetMovable));
+    auto* view = qobject_cast<nfcad::ui::ImageView*>(dock->widget());
+    QVERIFY(view != nullptr && view->current() != nullptr);
+    QCOMPARE(view->current()->id, keyed);
+    QCOMPARE(w.openDisplay(QStringLiteral("show"), QStringLiteral("display.image"), QStringLiteral("Camera")), dock);  // one per block
   }
 
   void demoPluginFromTheMenu() {

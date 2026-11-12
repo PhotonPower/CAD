@@ -104,6 +104,24 @@ ResultId ResultStore::addCurve(ResultId set, const QString& name, Curve curve) {
   return add(set, std::move(i));
 }
 
+void ResultStore::setKey(ResultId item, const QString& key) {
+  if (ResultItem* i = mutableItem(item)) {
+    i->key = key;
+    emit changed();
+  }
+}
+
+std::vector<const ResultItem*> ResultStore::itemsWithKey(const QString& key, ResultItem::Kind kind) const {
+  for (auto s = sets_.rbegin(); s != sets_.rend(); ++s) {
+    std::vector<const ResultItem*> out;
+    for (const ResultItem& i : s->items) {
+      if (i.key == key && i.kind == kind) out.push_back(&i);
+    }
+    if (!out.empty()) return out;
+  }
+  return {};
+}
+
 ResultItem* ResultStore::mutableItem(ResultId id) {
   for (ResultSet& s : sets_) {
     for (ResultItem& i : s.items) {

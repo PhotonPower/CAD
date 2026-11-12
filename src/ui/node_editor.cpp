@@ -91,7 +91,7 @@ class SocketItem : public QGraphicsEllipseItem {
 class NodeItem : public QGraphicsRectItem {
  public:
   NodeItem(NodeEditor* editor, const QJsonObject& node, const QJsonArray& sockets, const QString& category,
-           const QString& problem, const QStringList& conversions = {})
+           const QString& problem, const QStringList& conversions = {}, bool running = false)
       : editor_(editor), id_(node["id"].toString()) {
     setFlags(ItemIsMovable | ItemIsSelectable | ItemSendsGeometryChanges);
     QJsonArray ins;
@@ -102,15 +102,16 @@ class NodeItem : public QGraphicsRectItem {
     setRect(0, 0, kWidth, h);
     const bool muted = node["muted"].toBool();
     setBrush(muted ? QColor(55, 55, 58) : QColor(44, 48, 56));
-    setPen(problem.isEmpty() ? QPen(QColor(20, 20, 20), 1.2) : QPen(QColor(230, 70, 70), 2.4));
+    setPen(running ? QPen(QColor(120, 220, 255), 3.0)
+                   : problem.isEmpty() ? QPen(QColor(20, 20, 20), 1.2) : QPen(QColor(230, 70, 70), 2.4));
     auto* header = new QGraphicsRectItem(0, 0, kWidth, kHeader, this);
     header->setBrush(muted ? QColor(80, 80, 85) : category_color(category));
     header->setPen(Qt::NoPen);
     const QString title = node["name"].toString(id_);
     auto* text = new QGraphicsSimpleTextItem(this);
     QFontMetrics fm(text->font());
-    text->setText(fm.elidedText(muted ? title + QStringLiteral(" (muted)") : title, Qt::ElideRight,
-                                static_cast<int>(kWidth - 12)));
+    const QString shown = running ? title + QObject::tr(" – running …") : muted ? title + QStringLiteral(" (muted)") : title;
+    text->setText(fm.elidedText(shown, Qt::ElideRight, static_cast<int>(kWidth - 12)));
     text->setBrush(QColor(240, 240, 240));
     text->setPos(6, 4);
     auto place = [this](const QJsonArray& list, bool input) {
@@ -512,7 +513,8 @@ void NodeEditor::rebuild() {
     const QJsonObject n = v.toObject();
     const QString type = n["type"].toString();
     auto* item = new NodeItem(this, n, socketsOf(n), categories.value(type, type_category(type)),
-                              problems.value(n["id"].toString()).trimmed(), conversions.value(n["id"].toString()));
+                              problems.value(n["id"].toString()).trimmed(), conversions.value(n["id"].toString()),
+                              n["id"].toString() == running_);
     scene()->addItem(item);
     nodes_.insert(item->id(), item);
   }
@@ -748,6 +750,12 @@ bool NodeEditor::replaceNode(const QString& id, const QString& type) {
   return true;
 }
 
+void NodeEditor::setRunning(const QString& id) {
+  if (id == running_) return;
+  running_ = id;
+  rebuild();
+}
+
 void NodeEditor::setParams(const QString& id, const QJsonObject& params) {
   QJsonObject g = graph();
   QJsonArray nodes = g["nodes"].toArray();
@@ -972,6 +980,11 @@ void NodeEditor::mouseDoubleClickEvent(QMouseEvent* event) {
     for (QGraphicsItem* item : items(event->position().toPoint())) {
       for (QGraphicsItem* p = item; p != nullptr; p = p->parentItem()) {
         if (auto* node = dynamic_cast<NodeItem*>(p)) {
+          const QJsonObject n = node_of(graph(), node->id());
+          if (n["type"].toString().startsWith(QLatin1String("display."))) {
+            emit displayRequested(node->id(), n["type"].toString(), n["name"].toString(node->id()));
+            return;
+          }
           editParams(node->id());
           return;
         }
@@ -1089,6 +1102,12 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
       if (v.toObject()["id"].toString() == id) muted = v.toObject()["muted"].toBool();
     }
     menu.addAction(muted ? tr("Unmute") : tr("Mute (bypass)"), this, [this, id, muted] { setMuted(id, !muted); });
+    const QJsonObject self = node_of(graph(), id);
+    if (self["type"].toString().startsWith(QLatin1String("display."))) {
+      menu.addAction(tr("Show window"), this, [this, id, self] {
+        emit displayRequested(id, self["type"].toString(), self["name"].toString(id));
+      });
+    }
     menu.addAction(tr("Parameters…"), this, [this, id] { editParams(id); });
     QMenu* replace = menu.addMenu(tr("Replace with"));
     for (const QString& type : replacementsFor(id)) {

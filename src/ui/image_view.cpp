@@ -71,8 +71,14 @@ const results::ResultItem* ImageView::current() const { return shown_ != 0 ? sto
 
 void ImageView::setLogScale(bool on) { log_->setChecked(on); }
 
+void ImageView::setKey(const QString& key) {
+  key_ = key;
+  rebuild();
+}
+
 void ImageView::rebuild() {
-  const auto images = store_->visibleItems(results::ResultItem::Kind::Image);
+  const auto images = key_.isEmpty() ? store_->visibleItems(results::ResultItem::Kind::Image)
+                                     : store_->itemsWithKey(key_, results::ResultItem::Kind::Image);
   // a new image comes to the front; otherwise the chosen one stays while it is visible
   const results::ResultId newest = images.empty() ? 0 : images.back()->id;
   const bool still = std::any_of(images.begin(), images.end(), [this](const auto* i) { return i->id == shown_; });
