@@ -86,6 +86,13 @@ class RaytracerPlugin(Plugin):
                                        description="For Run workflow (coherent image; every ray path is "
                                                    "recorded, so memory grows with rays × events)"),
         "workflow_pixels": Param.integer(512, min=16, max=4096, label="Pixels (long side)", group="Workflow"),
+        "workflow_window": Param.number(0.0, min=0.0, label="Image window (half width, mm)", group="Workflow",
+                                        description="0: the detector aperture. For a focus computed as a field "
+                                                    "(link into the camera set to H) a small window, e.g. 0.05 mm"),
+        "workflow_gaussian_waist": Param.number(0.0, min=0.0, max=10.0, label="Gaussian illumination (w / pupil radius)",
+                                                group="Workflow",
+                                                description="0: uniform (a hard-edged beam, whose Fresnel diffraction a "
+                                                            "field link shows); e.g. 0.5 for a laser beam"),
         "save_as": Param.file("", filter="Raytatouille system (*.rtt.json)", save=True, label="Save as",
                               group="Optimise", description="Empty: <system>.optimised.rtt.json"),
     }
@@ -592,10 +599,19 @@ class RaytracerPlugin(Plugin):
         return out
 
     @staticmethod
-    def _checked(fg, execute, validate, graph, registry) -> tuple[list[dict], dict]:
+    def _available(execute) -> frozenset:
+        """Representations the workflow can run: R, and H (fields, RTT-Fusion R18b) with fieldtracing."""
+        try:
+            import fieldtracing  # noqa: F401
+        except ImportError:
+            return execute.EXECUTABLE
+        return getattr(execute, "WITH_FIELDS", execute.EXECUTABLE)
+
+    @classmethod
+    def _checked(cls, fg, execute, validate, graph, registry) -> tuple[list[dict], dict]:
         """Diagnostics of the graph check and of the planner (R17, with what can run), and the plan."""
         diagnostics = [d.__dict__ for d in validate.validate(graph, registry)]
-        plan = fg.plan(graph, registry, fg.Requirements(available=execute.EXECUTABLE))
+        plan = fg.plan(graph, registry, fg.Requirements(available=cls._available(execute)))
         diagnostics += [d.__dict__ for d in plan.diagnostics]
         return diagnostics, plan.to_dict()
 
@@ -632,7 +648,8 @@ class RaytracerPlugin(Plugin):
         return (f"workflow: {n_err} error(s), {len(diagnostics) - n_err} warning(s); "
                 f"planned {''.join(planned) or '–'}, {len(wf['plan']['conversions'])} conversion(s)")
 
-    @action("Run workflow", description="Compute the node workflow (RTT-Fusion R15): coherent camera images")
+    @action("Run workflow", description="Compute the node workflow (RTT-Fusion): coherent camera images; links "
+                                         "set to H are computed as fields (field tracing)")
     def run_workflow(self, ctx):
         _require_rt()
         fg, backend_rtt, execute, io, validate = self._fusion()
@@ -659,11 +676,17 @@ class RaytracerPlugin(Plugin):
                 kind, a = L.aperture
                 hu, hv = (a["half_width_x"], a["half_width_y"]) if kind == "rectangular" else \
                     (a.get("radius", a.get("semi_axis_x", 1.0)), a.get("radius", a.get("semi_axis_y", 1.0)))
+            window = float(ctx.params.get("workflow_window", 0.0) or 0.0)
+            if window > 0:
+                hu = hv = window
+                node.params["half_size"] = [window, window]
             n = ctx.params["workflow_pixels"]
             pixels = [n, max(1, round(n * hv / hu))] if hu >= hv else [max(1, round(n * hu / hv)), n]
             ex = execute.Executor(graph, registry, backend_rtt.EVALUATORS,
                                   {"system": system, "compiled": compiled, "materials": self.library,
-                                   "rings": rings_for(ctx.params["workflow_rays"]), "pixels": pixels})
+                                   "rings": rings_for(ctx.params["workflow_rays"]), "pixels": pixels,
+                                   "gaussian_waist": float(ctx.params.get("workflow_gaussian_waist", 0.0) or 0.0)},
+                                  available=self._available(execute))
             try:
                 image = ex.evaluate(node.id, "image")
             except execute.ExecutionError as e:
@@ -674,10 +697,18 @@ class RaytracerPlugin(Plugin):
                 ctx.log(f"{node.id}: no light reaches the detector")
                 continue
             if float(image.values.max()) <= 0.0:
-                ctx.log(f"{node.id}: the light focuses into less than a pixel (or a caustic) – the coherent "
-                        "ray image (R15) needs a field there; field tracing comes with R18")
+                hint = ("set the link into it to H (right-click on the link → Transport → H) and choose a "
+                        "small image window" if "H" in self._available(execute) else
+                        "a field is needed there: install fieldtracing in the plugin environment, then set "
+                        "the link into it to H")
+                ctx.log(f"{node.id}: the light focuses into less than a pixel (or a caustic) – {hint}")
             ny, nx = image.values.shape
-            ctx.image(run, f"{node.name or node.id} (coherent)", image.values.reshape(-1), nx, ny,
+            links = graph.links_to(node.id)
+            rep = (ex.plan.representations.get(f"{links[0].source[0]}.{links[0].source[1]} -> "
+                                               f"{links[0].target[0]}.{links[0].target[1]}", "R")
+                   if ex.plan is not None and links else "R")
+            kind = "field" if rep == "H" else "rays"
+            ctx.image(run, f"{node.name or node.id} (coherent, {kind})", image.values.reshape(-1), nx, ny,
                       extent=image.extent, unit="W/mm² (rel.)",
                       description=f"{node.name or node.id}: {len(image.groups)} coherence group(s), "
                                   f"{nx}×{ny} px – amplitudes within a group, intensities across groups")

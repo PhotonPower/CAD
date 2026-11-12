@@ -3,6 +3,7 @@
 // the packages numpy and raytatouille (NFCAD_TEST_PYTHON, else the repository's .venv); skipped
 // otherwise – CI has no Raytatouille build.
 #include <QDir>
+#include <algorithm>
 #include <QJsonArray>
 #include <QFileInfo>
 #include <QImage>
@@ -182,13 +183,49 @@ class TestRaytracerPlugin : public QObject {
     QVERIFY(!doc_.workflow()["plan"].toObject()["links"].toObject().isEmpty());  // R17 planner
     run(QStringLiteral("check_workflow"));
     for (const QJsonValue& v : doc_.workflow()["plan"].toObject()["links"].toObject()) {
-      QCOMPARE(v.toObject()["representation"].toString(), QStringLiteral("R"));  // only R runs yet
+      QCOMPARE(v.toObject()["representation"].toString(), QStringLiteral("R"));  // "auto": rays
     }
     run(QStringLiteral("run_workflow"));
     const auto& items = results_.sets().back().items;
     QVERIFY(!items.empty());
     QCOMPARE(items[0].kind, results::ResultItem::Kind::Image);
     QVERIFY(items[0].image->description.contains(QStringLiteral("coherence group")));
+    QVERIFY(items[0].name.contains(QStringLiteral("rays")));
+
+    // field tracing (RTT-Fusion R18b): the link into the detector as H, a small window around
+    // the focus – the rays meet in less than a pixel, the field shows the focal spot
+    QProcess ft;
+    ft.start(python_, {QStringLiteral("-c"), QStringLiteral("import fieldtracing")});
+    if (!ft.waitForFinished(30000) || ft.exitCode() != 0) QSKIP("fieldtracing not installed in the plugin Python");
+    QJsonObject fwf = doc_.workflow();
+    QJsonObject graph = fwf["graph"].toObject();
+    QJsonArray links = graph["links"].toArray();
+    QString det_id;
+    for (const QJsonValue& n : graph["nodes"].toArray()) {
+      if (n.toObject()["type"].toString() == QStringLiteral("rtt.detector")) det_id = n.toObject()["id"].toString();
+    }
+    for (int k = 0; k < links.size(); ++k) {
+      QJsonObject l = links[k].toObject();
+      if (l["to"].toArray()[0].toString() == det_id) l["transport"] = QStringLiteral("H");
+      links[k] = l;
+    }
+    graph["links"] = links;
+    fwf["graph"] = graph;
+    doc_.setWorkflow(fwf);
+    params_.insert(QStringLiteral("workflow_window"), 0.02);
+    params_.insert(QStringLiteral("workflow_pixels"), 32);
+    run(QStringLiteral("check_workflow"));
+    bool planned_h = false;
+    for (const QJsonValue& v : doc_.workflow()["plan"].toObject()["links"].toObject()) {
+      planned_h = planned_h || v.toObject()["representation"].toString() == QStringLiteral("H");
+    }
+    QVERIFY(planned_h);
+    run(QStringLiteral("run_workflow"));
+    const auto& field_items = results_.sets().back().items;
+    QVERIFY(!field_items.empty());
+    QVERIFY(field_items[0].name.contains(QStringLiteral("field")));
+    const auto& values = field_items[0].image->values;
+    QVERIFY(*std::max_element(values.begin(), values.end()) > 0.0);
   }
 
   void save() {
