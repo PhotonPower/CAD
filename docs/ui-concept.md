@@ -82,7 +82,11 @@ cursor with the wheel, pinch or Cmd + two-finger scroll; zoom extents with `Z` `
 double-click middle or two-finger double tap; zoom selected (the selected blocks) with `Z` `S` or
 the context menu. While the window has the focus these keys act on it, not on the CAD views. It
 opens when a plugin sets a workflow (also again after it was closed) and from *View → Node
-workflow*.
+workflow*. Right-click on a block: *Parameters…* (also a double-click) edits the
+block's parameters in a dialog generated from its type, *Replace with* exchanges it for another
+type and keeps its links (each linked socket moves to the socket of the same name, else to the
+only one of the same direction and kind – e.g. the sample mirror of a Linnik becomes a
+`fusion.grating` sample with its Jones table).
 
 ## Selection (M3)
 

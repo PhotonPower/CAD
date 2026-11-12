@@ -599,6 +599,20 @@ class RaytracerPlugin(Plugin):
         return out
 
     @staticmethod
+    def _registry(fg):
+        """Block types of the workflow: the built-in ones and, with RTT-Fusion R19, the grating
+        (a sample from a FourierGrating Jones table). Returns (registry, extra evaluators)."""
+        registry = fg.builtin_registry()
+        extra = {}
+        try:
+            import importlib
+
+            extra = importlib.import_module("rtt_fusion.graph.grating").register(registry)
+        except ImportError:
+            pass
+        return registry, extra
+
+    @staticmethod
     def _available(execute) -> frozenset:
         """Representations the workflow can run: R, and H (fields, RTT-Fusion R18b) with fieldtracing."""
         try:
@@ -621,7 +635,7 @@ class RaytracerPlugin(Plugin):
         fg, _, execute, io, validate = self._fusion()
         system, _ = self._current(ctx)
         graph = fg.graph_from_raytatouille(system)
-        registry = fg.builtin_registry()
+        registry, _ = self._registry(fg)
         # every node with its effective sockets, so the editor needs no type knowledge
         for node in graph.nodes.values():
             if not node.sockets:
@@ -638,7 +652,9 @@ class RaytracerPlugin(Plugin):
         if not wf.get("graph"):
             raise UserError("No node workflow yet – Workflow from system creates one.")
         graph = io.from_dict(wf["graph"])
-        wf["diagnostics"], wf["plan"] = self._checked(fg, execute, validate, graph, fg.builtin_registry())
+        registry, _ = self._registry(fg)
+        wf["types"] = self._catalogue(registry)
+        wf["diagnostics"], wf["plan"] = self._checked(fg, execute, validate, graph, registry)
         ctx.set_workflow(wf)
         diagnostics = wf["diagnostics"]
         n_err = sum(1 for d in diagnostics if d["severity"] == "error")
@@ -657,7 +673,8 @@ class RaytracerPlugin(Plugin):
         if not wf.get("graph"):
             raise UserError("No node workflow yet – Workflow from system creates one.")
         graph = io.from_dict(wf["graph"])
-        registry = fg.builtin_registry()
+        registry, extra = self._registry(fg)
+        evaluators = {**backend_rtt.EVALUATORS, **extra}
         system, _ = self._current(ctx)
         compiled = self._compile(system)
         detectors = [n for n in graph.nodes.values() if n.type_id == "rtt.detector"]
@@ -682,7 +699,7 @@ class RaytracerPlugin(Plugin):
                 node.params["half_size"] = [window, window]
             n = ctx.params["workflow_pixels"]
             pixels = [n, max(1, round(n * hv / hu))] if hu >= hv else [max(1, round(n * hu / hv)), n]
-            ex = execute.Executor(graph, registry, backend_rtt.EVALUATORS,
+            ex = execute.Executor(graph, registry, evaluators,
                                   {"system": system, "compiled": compiled, "materials": self.library,
                                    "rings": rings_for(ctx.params["workflow_rays"]), "pixels": pixels,
                                    "gaussian_waist": float(ctx.params.get("workflow_gaussian_waist", 0.0) or 0.0)},

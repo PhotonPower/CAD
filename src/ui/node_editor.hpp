@@ -50,6 +50,16 @@ class NodeEditor : public QGraphicsView {
   void removeNode(const QString& id);
   void setMuted(const QString& id, bool muted);
   QString addNode(const QString& type, const QPointF& position);
+  /// Exchanges a block for one of `type` and keeps its links: each linked socket moves to the new
+  /// socket of the same name, else to the only one of the same direction and kind (RTT-Fusion
+  /// `replace_block`). Returns false (and changes nothing) if a socket has no unique counterpart.
+  bool replaceNode(const QString& id, const QString& type);
+  /// Types a block can be exchanged for (every linked socket finds a unique counterpart).
+  [[nodiscard]] QStringList replacementsFor(const QString& id) const;
+  /// Sets parameters of a block (merged into its "params").
+  void setParams(const QString& id, const QJsonObject& params);
+  /// Dialog with the type's parameters (number, integer, boolean, text, file, numbers, point).
+  void editParams(const QString& id);
   /// The item of a block (its pen marks problems; tooltip: type, parameters, problems).
   [[nodiscard]] QGraphicsRectItem* nodeItem(const QString& id) const;
   [[nodiscard]] int linkCount() const;

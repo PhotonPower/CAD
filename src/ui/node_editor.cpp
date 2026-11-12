@@ -1,6 +1,20 @@
 #include "ui/node_editor.hpp"
 
 #include <QApplication>
+#include <QCheckBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QDoubleValidator>
+#include <QFileDialog>
+#include <QFormLayout>
+#include <QHBoxLayout>
+#include <QJsonDocument>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QSpinBox>
+#include <functional>
+#include <optional>
 #include <QContextMenuEvent>
 #include <QGraphicsEllipseItem>
 #include <QGraphicsPathItem>
@@ -582,6 +596,203 @@ void NodeEditor::setMuted(const QString& id, bool muted) {
   setGraph(g);
 }
 
+namespace {
+QJsonObject type_of(const QJsonObject& workflow, const QString& type) {
+  for (const QJsonValue& t : workflow.value(QStringLiteral("types")).toArray()) {
+    if (t.toObject()["type"].toString() == type) return t.toObject();
+  }
+  return {};
+}
+
+QJsonObject node_of(const QJsonObject& graph, const QString& id) {
+  for (const QJsonValue& v : graph["nodes"].toArray()) {
+    if (v.toObject()["id"].toString() == id) return v.toObject();
+  }
+  return {};
+}
+
+/// Socket map old -> new for the linked sockets of `id`; empty optional if not unique.
+std::optional<QHash<QString, QString>> socket_map(const QJsonArray& old_sockets, const QJsonArray& new_sockets,
+                                                  const QSet<QString>& linked) {
+  QHash<QString, QString> map;
+  QSet<QString> names;
+  for (const QJsonValue& s : new_sockets) names.insert(s.toObject()["name"].toString());
+  for (const QJsonValue& v : old_sockets) {
+    const QJsonObject o = v.toObject();
+    const QString name = o["name"].toString();
+    if (!linked.contains(name)) continue;
+    if (names.contains(name)) {
+      map[name] = name;
+      continue;
+    }
+    QStringList fit;
+    for (const QJsonValue& s : new_sockets) {
+      const QJsonObject n = s.toObject();
+      if (n["direction"] == o["direction"] && n["kind"] == o["kind"]) fit << n["name"].toString();
+    }
+    if (fit.size() != 1) return std::nullopt;
+    map[name] = fit.front();
+  }
+  QSet<QString> targets(map.begin(), map.end());
+  if (targets.size() != map.size()) return std::nullopt;
+  return map;
+}
+}  // namespace
+
+QStringList NodeEditor::replacementsFor(const QString& id) const {
+  const QJsonObject g = graph();
+  const QJsonObject old = node_of(g, id);
+  QSet<QString> linked;
+  for (const QJsonValue& v : g["links"].toArray()) {
+    const QJsonObject l = v.toObject();
+    if (l["from"].toArray().at(0).toString() == id) linked.insert(l["from"].toArray().at(1).toString());
+    if (l["to"].toArray().at(0).toString() == id) linked.insert(l["to"].toArray().at(1).toString());
+  }
+  QStringList out;
+  for (const QJsonValue& v : workflow_.value(QStringLiteral("types")).toArray()) {
+    const QJsonObject t = v.toObject();
+    if (t["type"].toString() == old["type"].toString()) continue;
+    if (t["sockets"].toArray().isEmpty()) continue;  // types with their own sockets (imported)
+    if (socket_map(socketsOf(old), t["sockets"].toArray(), linked)) out << t["type"].toString();
+  }
+  return out;
+}
+
+bool NodeEditor::replaceNode(const QString& id, const QString& type) {
+  QJsonObject g = graph();
+  const QJsonObject old = node_of(g, id);
+  const QJsonObject t = type_of(workflow_, type);
+  if (old.isEmpty() || t.isEmpty()) return false;
+  QSet<QString> linked;
+  for (const QJsonValue& v : g["links"].toArray()) {
+    const QJsonObject l = v.toObject();
+    if (l["from"].toArray().at(0).toString() == id) linked.insert(l["from"].toArray().at(1).toString());
+    if (l["to"].toArray().at(0).toString() == id) linked.insert(l["to"].toArray().at(1).toString());
+  }
+  const auto map = socket_map(socketsOf(old), t["sockets"].toArray(), linked);
+  if (!map) return false;
+  QJsonObject node{{"id", id}, {"type", type}, {"position", old["position"]}};
+  if (old.contains("name")) node["name"] = old["name"];
+  QJsonObject params;
+  for (const QJsonValue& p : t["params"].toArray()) params[p.toObject()["name"].toString()] = p.toObject()["default"];
+  if (!params.isEmpty()) node["params"] = params;
+  QJsonArray nodes = g["nodes"].toArray();
+  for (int k = 0; k < nodes.size(); ++k) {
+    if (nodes[k].toObject()["id"].toString() == id) nodes[k] = node;
+  }
+  QJsonArray links = g["links"].toArray();
+  for (int k = 0; k < links.size(); ++k) {
+    QJsonObject l = links[k].toObject();
+    for (const char* end : {"from", "to"}) {
+      QJsonArray e = l[QLatin1String(end)].toArray();
+      if (e.at(0).toString() == id) e[1] = map->value(e.at(1).toString(), e.at(1).toString());
+      l[QLatin1String(end)] = e;
+    }
+    links[k] = l;
+  }
+  g["nodes"] = nodes;
+  g["links"] = links;
+  setGraph(g);
+  return true;
+}
+
+void NodeEditor::setParams(const QString& id, const QJsonObject& params) {
+  QJsonObject g = graph();
+  QJsonArray nodes = g["nodes"].toArray();
+  for (int k = 0; k < nodes.size(); ++k) {
+    QJsonObject n = nodes[k].toObject();
+    if (n["id"].toString() != id) continue;
+    QJsonObject p = n["params"].toObject();
+    for (auto it = params.begin(); it != params.end(); ++it) p[it.key()] = it.value();
+    n["params"] = p;
+    nodes[k] = n;
+  }
+  g["nodes"] = nodes;
+  setGraph(g);
+}
+
+void NodeEditor::editParams(const QString& id) {
+  const QJsonObject node = node_of(graph(), id);
+  const QJsonObject t = type_of(workflow_, node["type"].toString());
+  const QJsonArray specs = t["params"].toArray();
+  QDialog dialog(this);
+  dialog.setWindowTitle(tr("Parameters of %1").arg(node["name"].toString(id)));
+  auto* form = new QFormLayout(&dialog);
+  const QJsonObject current = node["params"].toObject();
+  std::vector<std::function<void(QJsonObject&)>> readers;
+  for (const QJsonValue& v : specs) {
+    const QJsonObject p = v.toObject();
+    const QString name = p["name"].toString();
+    const QString type = p["type"].toString();
+    const QJsonValue value = current.contains(name) ? current[name] : p["default"];
+    QString label = p["label"].toString(name);
+    if (!p["unit"].toString().isEmpty()) label += QStringLiteral(" (%1)").arg(p["unit"].toString());
+    QWidget* editor = nullptr;
+    if (type == QLatin1String("boolean")) {
+      auto* box = new QCheckBox(&dialog);
+      box->setChecked(value.toBool());
+      readers.emplace_back([box, name](QJsonObject& o) { o[name] = box->isChecked(); });
+      editor = box;
+    } else if (type == QLatin1String("integer")) {
+      auto* spin = new QSpinBox(&dialog);
+      spin->setRange(p.contains("minimum") ? p["minimum"].toInt() : -1000000000,
+                     p.contains("maximum") ? p["maximum"].toInt() : 1000000000);
+      spin->setValue(value.toInt());
+      readers.emplace_back([spin, name](QJsonObject& o) { o[name] = spin->value(); });
+      editor = spin;
+    } else if (type == QLatin1String("number")) {
+      auto* line = new QLineEdit(QString::number(value.toDouble(), 'g', 12), &dialog);
+      line->setValidator(new QDoubleValidator(line));
+      readers.emplace_back([line, name](QJsonObject& o) { o[name] = line->text().toDouble(); });
+      editor = line;
+    } else if (type == QLatin1String("numbers") || type == QLatin1String("point")) {
+      QStringList parts;
+      for (const QJsonValue& x : value.toArray()) {
+        parts << (x.isArray() ? QString::fromUtf8(QJsonDocument(x.toArray()).toJson(QJsonDocument::Compact))
+                              : QString::number(x.toDouble(), 'g', 12));
+      }
+      auto* line = new QLineEdit(parts.join(QStringLiteral(", ")), &dialog);
+      line->setPlaceholderText(tr("comma-separated numbers"));
+      readers.emplace_back([line, name](QJsonObject& o) {
+        const QJsonDocument doc = QJsonDocument::fromJson("[" + line->text().toUtf8() + "]");
+        o[name] = doc.isArray() ? doc.array() : QJsonArray{};
+      });
+      editor = line;
+    } else if (type == QLatin1String("file")) {
+      auto* row = new QWidget(&dialog);
+      auto* h = new QHBoxLayout(row);
+      h->setContentsMargins(0, 0, 0, 0);
+      auto* line = new QLineEdit(value.toString(), row);
+      auto* browse = new QPushButton(tr("…"), row);
+      h->addWidget(line, 1);
+      h->addWidget(browse);
+      connect(browse, &QPushButton::clicked, &dialog, [line, &dialog] {
+        const QString f = QFileDialog::getOpenFileName(&dialog, tr("Choose a file"), line->text());
+        if (!f.isEmpty()) line->setText(f);
+      });
+      readers.emplace_back([line, name](QJsonObject& o) { o[name] = line->text(); });
+      editor = row;
+    } else {
+      auto* line = new QLineEdit(value.isString() ? value.toString()
+                                                  : QString::fromUtf8(QJsonDocument(QJsonArray{value}).toJson(QJsonDocument::Compact)).mid(1).chopped(1),
+                                 &dialog);
+      readers.emplace_back([line, name](QJsonObject& o) { o[name] = line->text(); });
+      editor = line;
+    }
+    editor->setToolTip(p["description"].toString());
+    form->addRow(label, editor);
+  }
+  if (specs.isEmpty()) form->addRow(new QLabel(tr("This block has no parameters."), &dialog));
+  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+  connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+  form->addRow(buttons);
+  if (dialog.exec() != QDialog::Accepted || specs.isEmpty()) return;
+  QJsonObject params;
+  for (auto& read : readers) read(params);
+  setParams(id, params);
+}
+
 QString NodeEditor::addNode(const QString& type, const QPointF& position) {
   QJsonObject g = graph();
   QSet<QString> ids;
@@ -705,6 +916,16 @@ void NodeEditor::mouseDoubleClickEvent(QMouseEvent* event) {
     fitAll();
     return;
   }
+  if (event->button() == Qt::LeftButton) {
+    for (QGraphicsItem* item : items(event->position().toPoint())) {
+      for (QGraphicsItem* p = item; p != nullptr; p = p->parentItem()) {
+        if (auto* node = dynamic_cast<NodeItem*>(p)) {
+          editParams(node->id());
+          return;
+        }
+      }
+    }
+  }
   QGraphicsView::mouseDoubleClickEvent(event);
 }
 
@@ -814,6 +1035,14 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
       if (v.toObject()["id"].toString() == id) muted = v.toObject()["muted"].toBool();
     }
     menu.addAction(muted ? tr("Unmute") : tr("Mute (bypass)"), this, [this, id, muted] { setMuted(id, !muted); });
+    menu.addAction(tr("Parameters…"), this, [this, id] { editParams(id); });
+    QMenu* replace = menu.addMenu(tr("Replace with"));
+    for (const QString& type : replacementsFor(id)) {
+      QAction* a = replace->addAction(type, this, [this, id, type] { replaceNode(id, type); });
+      a->setToolTip(type_of(workflow_, type)["description"].toString());
+    }
+    replace->setEnabled(!replace->isEmpty());
+    replace->setToolTipsVisible(true);
     menu.addAction(tr("Delete block"), this, [this, id] { removeNode(id); });
     menu.addSeparator();
     menu.addAction(tr("Zoom selected"), this, [this, node] {

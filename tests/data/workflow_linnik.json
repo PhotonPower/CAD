@@ -848,6 +848,75 @@
    ]
   },
   {
+   "type": "fusion.grating",
+   "category": "splitter",
+   "description": "Periodic sample (FourierGrating table): diffraction orders as channels",
+   "sockets": [
+    {
+     "name": "in",
+     "direction": "in",
+     "kind": "light",
+     "accepts": [
+      "H",
+      "R"
+     ]
+    },
+    {
+     "name": "out",
+     "direction": "out",
+     "kind": "light",
+     "accepts": [
+      "H",
+      "R"
+     ],
+     "label": "orders"
+    }
+   ],
+   "params": [
+    {
+     "name": "table",
+     "type": "file",
+     "default": "",
+     "description": "Jones table (raytatouille-result file)"
+    },
+    {
+     "name": "orders",
+     "type": "numbers",
+     "default": [],
+     "description": "orders to pass on; empty: all of the table"
+    },
+    {
+     "name": "point",
+     "type": "point",
+     "default": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "unit": "mm"
+    },
+    {
+     "name": "normal",
+     "type": "point",
+     "default": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "name": "grating_vector",
+     "type": "point",
+     "default": [
+      1.0,
+      0.0,
+      0.0
+     ],
+     "description": "local x, ⟂ grooves"
+    }
+   ]
+  },
+  {
    "type": "rtt.detector",
    "category": "detector",
    "description": "Detector / camera: amplitudes within, intensities across coherence groups",
@@ -887,6 +956,13 @@
      "label": "pixels (long side)",
      "min": 16,
      "max": 8192
+    },
+    {
+     "name": "half_size",
+     "type": "numbers",
+     "default": [],
+     "unit": "mm",
+     "description": "image window [hu, hv]; empty: the detector aperture"
     }
    ]
   },
