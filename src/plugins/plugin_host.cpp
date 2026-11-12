@@ -226,7 +226,8 @@ void PluginHost::handle(const QJsonObject& msg) {
     actions_.clear();
     for (const QJsonValue& a : msg["actions"].toArray()) {
       const QJsonObject o = a.toObject();
-      actions_.push_back({o["id"].toString(), o["label"].toString(), o["description"].toString()});
+      actions_.push_back({o["id"].toString(), o["label"].toString(), o["description"].toString(),
+                          o["on_workflow_edit"].toBool()});
     }
     params_ = msg["params"].toArray();
     ready_ = true;

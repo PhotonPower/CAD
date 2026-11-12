@@ -7,11 +7,16 @@ from typing import Callable
 API_VERSION = 1
 
 
-def action(label: str, *, description: str = "") -> Callable:
-    """Marks a method ``f(self, ctx)`` as an action shown in CAD (menu / tool column)."""
+def action(label: str, *, description: str = "", on_workflow_edit: bool = False) -> Callable:
+    """Marks a method ``f(self, ctx)`` as an action shown in CAD (menu / tool column).
+
+    ``on_workflow_edit``: CAD also runs it, quietly, shortly after the node workflow was edited
+    (e.g. to draw what the edit changed); it should be quick and raise nothing."""
 
     def mark(f: Callable) -> Callable:
         f._nfcad_action = {"label": label, "description": description}
+        if on_workflow_edit:
+            f._nfcad_action["on_workflow_edit"] = True
         return f
 
     return mark

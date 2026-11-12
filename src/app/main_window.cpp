@@ -438,6 +438,21 @@ void MainWindow::createPanels() {
   connect(doc_, &document::Document::workflowChanged, this, [show_workflow] { show_workflow(false); });
   connect(doc_, &document::Document::documentReset, this, [show_workflow] { show_workflow(true); });
   connect(node_editor_, &ui::NodeEditor::edited, doc_, &document::Document::setWorkflow);
+  // plugins that follow the workflow (e.g. the Raytracer draws what an edit changed): shortly
+  // after the last edit, if the plugin runs and is idle
+  auto* follow = new QTimer(this);
+  follow->setSingleShot(true);
+  follow->setInterval(600);
+  connect(node_editor_, &ui::NodeEditor::edited, follow, qOverload<>(&QTimer::start));
+  connect(follow, &QTimer::timeout, this, [this] {
+    if (plugins_ == nullptr) return;
+    for (const auto& host : plugins_->plugins()) {
+      if (!host->running() || !host->ready() || host->activeJob()) continue;
+      for (const auto& a : host->actions()) {
+        if (a.on_workflow_edit) plugins_->run(host.get(), a.id, doc_->pluginParameters(host->manifest().id));
+      }
+    }
+  });
   // the block a plugin computes now
   connect(doc_, &document::Document::workflowRunning, this, [this, workflow](const QString& node) {
     node_editor_->setRunning(node);
