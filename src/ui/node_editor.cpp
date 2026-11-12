@@ -1636,13 +1636,13 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
   LinkItem* link = nullptr;
   if (const int c = connectionAt(view_pos); c >= 0) {  // a connection of two ports (R24)
     const QJsonArray ends = graph()["connections"].toArray().at(c).toObject()["ports"].toArray();
-    auto name = [this](const QJsonValue& end) {
+    auto block_name = [this](const QJsonValue& end) {
       const QString id = end.toArray().at(0).toString();
       return node_of(graph(), id)["name"].toString(id);
     };
     QMenu* both = menu.addMenu(tr("Transport (both directions)"));
-    QMenu* forward = menu.addMenu(tr("Transport %1 → %2").arg(name(ends.at(0)), name(ends.at(1))));
-    QMenu* back = menu.addMenu(tr("Transport %1 → %2").arg(name(ends.at(1)), name(ends.at(0))));
+    QMenu* forward = menu.addMenu(tr("Transport %1 → %2").arg(block_name(ends.at(0)), block_name(ends.at(1))));
+    QMenu* back = menu.addMenu(tr("Transport %1 → %2").arg(block_name(ends.at(1)), block_name(ends.at(0))));
     for (const char* t : {"auto", "R", "H", "G", "S", "T", "P"}) {
       const QString name = QString::fromLatin1(t);
       both->addAction(name, this, [this, c, name] { setConnectionTransport(c, QStringLiteral("both"), name); });
