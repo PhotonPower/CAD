@@ -202,13 +202,13 @@ void MainWindow::rebuildPluginUi() {
     a->setChecked(!hidden.contains(id));
     a->setToolTip(tr("Tool box group and Plugin panel; the actions stay in this menu"));
     connect(a, &QAction::toggled, this, [this, id](bool on) {
-      QSet<QString> h = hiddenPlugins();
+      QSet<QString> ids = hiddenPlugins();
       if (on) {
-        h.remove(id);
+        ids.remove(id);
       } else {
-        h.insert(id);
+        ids.insert(id);
       }
-      setHiddenPlugins(h);
+      setHiddenPlugins(ids);
     });
   }
   if (show->isEmpty()) show->addAction(tr("(no plugins)"))->setEnabled(false);
