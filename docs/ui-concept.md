@@ -125,8 +125,9 @@ values you change are written back (a value with more digits than shown stays ex
 
 Once the workflow holds the system it is the truth for the Raytracer plugin: *Run workflow*,
 *Trace rays*, *Camera image* and *Optimise* compute with the system the workflow makes, and the
-CAD view shows it – NURBS derived from the exact data, drawn again before a computation when the
-workflow changed, or at once with *Update drawing*. *Optimise* writes its result into the blocks;
+CAD view shows it – NURBS derived from the exact data, drawn again shortly after every edit of
+the workflow (a plugin action marked `on_workflow_edit`, run by CAD when the plugin is idle; an
+unfinished value just waits for the next edit), before a computation, or with *Update drawing*. *Optimise* writes its result into the blocks;
 a plugin run that changes the workflow is undone together with its drawing (one undo step).
 *Save system* exports the workflow's system as .rtt.json. Without a workflow the plugin works on
 the loaded file as before.
