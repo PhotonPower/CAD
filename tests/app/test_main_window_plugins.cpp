@@ -1,3 +1,6 @@
+#include <QDockWidget>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QLabel>
 #include <QMenuBar>
 #include <QPlainTextEdit>
@@ -28,6 +31,34 @@ class TestMainWindowPlugins : public QObject {
     doc->addEntities({nfcad::document::make_entity(nf::Vec3{1, 2, 3}, QStringLiteral("p"))}, QStringLiteral("add"));
     QVERIFY(doc->isModified());
     w.reset();  // must not crash
+  }
+
+  void workflowWindowComesBack() {
+    // the node workflow dock opens when a plugin sets a workflow, and again after the user
+    // closed it, even if the workflow did not change ("Workflow from system" twice)
+    QStandardPaths::setTestModeEnabled(true);
+    nfcad::app::MainWindow w;
+    w.setAttribute(Qt::WA_DontShowOnScreen);
+    w.show();
+    auto* doc = w.findChild<nfcad::document::Document*>();
+    auto* dock = w.findChild<QDockWidget*>(QStringLiteral("workflowDock"));
+    QVERIFY(doc != nullptr && dock != nullptr);
+    QVERIFY(!dock->isVisible());
+    const QJsonObject wf{{"graph", QJsonObject{{"format", "rtt-fusion-graph"}, {"version", 1},
+                                               {"nodes", QJsonArray{QJsonObject{{"id", "a"}, {"type", "rtt.source"}}}},
+                                               {"links", QJsonArray{}}}}};
+    doc->setWorkflow(wf);
+    doc->requestWorkflowShown();
+    QVERIFY(dock->isVisible());
+    dock->close();
+    QVERIFY(!dock->isVisible());
+    doc->setWorkflow(wf);  // unchanged: no workflowChanged
+    doc->requestWorkflowShown();
+    QVERIFY(dock->isVisible());
+    // the View menu reopens it as well
+    dock->close();
+    dock->toggleViewAction()->trigger();
+    QVERIFY(dock->isVisible());
   }
 
   void demoPluginFromTheMenu() {

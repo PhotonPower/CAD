@@ -65,6 +65,8 @@ class Viewport : public QRhiWidget {
 
   /// Shows all visible geometry (a default region around the origin if there is none).
   void zoomExtents();
+  /// Fits the selected entities and sub-elements into the view (zoom extents without selection).
+  void zoomSelected();
 
  signals:
   void activated(nfcad::viewport::Viewport* view);
