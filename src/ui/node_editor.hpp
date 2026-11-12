@@ -6,6 +6,7 @@
 #include <QJsonObject>
 
 class QGraphicsPathItem;
+class QLabel;
 class QGraphicsRectItem;
 
 namespace nfcad::ui {
@@ -98,6 +99,8 @@ class NodeEditor : public QGraphicsView {
   /// Whether a port of a block is drawn on its left side (where the light comes in first).
   [[nodiscard]] bool portOnLeft(const QString& node, const QString& port) const;
   [[nodiscard]] QStringList branchNames() const;
+  /// The steps of a branch at the level shown ([node, port in, port out, channel?]).
+  [[nodiscard]] QJsonArray branchSteps(const QString& name) const;
   /// Highlights a branch in the editor (empty: none).
   void highlightBranch(const QString& name);
   [[nodiscard]] QString highlightedBranch() const { return highlighted_; }
@@ -112,10 +115,36 @@ class NodeEditor : public QGraphicsView {
   [[nodiscard]] bool branchComplete() const;
   /// Adds the recorded branch under `name` (unique, not empty).
   bool finishBranch(const QString& name);
+  /// The channel of a step of a branch ("" removes it): an inner branch of a group, a ghost
+  /// "ghost:<surface>,…" of a Raytatouille section, an order …
+  void setStepChannel(const QString& branch, int step, const QString& channel);
+  /// Suggestions for the channel of a step: "" first, then the inner branches of a group that
+  /// fit the step's ports, or the ghosts at the surfaces of a Raytatouille block.
+  [[nodiscard]] QStringList channelChoices(const QString& branch, int step) const;
+
+  // ---- groups (RTT-Fusion R28)
+  /// The groups the editor shows the inside of, outermost first (empty: the whole model).
+  [[nodiscard]] const QStringList& scope() const { return scope_; }
+  /// Shows the active variant of a group; edits go there.
+  bool enterGroup(const QString& id);
+  /// Back to the level around the group.
+  void leaveGroup();
+  [[nodiscard]] QStringList variants(const QString& id) const;
+  void setVariant(const QString& id, const QString& variant);
+  /// Condensed (plane-wave tables, R29) or resolved into its blocks.
+  void setCondensed(const QString& id, bool condensed);
+  /// Makes a group of blocks: connections across become exported ports, each stretch of a branch
+  /// inside an inner branch (the step through the group names it). Refused (with `why`) for
+  /// sources, detectors and data links across. Returns the group's id or "".
+  QString groupBlocks(const QStringList& ids, const QString& name, QString* why = nullptr);
+  /// Puts the blocks of a group's active variant back in its place.
+  bool ungroup(const QString& id, QString* why = nullptr);
 
  signals:
   void edited(const QJsonObject& workflow);
   void branchesChanged();
+  /// The level shown changed ("" the whole model, else e.g. "objective (variant ideal)").
+  void scopeChanged(const QString& where);
   /// A recorded branch reached a detector: it needs a name (`finishBranch`).
   void branchRecorded();
   void recordingChanged(bool on, const QString& hint);
@@ -140,7 +169,11 @@ class NodeEditor : public QGraphicsView {
   void commit();  ///< writes the graph back into workflow_ and emits `edited`
   [[nodiscard]] QJsonArray socketsOf(const QJsonObject& node) const;
   [[nodiscard]] QString key() const { return modelMode() ? QStringLiteral("model") : QStringLiteral("graph"); }
-  [[nodiscard]] QJsonObject graph() const { return workflow_[key()].toObject(); }
+  /// The level shown: the model, or the active variant of the group in `scope_`.
+  [[nodiscard]] QJsonObject graph() const;
+  /// Writes the level shown back into the workflow.
+  void writeGraph(const QJsonObject& g);
+  void showScope();
   /// Sockets as drawn: the sockets, or with a model the data sockets plus one entry per port.
   [[nodiscard]] QJsonArray shownSockets(const QJsonObject& node) const;
   [[nodiscard]] QJsonArray portsOf(const QJsonObject& node) const;
@@ -176,6 +209,8 @@ class NodeEditor : public QGraphicsView {
   QString highlighted_;
   bool recording_ = false;
   QJsonArray recorded_;  ///< steps [node, port in | null, port out | null]
+  QStringList scope_;
+  QLabel* crumb_ = nullptr;
   /// Marks `seeds` and every block behind them (along links, not along "drive") out of date.
   void invalidate(const QSet<QString>& seeds);  ///< first key of the sequences Z E (extents) and Z S (selected)
 };

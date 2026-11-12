@@ -114,7 +114,19 @@ shows the branches of the model: exactly these are computed (the import makes on
 the system). Selecting one highlights its blocks and connections; *New branch* (also in the
 canvas menu) records one: click the port of a source the light leaves by, then the port it
 leaves each following block by – a mirror is left by the port it came in by – then the
-detector, and name it; Escape cancels. *Delete* removes the selected branch. Old workflows (socket
+detector, and name it; Escape cancels. *Delete* removes the selected branch. Below the branches the **steps** of the selected branch are
+listed (block: port in → port out [channel]); a double-click sets a step's channel, with
+suggestions – the inner branches of a group that fit the step's ports, a ghost
+"ghost:<surface>" at a surface of a Raytatouille block – or any text (an order …).
+
+**Groups** (RTT-Fusion R28): *Group selected blocks…* in a block's context menu makes the
+selected blocks a group: connections across its border become exported ports
+("<block>.<port>"), each stretch of a branch inside it an inner branch that the step through the
+group names (sources, detectors and data links across the border are refused, with the reason).
+A double-click on a group (or *Open group*) shows its inside – the level is named at the top left,
+Escape or *Back out of the group* returns; the branch list then shows the inner branches.
+*Variant* chooses the active variant, *Condensed (plane-wave tables)* switches R29's condensing,
+*Ungroup* puts the blocks back. Recording a branch through a group takes its fitting inner branch. Old workflows (socket
 graphs) still open as before; *Workflow from system* turns them into a model and keeps the
 edits (positions, parameters, replaced blocks with their ports, added blocks and links,
 transports, own branches). *Replace with* moves the connections and branch steps of a block to

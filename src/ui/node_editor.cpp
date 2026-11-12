@@ -13,6 +13,8 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QRegularExpression>
+#include <QMessageBox>
 #include <QVBoxLayout>
 #include <QScrollArea>
 #include <QTabWidget>
@@ -421,6 +423,9 @@ void NodeEditor::pan(const QPointF& delta) {
 
 void NodeEditor::setWorkflow(const QJsonObject& workflow) {
   workflow_ = workflow;
+  if (!modelMode()) scope_.clear();
+  while (!scope_.isEmpty() && graph().isEmpty()) scope_.removeLast();  // the group is gone
+  showScope();
   QJsonObject g = graph();
   if (!g.isEmpty() && !hasPositions(g)) {
     // imported graphs have no layout yet: arrange them (not an edit of the document)
@@ -433,7 +438,7 @@ void NodeEditor::setWorkflow(const QJsonObject& workflow) {
       nodes[k] = n;
     }
     g["nodes"] = nodes;
-    workflow_[key()] = g;
+    writeGraph(g);
   }
   if (!modelMode()) highlighted_.clear();
   rebuild();
@@ -805,7 +810,7 @@ void NodeEditor::setGraph(const QJsonObject& graph) {
       }
     }
   }
-  workflow_[key()] = graph;
+  writeGraph(graph);
   if (modelMode()) {
     if (!states_.isEmpty() && !seeds.isEmpty()) invalidateModel(seeds);
   } else {
@@ -833,7 +838,7 @@ void NodeEditor::commit() {
     nodes[k] = n;
   }
   g["nodes"] = nodes;
-  workflow_[key()] = g;
+  writeGraph(g);
   emit edited(workflow_);
 }
 
@@ -1527,6 +1532,10 @@ void NodeEditor::mouseDoubleClickEvent(QMouseEvent* event) {
             emit displayRequested(node->id(), n["type"].toString(), n["name"].toString(node->id()));
             return;
           }
+          if (n.contains("variants")) {  // a group: show its inside
+            enterGroup(node->id());
+            return;
+          }
           editParams(node->id());
           return;
         }
@@ -1587,6 +1596,10 @@ void NodeEditor::zoomSelected() {
 void NodeEditor::keyPressEvent(QKeyEvent* event) {
   if (event->key() == Qt::Key_Escape && recording_) {
     cancelBranch();
+    return;
+  }
+  if (event->key() == Qt::Key_Escape && !scope_.isEmpty()) {
+    leaveGroup();
     return;
   }
   // zoom extents: Z E (as in the CAD views); Home as well; zoom selected: Z S
@@ -1673,7 +1686,39 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
         emit displayRequested(id, self["type"].toString(), self["name"].toString(id));
       });
     }
+    if (self.contains("variants")) {  // a group (R28)
+      menu.addAction(tr("Open group"), this, [this, id] { enterGroup(id); });
+      QMenu* variant = menu.addMenu(tr("Variant"));
+      for (const QString& v : variants(id)) {
+        QAction* a = variant->addAction(v, this, [this, id, v] { setVariant(id, v); });
+        a->setCheckable(true);
+        a->setChecked(v == self["variant"].toString());
+      }
+      QAction* condensed = menu.addAction(tr("Condensed (plane-wave tables)"), this,
+                                          [this, id, self] { setCondensed(id, !self.contains("condense")); });
+      condensed->setCheckable(true);
+      condensed->setChecked(self.contains("condense"));
+      menu.addAction(tr("Ungroup"), this, [this, id] {
+        QString why;
+        if (!ungroup(id, &why)) QMessageBox::information(this, tr("Ungroup"), why);
+      });
+      menu.addSeparator();
+    }
     menu.addAction(tr("Parameters…"), this, [this, id] { editParams(id); });
+    if (modelMode()) {
+      menu.addAction(tr("Group selected blocks…"), this, [this, id] {
+        QStringList ids;
+        for (QGraphicsItem* item : scene()->selectedItems()) {
+          if (auto* n = dynamic_cast<NodeItem*>(item)) ids << n->id();
+        }
+        if (!ids.contains(id)) ids << id;
+        bool ok = false;
+        const QString name = QInputDialog::getText(this, tr("Group"), tr("Name of the group:"), QLineEdit::Normal, tr("Group"), &ok);
+        if (!ok) return;
+        QString why;
+        if (groupBlocks(ids, name, &why).isEmpty()) QMessageBox::information(this, tr("Group"), why);
+      });
+    }
     QMenu* replace = menu.addMenu(tr("Replace with"));
     for (const QString& type : replacementsFor(id)) {
       QAction* a = replace->addAction(type, this, [this, id, type] { replaceNode(id, type); });
@@ -1712,6 +1757,7 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
     add->setEnabled(!by_category.empty());
     add->setToolTipsVisible(true);
     if (modelMode()) menu.addAction(tr("New branch…"), this, &NodeEditor::beginBranch);
+    if (!scope_.isEmpty()) menu.addAction(tr("Back out of the group"), this, &NodeEditor::leaveGroup);
     menu.addAction(tr("Arrange"), this, &NodeEditor::arrange);
     menu.addAction(tr("Zoom selected"), this, &NodeEditor::zoomSelected)->setEnabled(!scene()->selectedItems().isEmpty());
     menu.addAction(tr("Show all"), this, &NodeEditor::fitAll);
@@ -1722,6 +1768,12 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
 // ------------------------------------------------------------------------------ model (R24)
 
 QJsonArray NodeEditor::portsOf(const QJsonObject& node) const {
+  if (node.contains("variants")) {  // a group: the exported ports of its active variant
+    QJsonArray out;
+    const QJsonObject body = node["variants"].toObject()[node["variant"].toString()].toObject();
+    for (const QString& p : body["ports"].toObject().keys()) out.append(QJsonObject{{"name", p}, {"in", p}, {"out", p}});
+    return out;
+  }
   if (node.contains("ports") && !node["ports"].toArray().isEmpty()) return node["ports"].toArray();
   return type_of(workflow_, node["type"].toString())["ports"].toArray();
 }
@@ -1735,6 +1787,7 @@ QString NodeEditor::portOfSocket(const QJsonObject& node, const QString& socket)
 }
 
 QString NodeEditor::categoryOf(const QString& node) const {
+  if (node_of(graph(), node).contains("variants")) return QStringLiteral("group");
   const QString type = node_of(graph(), node)["type"].toString();
   const QString c = type_of(workflow_, type)["category"].toString();
   return c.isEmpty() ? type_category(type) : c;
@@ -1853,6 +1906,13 @@ void NodeEditor::setConnectionTransport(int index, const QString& direction, con
   setGraph(g);
 }
 
+QJsonArray NodeEditor::branchSteps(const QString& name) const {
+  for (const QJsonValue& v : graph()["branches"].toArray()) {
+    if (v.toObject()["name"].toString() == name) return v.toObject()["steps"].toArray();
+  }
+  return {};
+}
+
 QStringList NodeEditor::branchNames() const {
   QStringList out;
   for (const QJsonValue& v : graph()["branches"].toArray()) out << v.toObject()["name"].toString();
@@ -1932,7 +1992,24 @@ bool NodeEditor::recordPort(const QString& node, const QString& port) {
     const QJsonArray last = recorded_.last().toArray();
     const QJsonArray next = other_end(graph(), last.at(0).toString(), last.at(2).toString());
     if (next.isEmpty() || next.at(0).toString() != node) return false;  // not where the light goes
-    recorded_.append(QJsonArray{node, next.at(1), port});
+    QJsonArray step{node, next.at(1), port};
+    if (node_of(graph(), node).contains("variants")) {  // through a group: its inner branch
+      const QJsonObject n = node_of(graph(), node);
+      const QJsonObject body = n["variants"].toObject()[n["variant"].toString()].toObject();
+      const QJsonObject exported = body["ports"].toObject();
+      for (const QJsonValue& b : body["branches"].toArray()) {
+        const QJsonArray steps = b.toObject()["steps"].toArray();
+        if (steps.isEmpty()) continue;
+        const QJsonArray inner_first = steps.first().toArray();
+        const QJsonArray inner_last = steps.last().toArray();
+        if (QJsonArray{inner_first.at(0), inner_first.at(1)} == exported[next.at(1).toString()].toArray() &&
+            QJsonArray{inner_last.at(0), inner_last.at(2)} == exported[port].toArray()) {
+          step.append(b.toObject()["name"]);
+          break;
+        }
+      }
+    }
+    recorded_.append(step);
   }
   rebuild();
   recordingHint();
@@ -2029,6 +2106,422 @@ QHash<QString, QPointF> NodeEditor::layoutModel(const QJsonObject& model) const 
     const int c = column.value(id, 0);
     const int r = rows[c]++;
     out[id] = QPointF(c * (kWidth + 70.0), r * 130.0);
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------------------ groups (R28)
+
+namespace {
+/// The active variant's body of group `id` in `model` (nodes, connections, links, branches,
+/// ports, params).
+QJsonObject body_of(const QJsonObject& model, const QString& id) {
+  const QJsonObject n = node_of(model, id);
+  return n["variants"].toObject()[n["variant"].toString()].toObject();
+}
+
+QJsonObject with_body(QJsonObject model, const QString& id, const QJsonObject& body) {
+  QJsonArray nodes = model["nodes"].toArray();
+  for (int k = 0; k < nodes.size(); ++k) {
+    QJsonObject n = nodes[k].toObject();
+    if (n["id"].toString() != id) continue;
+    QJsonObject variants = n["variants"].toObject();
+    variants[n["variant"].toString()] = body;
+    n["variants"] = variants;
+    nodes[k] = n;
+  }
+  model["nodes"] = nodes;
+  return model;
+}
+
+QJsonObject written(const QJsonObject& model, const QStringList& scope, const QJsonObject& g, int k = 0) {
+  if (k == scope.size()) return g;
+  return with_body(model, scope[k], written(body_of(model, scope[k]), scope, g, k + 1));
+}
+}  // namespace
+
+QJsonObject NodeEditor::graph() const {
+  QJsonObject g = workflow_[key()].toObject();
+  for (const QString& id : scope_) {
+    if (!node_of(g, id).contains("variants")) return {};
+    g = body_of(g, id);
+  }
+  return g;
+}
+
+void NodeEditor::writeGraph(const QJsonObject& g) {
+  workflow_[key()] = written(workflow_[key()].toObject(), scope_, g);
+}
+
+void NodeEditor::showScope() {
+  if (crumb_ == nullptr) {
+    crumb_ = new QLabel(viewport());
+    crumb_->setStyleSheet(QStringLiteral("QLabel { background: rgba(60, 60, 70, 210); color: #e6e6e6; padding: 3px 7px; border-radius: 3px; }"));
+    crumb_->move(8, 8);
+  }
+  QStringList parts{tr("Workflow")};
+  QJsonObject level = workflow_[key()].toObject();
+  for (const QString& id : scope_) {
+    const QJsonObject n = node_of(level, id);
+    parts << QStringLiteral("%1 (%2)").arg(n["name"].toString(id), n["variant"].toString());
+    level = body_of(level, id);
+  }
+  crumb_->setText(parts.join(QStringLiteral("  ▸  ")) + (scope_.isEmpty() ? QString() : tr("   – Esc: back")));
+  crumb_->adjustSize();
+  crumb_->setVisible(!scope_.isEmpty());
+  emit scopeChanged(scope_.isEmpty() ? QString() : parts.mid(1).join(QStringLiteral(" ▸ ")));
+}
+
+bool NodeEditor::enterGroup(const QString& id) {
+  if (!modelMode() || !node_of(graph(), id).contains("variants")) return false;
+  scope_ << id;
+  highlighted_.clear();
+  cancelBranch();
+  showScope();
+  QJsonObject g = graph();
+  if (!g.isEmpty() && !hasPositions(g)) {  // a group from a file without layout
+    const QHash<QString, QPointF> pos = layoutModel(g);
+    QJsonArray nodes = g["nodes"].toArray();
+    for (int k = 0; k < nodes.size(); ++k) {
+      QJsonObject n = nodes[k].toObject();
+      const QPointF p = pos.value(n["id"].toString());
+      n["position"] = QJsonArray{p.x(), p.y()};
+      nodes[k] = n;
+    }
+    g["nodes"] = nodes;
+    writeGraph(g);
+  }
+  rebuild();
+  emit branchesChanged();
+  fitAll();
+  return true;
+}
+
+void NodeEditor::leaveGroup() {
+  if (scope_.isEmpty()) return;
+  scope_.removeLast();
+  highlighted_.clear();
+  cancelBranch();
+  showScope();
+  rebuild();
+  emit branchesChanged();
+  fitAll();
+}
+
+QStringList NodeEditor::variants(const QString& id) const {
+  return node_of(graph(), id)["variants"].toObject().keys();
+}
+
+void NodeEditor::setVariant(const QString& id, const QString& variant) {
+  QJsonObject g = graph();
+  QJsonArray nodes = g["nodes"].toArray();
+  for (int k = 0; k < nodes.size(); ++k) {
+    QJsonObject n = nodes[k].toObject();
+    if (n["id"].toString() != id || !n["variants"].toObject().contains(variant)) continue;
+    n["variant"] = variant;
+    nodes[k] = n;
+  }
+  g["nodes"] = nodes;
+  setGraph(g);
+}
+
+void NodeEditor::setCondensed(const QString& id, bool condensed) {
+  QJsonObject g = graph();
+  QJsonArray nodes = g["nodes"].toArray();
+  for (int k = 0; k < nodes.size(); ++k) {
+    QJsonObject n = nodes[k].toObject();
+    if (n["id"].toString() != id) continue;
+    if (condensed) {
+      n["condense"] = QJsonObject{{"sigma_max", 0.2}, {"count", 5}};
+    } else {
+      n.remove(QStringLiteral("condense"));
+    }
+    nodes[k] = n;
+  }
+  g["nodes"] = nodes;
+  setGraph(g);
+}
+
+QString NodeEditor::groupBlocks(const QStringList& ids, const QString& name, QString* why) {
+  auto refuse = [why](const QString& text) {
+    if (why != nullptr) *why = text;
+    return QString();
+  };
+  if (!modelMode() || ids.isEmpty()) return refuse(tr("Select blocks of a model first."));
+  const QJsonObject g = graph();
+  const QSet<QString> inside(ids.begin(), ids.end());
+  for (const QString& id : ids) {
+    const QString c = categoryOf(id);
+    if (c == QLatin1String("source") || c == QLatin1String("detector")) {
+      return refuse(tr("%1 is a source or a detector: branches begin and end outside a group.").arg(id));
+    }
+  }
+  for (const QJsonValue& v : g["links"].toArray()) {
+    const QJsonObject l = v.toObject();
+    const bool a = inside.contains(l["from"].toArray().at(0).toString());
+    const bool b = inside.contains(l["to"].toArray().at(0).toString());
+    if (a != b) {
+      return refuse(tr("The data link %1.%2 → %3.%4 crosses the group's border; group the blocks it joins too, or remove it.")
+                        .arg(l["from"].toArray().at(0).toString(), l["from"].toArray().at(1).toString(),
+                             l["to"].toArray().at(0).toString(), l["to"].toArray().at(1).toString()));
+    }
+  }
+  QSet<QString> taken;
+  for (const QJsonValue& v : g["nodes"].toArray()) taken.insert(v.toObject()["id"].toString());
+  QString stem = name.trimmed();
+  stem.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_]+")), QStringLiteral("_"));
+  if (stem.isEmpty()) stem = QStringLiteral("group");
+  QString gid = stem;
+  for (int k = 2; taken.contains(gid); ++k) gid = QStringLiteral("%1_%2").arg(stem).arg(k);
+  // inner blocks (positions relative to their corner), connections and links
+  QJsonObject inner{{"format", "rtt-fusion-graph"}, {"version", 2}};
+  QJsonArray inner_nodes, outer_nodes, inner_conn, outer_conn, inner_links, outer_links;
+  double x0 = 1e300, y0 = 1e300, sx = 0, sy = 0;
+  int count = 0;
+  for (const QJsonValue& v : g["nodes"].toArray()) {
+    const QJsonObject n = v.toObject();
+    if (!inside.contains(n["id"].toString())) continue;
+    const QJsonArray p = n["position"].toArray();
+    x0 = std::min(x0, p.at(0).toDouble());
+    y0 = std::min(y0, p.at(1).toDouble());
+    sx += p.at(0).toDouble();
+    sy += p.at(1).toDouble();
+    ++count;
+  }
+  for (const QJsonValue& v : g["nodes"].toArray()) {
+    QJsonObject n = v.toObject();
+    if (!inside.contains(n["id"].toString())) {
+      outer_nodes.append(n);
+      continue;
+    }
+    const QJsonArray p = n["position"].toArray();
+    n["position"] = QJsonArray{p.at(0).toDouble() - x0, p.at(1).toDouble() - y0};
+    inner_nodes.append(n);
+  }
+  QJsonObject exported;  // "<block>.<port>" -> [block, port]
+  for (const QJsonValue& v : g["connections"].toArray()) {
+    QJsonObject c = v.toObject();
+    QJsonArray ends = c["ports"].toArray();
+    const bool a = inside.contains(ends.at(0).toArray().at(0).toString());
+    const bool b = inside.contains(ends.at(1).toArray().at(0).toString());
+    if (a && b) {
+      inner_conn.append(c);
+    } else if (!a && !b) {
+      outer_conn.append(c);
+    } else {
+      const int k = a ? 0 : 1;
+      const QJsonArray end = ends.at(k).toArray();
+      const QString port = end.at(0).toString() + QLatin1Char('.') + end.at(1).toString();
+      exported[port] = end;
+      ends[k] = QJsonArray{gid, port};
+      c["ports"] = ends;
+      outer_conn.append(c);
+    }
+  }
+  for (const QJsonValue& v : g["links"].toArray()) {
+    (inside.contains(v.toObject()["from"].toArray().at(0).toString()) ? inner_links : outer_links).append(v);
+  }
+  auto exported_name = [&exported](const QJsonArray& end) {
+    for (auto it = exported.begin(); it != exported.end(); ++it) {
+      if (it.value().toArray() == end) return it.key();
+    }
+    return QString();
+  };
+  // branches: each stretch inside becomes an inner branch, the step through the group names it
+  QJsonArray inner_branches, outer_branches;
+  for (const QJsonValue& v : g["branches"].toArray()) {
+    const QJsonObject b = v.toObject();
+    const QJsonArray steps = b["steps"].toArray();
+    QJsonArray out;
+    int stretch = 0;
+    for (int k = 0; k < steps.size();) {
+      if (!inside.contains(steps[k].toArray().at(0).toString())) {
+        out.append(steps[k++]);
+        continue;
+      }
+      QJsonArray run;
+      while (k < steps.size() && inside.contains(steps[k].toArray().at(0).toString())) run.append(steps[k++]);
+      const QJsonArray first = run.first().toArray();
+      const QJsonArray last = run.last().toArray();
+      const QString entry = exported_name(QJsonArray{first.at(0), first.at(1)});
+      const QString exit = exported_name(QJsonArray{last.at(0), last.at(2)});
+      if (entry.isEmpty() || exit.isEmpty()) {
+        return refuse(tr("Branch %1 does not enter and leave the group through a connection.").arg(b["name"].toString()));
+      }
+      QString inner_name;
+      for (const QJsonValue& ib : inner_branches) {
+        if (ib.toObject()["steps"].toArray() == run) inner_name = ib.toObject()["name"].toString();
+      }
+      if (inner_name.isEmpty()) {
+        inner_name = b["name"].toString() + (stretch > 0 ? QStringLiteral(" %1").arg(stretch + 1) : QString());
+        inner_branches.append(QJsonObject{{"name", inner_name}, {"steps", run}});
+      }
+      ++stretch;
+      out.append(QJsonArray{gid, entry, exit, inner_name});
+    }
+    outer_branches.append(QJsonObject{{"name", b["name"]}, {"steps", out}});
+  }
+  inner["nodes"] = inner_nodes;
+  inner["connections"] = inner_conn;
+  inner["links"] = inner_links;
+  inner["branches"] = inner_branches;
+  inner["ports"] = exported;
+  inner.remove(QStringLiteral("format"));
+  inner.remove(QStringLiteral("version"));
+  outer_nodes.append(QJsonObject{{"id", gid},
+                                 {"type", "group"},
+                                 {"name", name.trimmed().isEmpty() ? gid : name.trimmed()},
+                                 {"position", QJsonArray{std::round(sx / std::max(count, 1)), std::round(sy / std::max(count, 1))}},
+                                 {"variant", "main"},
+                                 {"variants", QJsonObject{{"main", inner}}}});
+  QJsonObject result = g;
+  result["nodes"] = outer_nodes;
+  result["connections"] = outer_conn;
+  result["links"] = outer_links;
+  result["branches"] = outer_branches;
+  setGraph(result);
+  emit branchesChanged();
+  return gid;
+}
+
+bool NodeEditor::ungroup(const QString& id, QString* why) {
+  auto refuse = [why](const QString& text) {
+    if (why != nullptr) *why = text;
+    return false;
+  };
+  const QJsonObject g = graph();
+  const QJsonObject group = node_of(g, id);
+  if (!group.contains("variants")) return refuse(tr("%1 is no group.").arg(id));
+  for (const QJsonValue& v : g["links"].toArray()) {
+    if (v.toObject()["to"].toArray().at(0).toString() == id || v.toObject()["from"].toArray().at(0).toString() == id) {
+      return refuse(tr("A data link goes to the group itself (e.g. its pose input); remove it first."));
+    }
+  }
+  const QJsonObject body = body_of(g, id);
+  const QJsonObject exported = body["ports"].toObject();
+  QSet<QString> taken;
+  for (const QJsonValue& v : g["nodes"].toArray()) {
+    if (v.toObject()["id"].toString() != id) taken.insert(v.toObject()["id"].toString());
+  }
+  QHash<QString, QString> rename;
+  for (const QJsonValue& v : body["nodes"].toArray()) {
+    const QString old = v.toObject()["id"].toString();
+    QString fresh = old;
+    for (int k = 2; taken.contains(fresh); ++k) fresh = QStringLiteral("%1_%2").arg(old).arg(k);
+    taken.insert(fresh);
+    rename[old] = fresh;
+  }
+  auto mapped = [&rename](QJsonArray end) {
+    end[0] = rename.value(end.at(0).toString(), end.at(0).toString());
+    return end;
+  };
+  const QJsonArray at = group["position"].toArray();
+  QJsonArray nodes;
+  for (const QJsonValue& v : g["nodes"].toArray()) {
+    if (v.toObject()["id"].toString() != id) nodes.append(v);
+  }
+  for (const QJsonValue& v : body["nodes"].toArray()) {
+    QJsonObject n = v.toObject();
+    const QJsonArray p = n["position"].toArray();
+    n["id"] = rename.value(n["id"].toString());
+    n["position"] = QJsonArray{at.at(0).toDouble() + p.at(0).toDouble(), at.at(1).toDouble() + p.at(1).toDouble()};
+    nodes.append(n);
+  }
+  QJsonArray connections;
+  for (const QJsonValue& v : body["connections"].toArray()) {
+    QJsonObject c = v.toObject();
+    c["ports"] = QJsonArray{mapped(c["ports"].toArray().at(0).toArray()), mapped(c["ports"].toArray().at(1).toArray())};
+    connections.append(c);
+  }
+  for (const QJsonValue& v : g["connections"].toArray()) {
+    QJsonObject c = v.toObject();
+    QJsonArray ends = c["ports"].toArray();
+    for (int k = 0; k < 2; ++k) {
+      if (ends.at(k).toArray().at(0).toString() == id) ends[k] = mapped(exported[ends.at(k).toArray().at(1).toString()].toArray());
+    }
+    c["ports"] = ends;
+    connections.append(c);
+  }
+  QJsonArray links = g["links"].toArray();
+  for (const QJsonValue& v : body["links"].toArray()) {
+    QJsonObject l = v.toObject();
+    l["from"] = mapped(l["from"].toArray());
+    l["to"] = mapped(l["to"].toArray());
+    links.append(l);
+  }
+  QHash<QString, QJsonArray> inner;
+  for (const QJsonValue& v : body["branches"].toArray()) inner[v.toObject()["name"].toString()] = v.toObject()["steps"].toArray();
+  QJsonArray branches;
+  for (const QJsonValue& v : g["branches"].toArray()) {
+    QJsonObject b = v.toObject();
+    QJsonArray steps;
+    for (const QJsonValue& s : b["steps"].toArray()) {
+      const QJsonArray step = s.toArray();
+      if (step.at(0).toString() != id) {
+        steps.append(step);
+        continue;
+      }
+      const QString channel = step.size() > 3 ? step.at(3).toString() : QString();
+      if (!inner.contains(channel)) {
+        return refuse(tr("Branch %1 names no inner branch of the group (%2).").arg(b["name"].toString(), channel));
+      }
+      for (const QJsonValue& is : inner[channel]) steps.append(mapped(is.toArray()));
+    }
+    b["steps"] = steps;
+    branches.append(b);
+  }
+  QJsonObject result = g;
+  result["nodes"] = nodes;
+  result["connections"] = connections;
+  result["links"] = links;
+  result["branches"] = branches;
+  setGraph(result);
+  emit branchesChanged();
+  return true;
+}
+
+void NodeEditor::setStepChannel(const QString& branch, int step, const QString& channel) {
+  QJsonObject g = graph();
+  QJsonArray branches = g["branches"].toArray();
+  for (int k = 0; k < branches.size(); ++k) {
+    QJsonObject b = branches[k].toObject();
+    if (b["name"].toString() != branch) continue;
+    QJsonArray steps = b["steps"].toArray();
+    if (step < 0 || step >= steps.size()) return;
+    QJsonArray s = steps[step].toArray();
+    while (s.size() > 3) s.removeLast();
+    if (!channel.trimmed().isEmpty()) s.append(channel.trimmed());
+    steps[step] = s;
+    b["steps"] = steps;
+    branches[k] = b;
+  }
+  g["branches"] = branches;
+  setGraph(g);
+  emit branchesChanged();
+}
+
+QStringList NodeEditor::channelChoices(const QString& branch, int step) const {
+  QStringList out{QString()};
+  for (const QJsonValue& v : graph()["branches"].toArray()) {
+    if (v.toObject()["name"].toString() != branch) continue;
+    const QJsonArray steps = v.toObject()["steps"].toArray();
+    if (step < 0 || step >= steps.size()) return out;
+    const QJsonArray s = steps[step].toArray();
+    const QJsonObject n = node_of(graph(), s.at(0).toString());
+    if (n.contains("variants")) {  // the inner branches between the step's ports
+      const QJsonObject body = body_of(graph(), s.at(0).toString());
+      const QJsonObject exported = body["ports"].toObject();
+      for (const QJsonValue& b : body["branches"].toArray()) {
+        const QJsonArray inner = b.toObject()["steps"].toArray();
+        if (inner.isEmpty()) continue;
+        if (QJsonArray{inner.first().toArray().at(0), inner.first().toArray().at(1)} == exported[s.at(1).toString()].toArray() &&
+            QJsonArray{inner.last().toArray().at(0), inner.last().toArray().at(2)} == exported[s.at(2).toString()].toArray()) {
+          out << b.toObject()["name"].toString();
+        }
+      }
+    } else if (n["type"].toString().startsWith(QLatin1String("rtt."))) {  // ghosts at its surfaces
+      for (const QJsonValue& sid : n["params"].toObject()["surfaces"].toArray()) out << QStringLiteral("ghost:") + sid.toString();
+    }
   }
   return out;
 }

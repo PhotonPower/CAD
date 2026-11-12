@@ -978,10 +978,16 @@ class RaytracerPlugin(Plugin):
         for d in diagnostics:  # copies and blocks inside groups: the block of the model
             d["location"] = re.sub(r"@\d+", "", str(d["location"]))
         data = io.model_to_dict(model)
-        for nd in data["nodes"]:  # the editable data of the system (ADR Nachtrag 1)
-            fields = self._rtt_fields(nd)
-            if fields:
-                nd["fields"] = fields
+
+        def describe(nodes) -> None:  # the editable data of the system (ADR Nachtrag 1), also of
+            for nd in nodes:  # the blocks inside groups (every variant)
+                fields = self._rtt_fields(nd)
+                if fields:
+                    nd["fields"] = fields
+                for body in (nd.get("variants") or {}).values():
+                    describe(body.get("nodes", []))
+
+        describe(data["nodes"])
         return {"model": data, "types": self._catalogue(registry),
                 "diagnostics": diagnostics, "plan": plan}
 
