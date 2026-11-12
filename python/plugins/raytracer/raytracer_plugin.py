@@ -877,7 +877,14 @@ class RaytracerPlugin(Plugin):
         if not hasattr(ex, "status"):
             return
         try:
-            states = {k: bool(v) for k, v in ex.status().items()}
+            # what the display blocks need (RTT-Fusion: status(wanted=…)); a block nobody needs
+            # gets no mark, an output nobody needs (a splitter's way to an unshown camera) none
+            shown = [(n.id, "view") for n in ex.graph.nodes.values() if n.type_id.startswith("display.")]
+            try:
+                raw = ex.status(wanted=shown)
+            except TypeError:  # RTT-Fusion before the status for what is needed
+                raw = ex.status()
+            states = {k: bool(v) for k, v in raw.items()}
             ids = getattr(self, "_model_ids", None)
             if ids is not None:
                 merged: dict = {}

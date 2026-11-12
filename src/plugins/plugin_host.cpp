@@ -429,8 +429,7 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     im.description = args["description"].toString();
     im.range = range_of(args);
     const auto id = results_->addImage(static_cast<results::ResultId>(args["set"].toInteger()),
-                                       args["name"].toString(), std::move(im));
-    if (args.contains("key")) results_->setKey(id, args["key"].toString());
+                                       args["name"].toString(), std::move(im), args["key"].toString());
     return static_cast<qint64>(id);
   }
   if (method == QLatin1String("results.curve")) {
@@ -440,8 +439,7 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     c.x_label = args["x_label"].toString();
     c.y_label = args["y_label"].toString();
     const auto id = results_->addCurve(static_cast<results::ResultId>(args["set"].toInteger()),
-                                       args["name"].toString(), std::move(c));
-    if (args.contains("key")) results_->setKey(id, args["key"].toString());
+                                       args["name"].toString(), std::move(c), args["key"].toString());
     return static_cast<qint64>(id);
   }
   if (method == QLatin1String("results.append")) {

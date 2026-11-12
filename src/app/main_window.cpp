@@ -375,8 +375,16 @@ void MainWindow::createPanels() {
   plot->setWidget(new ui::PlotWidget(results_, plot));
   addDockWidget(Qt::BottomDockWidgetArea, plot);
   plot->hide();  // appears with the first curve
-  connect(results_, &results::ResultStore::changed, this, [this, plot] {
-    if (!results_->visibleItems(results::ResultItem::Kind::Curve).empty()) plot->show();
+  // results of the node workflow's display blocks (key "workflow:<block>") belong to their own
+  // windows (double-click on the block); they open no general window
+  auto own = [](const results::ResultItem* item) { return item->key.startsWith(QLatin1String("workflow:")); };
+  connect(results_, &results::ResultStore::changed, this, [this, plot, own] {
+    for (const auto* item : results_->visibleItems(results::ResultItem::Kind::Curve)) {
+      if (!own(item)) {
+        plot->show();
+        return;
+      }
+    }
   });
   // images (camera images): their own window when the first one arrives, can be docked
   auto* image = new QDockWidget(tr("Image"), this);
@@ -387,9 +395,12 @@ void MainWindow::createPanels() {
   image->setFloating(true);
   image->resize(560, 480);
   image->hide();
-  connect(results_, &results::ResultStore::changed, this, [this, image] {
+  connect(results_, &results::ResultStore::changed, this, [this, image, own] {
     const auto images = results_->visibleItems(results::ResultItem::Kind::Image);
-    const results::ResultId newest = images.empty() ? 0 : images.back()->id;
+    results::ResultId newest = 0;
+    for (const auto* item : images) {
+      if (!own(item)) newest = item->id;
+    }
     if (newest != 0 && newest != last_image_) {
       if (image->isFloating() && !image->isVisible()) {
         image->move(geometry().center() - QPoint(image->width() / 2, image->height() / 2));
