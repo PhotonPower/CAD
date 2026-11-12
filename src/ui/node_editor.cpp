@@ -1566,7 +1566,10 @@ bool NodeEditor::event(QEvent* event) {
   if (event->type() == QEvent::ShortcutOverride) {
     auto* key = static_cast<QKeyEvent*>(event);
     const bool plain = (key->modifiers() & ~Qt::KeypadModifier) == Qt::NoModifier;
-    if (plain && (key->key() == Qt::Key_Z || key->key() == Qt::Key_Home ||
+    // Escape too while it means something here (back out of a group, cancel a recording) – the
+    // main window's Escape (no tool) would take it first
+    const bool escape = key->key() == Qt::Key_Escape && (recording_ || !scope_.isEmpty());
+    if (plain && (escape || key->key() == Qt::Key_Z || key->key() == Qt::Key_Home ||
                   (z_pressed_ && (key->key() == Qt::Key_E || key->key() == Qt::Key_S)))) {
       event->accept();
       return true;
@@ -1616,6 +1619,14 @@ void NodeEditor::keyPressEvent(QKeyEvent* event) {
   z_pressed_ = event->key() == Qt::Key_Z && event->modifiers() == Qt::NoModifier;
   if (z_pressed_) return;
   QGraphicsView::keyPressEvent(event);
+}
+
+bool NodeEditor::eventFilter(QObject* watched, QEvent* event) {
+  if (watched == crumb_ && event->type() == QEvent::MouseButtonRelease) {  // the level's name
+    leaveGroup();
+    return true;
+  }
+  return QGraphicsView::eventFilter(watched, event);
 }
 
 bool NodeEditor::viewportEvent(QEvent* event) {
@@ -2158,6 +2169,9 @@ void NodeEditor::showScope() {
     crumb_ = new QLabel(viewport());
     crumb_->setStyleSheet(QStringLiteral("QLabel { background: rgba(60, 60, 70, 210); color: #e6e6e6; padding: 3px 7px; border-radius: 3px; }"));
     crumb_->move(8, 8);
+    crumb_->setCursor(Qt::PointingHandCursor);
+    crumb_->setToolTip(tr("Click (or Escape): back out of the group"));
+    crumb_->installEventFilter(this);
   }
   QStringList parts{tr("Workflow")};
   QJsonObject level = workflow_[key()].toObject();
