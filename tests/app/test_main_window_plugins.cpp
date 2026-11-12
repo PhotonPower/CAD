@@ -1,6 +1,8 @@
 #include <QDockWidget>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QComboBox>
+#include <QSettings>
 #include <QLabel>
 #include <QMenuBar>
 #include <QPlainTextEdit>
@@ -15,6 +17,7 @@
 #include "document/document.hpp"
 #include "document/entity.hpp"
 #include "plugins/plugin_manager.hpp"
+#include "ui/plugin_panel.hpp"
 #include "ui/plugin_settings_dialog.hpp"
 #include "results/result_store.hpp"
 #include "ui/image_view.hpp"
@@ -159,6 +162,41 @@ class TestMainWindowPlugins : public QObject {
     if (const QByteArray dir = qgetenv("NFCAD_SNAPSHOT_DIR"); !dir.isEmpty()) {
       dialog.grab().save(QString::fromLocal8Bit(dir) + QStringLiteral("/plugin_settings.png"));
     }
+
+    // Plugins → Show in the side panels: a hidden plugin leaves the tool box and the Plugin
+    // panel, its actions stay in the menu; the choice is kept in the settings
+    auto menu_named = [&](QMenu* in, const QString& text) -> QMenu* {
+      for (QAction* a : in->actions()) {
+        if (a->menu() != nullptr && a->text().contains(text)) return a->menu();
+      }
+      return nullptr;
+    };
+    QMenu* show = menu_named(plugins, QStringLiteral("Show in the side panels"));
+    QVERIFY(show != nullptr);
+    QAction* demo = nullptr;
+    for (QAction* a : show->actions()) {
+      if (a->text().contains(QStringLiteral("Demo plugin"))) demo = a;
+    }
+    QVERIFY(demo != nullptr && demo->isCheckable() && demo->isChecked());
+    demo->setChecked(false);
+    auto has_group = [&] {
+      bool found = false;
+      for (auto* g : toolbox->findChildren<nfcad::ui::ToolGroup*>()) found = found || g->groupId() == QStringLiteral("plugin_demo");
+      return found;
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(!has_group(), 5000);
+    auto* chooser = w.findChild<nfcad::ui::PluginPanel*>()->findChild<QComboBox*>();
+    QCOMPARE(chooser->findData(QStringLiteral("demo")), -1);
+    QMenu* demo_menu = menu_named(plugins, QStringLiteral("Demo plugin"));
+    QVERIFY(demo_menu != nullptr && !demo_menu->actions().isEmpty());
+    QVERIFY(QSettings().value(QStringLiteral("plugins/hidden")).toStringList().contains(QStringLiteral("demo")));
+    // and back
+    show = menu_named(plugins, QStringLiteral("Show in the side panels"));
+    for (QAction* a : show->actions()) {
+      if (a->text().contains(QStringLiteral("Demo plugin"))) a->setChecked(true);
+    }
+    QTRY_VERIFY_WITH_TIMEOUT(has_group(), 5000);
+    QVERIFY(chooser->findData(QStringLiteral("demo")) >= 0);
   }
 };
 

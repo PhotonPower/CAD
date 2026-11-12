@@ -2,6 +2,7 @@
 
 #include <QHash>
 #include <QMainWindow>
+#include <QSet>
 
 #include <QElapsedTimer>
 
@@ -98,6 +99,9 @@ class MainWindow : public QMainWindow {
   // plugins (app/plugin_actions.cpp, docs/plugin-api.md)
   void createPlugins();
   void rebuildPluginUi();
+  /// Plugins kept out of the side panels (settings "plugins/hidden").
+  [[nodiscard]] QSet<QString> hiddenPlugins() const;
+  void setHiddenPlugins(const QSet<QString>& ids);
   void runPluginAction(plugins::PluginHost* host, const QString& action);
   void installPlugin(const QString& package = {});
   void checkForUpdates();

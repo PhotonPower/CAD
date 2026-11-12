@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QSet>
 #include <QWidget>
 #include <functional>
 
@@ -32,6 +33,8 @@ class PluginPanel : public QWidget {
   /// Disables the action buttons while a plugin job runs.
   void setBusy(bool busy);
   void rebuild();
+  /// Plugins (ids) left out of the chooser (Plugins → Show in the side panels).
+  void setHidden(const QSet<QString>& ids);
   [[nodiscard]] PluginForm* form() const { return form_; }
 
  private:
@@ -48,6 +51,7 @@ class PluginPanel : public QWidget {
   QWidget* actions_ = nullptr;
   QVBoxLayout* action_layout_ = nullptr;
   bool busy_ = false;
+  QSet<QString> hidden_;
 };
 
 }  // namespace nfcad::ui
