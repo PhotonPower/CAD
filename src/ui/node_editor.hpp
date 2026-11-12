@@ -160,6 +160,7 @@ class NodeEditor : public QGraphicsView {
   void keyPressEvent(QKeyEvent* event) override;
   void contextMenuEvent(QContextMenuEvent* event) override;
   bool viewportEvent(QEvent* event) override;
+  bool eventFilter(QObject* watched, QEvent* event) override;
   bool event(QEvent* event) override;
 
  private:

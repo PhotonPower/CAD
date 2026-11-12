@@ -21,6 +21,7 @@
 #include "ui/plugin_settings_dialog.hpp"
 #include "results/result_store.hpp"
 #include "ui/image_view.hpp"
+#include "ui/node_editor.hpp"
 #include "ui/results_panel.hpp"
 #include "ui/tool_box.hpp"
 
@@ -64,6 +65,39 @@ class TestMainWindowPlugins : public QObject {
     dock->close();
     dock->toggleViewAction()->trigger();
     QVERIFY(dock->isVisible());
+  }
+
+  void escapeLeavesAGroup() {
+    // Escape belongs to the node editor while it is inside a group (the main window's Escape,
+    // "no tool", would take it first); the level's name at the top left goes back too
+    QStandardPaths::setTestModeEnabled(true);
+    nfcad::app::MainWindow w;
+    w.setAttribute(Qt::WA_DontShowOnScreen);
+    w.show();
+    auto* doc = w.findChild<nfcad::document::Document*>();
+    auto* editor = w.findChild<nfcad::ui::NodeEditor*>();
+    QVERIFY(doc != nullptr && editor != nullptr);
+    const QJsonObject inner{{"nodes", QJsonArray{QJsonObject{{"id", "m"}, {"type", "rtt.mirror"}}}},
+                            {"connections", QJsonArray{}}, {"links", QJsonArray{}}, {"branches", QJsonArray{}},
+                            {"ports", QJsonObject{}}};
+    const QJsonObject model{{"format", "rtt-fusion-graph"}, {"version", 2},
+                            {"nodes", QJsonArray{QJsonObject{{"id", "g"}, {"type", "group"}, {"variant", "main"},
+                                                             {"variants", QJsonObject{{"main", inner}}}}}},
+                            {"connections", QJsonArray{}}, {"links", QJsonArray{}}, {"branches", QJsonArray{}}};
+    doc->setWorkflow(QJsonObject{{"model", model}});
+    doc->requestWorkflowShown();
+    QVERIFY(editor->enterGroup(QStringLiteral("g")));
+    // the main window active, as in use: only then its Escape shortcut competes
+    w.activateWindow();
+    QVERIFY(QTest::qWaitForWindowActive(&w));
+    editor->setFocus();
+    QTest::keyClick(editor, Qt::Key_Escape);  // through the shortcut map, as a real key press
+    QVERIFY(editor->scope().isEmpty());
+    QVERIFY(editor->enterGroup(QStringLiteral("g")));
+    auto* crumb = editor->viewport()->findChild<QLabel*>();
+    QVERIFY(crumb != nullptr && crumb->isVisible());
+    QTest::mouseClick(crumb, Qt::LeftButton);
+    QVERIFY(editor->scope().isEmpty());
   }
 
   void displayWindow() {
