@@ -87,6 +87,12 @@ class Context:
         """Marks the block of the node workflow that is computed now ("" : none) in the editor."""
         self._host.send({"type": "notify", "method": "workflow.status", "args": {"node": str(node)}})
 
+    def workflow_state(self, states: dict) -> None:
+        """Up to date (True) or out of date (False) per block id – a green tick or a red cross in the
+        node editor (results kept across runs)."""
+        self._host.send({"type": "notify", "method": "workflow.state",
+                         "args": {"states": {str(k): bool(v) for k, v in states.items()}}})
+
     def set_workflow(self, workflow: dict) -> None:
         """Replaces the document's node workflow (shown in the node editor)."""
         self._host.request("workflow.set", {"workflow": workflow})

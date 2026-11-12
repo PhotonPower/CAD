@@ -211,6 +211,39 @@ class TestNodeEditor : public QObject {
     QVERIFY(e.nodeItem(QStringLiteral("Sample"))->pen().widthF() < 2.0);
   }
 
+  void upToDateMarks() {
+    // green tick / red cross: an edit marks the block and everything behind it out of date
+    NodeEditor e;
+    e.setWorkflow(linnik());
+    QJsonObject all;
+    for (const QJsonValue& v : e.workflow()["graph"].toObject()["nodes"].toArray()) all[v.toObject()["id"].toString()] = true;
+    e.setStates(all);
+    QCOMPARE(e.state(QStringLiteral("Sample")), 1);
+    e.setParams(QStringLiteral("Sample"), QJsonObject{{"offset", QJsonArray{0, 0, 0.001}}});
+    for (const char* stale : {"Sample", "Objective_A", "Beam_splitter", "Camera", "Pupil_camera"}) {
+      QCOMPARE(e.state(QString::fromLatin1(stale)), 0);
+    }
+    QCOMPARE(e.state(QStringLiteral("source")), 1);  // in front of the change
+    QCOMPARE(e.state(QStringLiteral("Illumination_stop")), 1);
+    // moving a block changes nothing
+    QJsonObject g = e.workflow()["graph"].toObject();
+    e.setStates(all);
+    QJsonArray nodes = g["nodes"].toArray();
+    QJsonObject n0 = nodes[0].toObject();
+    n0["position"] = QJsonArray{999, 999};
+    nodes[0] = n0;
+    g["nodes"] = nodes;
+    QJsonObject wf = e.workflow();
+    wf["graph"] = g;
+    e.setWorkflow(wf);  // not an edit
+    e.setStates(all);
+    e.setMuted(QStringLiteral("Reference"), true);
+    QCOMPARE(e.state(QStringLiteral("Reference")), 0);
+    QCOMPARE(e.state(QStringLiteral("Sample")), 1);  // the other arm
+    e.setStates({});
+    QCOMPARE(e.state(QStringLiteral("Sample")), -1);
+  }
+
   void savedWithTheDocument() {
     nfcad::document::Document doc;
     doc.setWorkflow(linnik());

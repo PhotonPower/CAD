@@ -62,6 +62,11 @@ class NodeEditor : public QGraphicsView {
   void editParams(const QString& id);
   /// Marks the block that is computed now (empty: none) – a bright frame and "running …".
   void setRunning(const QString& id);
+  /// Up to date (true: green tick) / out of date (false: red cross) per block; blocks not listed
+  /// get no mark. An edit marks the edited blocks and all blocks behind them out of date.
+  void setStates(const QJsonObject& states);
+  /// The mark of a block: 1 up to date, 0 out of date, −1 none.
+  [[nodiscard]] int state(const QString& id) const;
   [[nodiscard]] QString running() const { return running_; }
   /// The item of a block (its pen marks problems; tooltip: type, parameters, problems).
   [[nodiscard]] QGraphicsRectItem* nodeItem(const QString& id) const;
@@ -116,7 +121,10 @@ class NodeEditor : public QGraphicsView {
   bool right_dragged_ = false;
   QPointF right_from_;
   bool z_pressed_ = false;
-  QString running_;  ///< first key of the sequences Z E (extents) and Z S (selected)
+  QString running_;
+  QHash<QString, bool> states_;
+  /// Marks `seeds` and every block behind them (along links, not along "drive") out of date.
+  void invalidate(const QSet<QString>& seeds);  ///< first key of the sequences Z E (extents) and Z S (selected)
 };
 
 }  // namespace nfcad::ui

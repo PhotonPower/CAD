@@ -93,7 +93,11 @@ meta blocks give no results of their own. A display shows what the run computed 
 a side to dock it); *Parameters…* is in their context menu. While a workflow runs, the status bar
 shows the progress per path, field point, wavelength and value (Cancel works between these steps),
 the block being computed has a bright frame and "running …", and the window title says
-"Node workflow – running".
+"Node workflow – running". Results are kept across runs (up to 1 GB, the oldest go first with a
+note in the plugin log): a green tick at a block means its result is up to date, a red cross that
+it will be computed again. An edit marks the block and every block behind it red at once (along
+the links and the blocks' internal dependencies; a phase shifter's drive passes nothing on); the
+next run computes only the red blocks, *Check workflow* and every run report the state.
 
 ## Selection (M3)
 
