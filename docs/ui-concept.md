@@ -99,6 +99,23 @@ it will be computed again. An edit marks the block and every block behind it red
 the links and the blocks' internal dependencies; a phase shifter's drive passes nothing on); the
 next run computes only the red blocks, *Check workflow* and every run report the state.
 
+With RTT-Fusion R24 *Workflow from system* makes a **model**: a block shows one point per light
+port (on the left where the light first comes in, on the right where it leaves or comes back),
+a connection joins two ports and carries both directions (no arrow; its label shows the planned
+representation, "R/H" if the two directions differ; right-click: *Transport* for both
+directions or one, *Delete connection*); data sockets (drive, pose, image, results) stay
+directed, and a port dragged onto a display block makes an observer link. Drag from a port to a
+port to connect them – a port has one connection. The **Branches** list next to the editor
+shows the branches of the model: exactly these are computed (the import makes one per path of
+the system). Selecting one highlights its blocks and connections; *New branch* (also in the
+canvas menu) records one: click the port of a source the light leaves by, then the port it
+leaves each following block by – a mirror is left by the port it came in by – then the
+detector, and name it; Escape cancels. *Delete* removes the selected branch. Old workflows (socket
+graphs) still open as before; *Workflow from system* turns them into a model and keeps the
+edits (positions, parameters, replaced blocks with their ports, added blocks and links,
+transports, own branches). *Replace with* moves the connections and branch steps of a block to
+the ports of the new type (same name, else its only port).
+
 ## Selection (M3)
 
 | Action | Effect |

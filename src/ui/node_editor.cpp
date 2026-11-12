@@ -55,6 +55,20 @@ QColor category_color(const QString& c) {
   return it == colors.end() ? QColor(95, 95, 105) : it->second;
 }
 
+QJsonObject type_of(const QJsonObject& workflow, const QString& type) {
+  for (const QJsonValue& t : workflow.value(QStringLiteral("types")).toArray()) {
+    if (t.toObject()["type"].toString() == type) return t.toObject();
+  }
+  return {};
+}
+
+QJsonObject node_of(const QJsonObject& graph, const QString& id) {
+  for (const QJsonValue& v : graph["nodes"].toArray()) {
+    if (v.toObject()["id"].toString() == id) return v.toObject();
+  }
+  return {};
+}
+
 QString type_category(const QString& type_id) {
   if (type_id.endsWith(QLatin1String("source"))) return QStringLiteral("source");
   if (type_id.endsWith(QLatin1String("splitter"))) return QStringLiteral("splitter");
@@ -82,6 +96,10 @@ class SocketItem : public QGraphicsEllipseItem {
   [[nodiscard]] QString name() const { return spec_["name"].toString(); }
   [[nodiscard]] bool isInput() const { return spec_["direction"].toString() == QLatin1String("in"); }
   [[nodiscard]] QString kind() const { return spec_["kind"].toString(); }
+  /// A light port of a model (R24): both channels in one point.
+  [[nodiscard]] bool isPort() const { return spec_["port"].toBool(); }
+  [[nodiscard]] QString inSocket() const { return spec_["in"].toString(); }
+  [[nodiscard]] QString outSocket() const { return spec_["out"].toString(); }
 
  private:
   QString node_;
@@ -243,6 +261,15 @@ class LinkItem : public QGraphicsPathItem {
   }
   [[nodiscard]] int index() const { return index_; }
   [[nodiscard]] QString representation() const { return representation_; }
+  /// A connection of two ports (R24) rather than a directed link.
+  [[nodiscard]] bool isConnection() const { return connection_; }
+  void setConnection(bool on) { connection_ = on; }
+  void setHighlight(const QColor& color) {
+    base_pen_.setColor(color);
+    base_pen_.setWidthF(base_pen_.widthF() + 2.5);
+    setPen(base_pen_);
+    setZValue(-0.5);
+  }
 
   /// A wide band around the curve, so that a link can be hit with the mouse.
   [[nodiscard]] QPainterPath shape() const override {
@@ -287,6 +314,7 @@ class LinkItem : public QGraphicsPathItem {
   QString representation_;
   QGraphicsSimpleTextItem* label_ = nullptr;
   QPen base_pen_;
+  bool connection_ = false;
 };
 
 static QString link_key(const QJsonObject& l) {
@@ -335,7 +363,7 @@ void NodeEditor::setWorkflow(const QJsonObject& workflow) {
   QJsonObject g = graph();
   if (!g.isEmpty() && !hasPositions(g)) {
     // imported graphs have no layout yet: arrange them (not an edit of the document)
-    const QHash<QString, QPointF> pos = layoutColumns(g);
+    const QHash<QString, QPointF> pos = modelMode() ? layoutModel(g) : layoutColumns(g);
     QJsonArray nodes = g["nodes"].toArray();
     for (int k = 0; k < nodes.size(); ++k) {
       QJsonObject n = nodes[k].toObject();
@@ -344,9 +372,11 @@ void NodeEditor::setWorkflow(const QJsonObject& workflow) {
       nodes[k] = n;
     }
     g["nodes"] = nodes;
-    workflow_["graph"] = g;
+    workflow_[key()] = g;
   }
+  if (!modelMode()) highlighted_.clear();
   rebuild();
+  emit branchesChanged();
 }
 
 bool NodeEditor::hasPositions(const QJsonObject& graph) {
@@ -441,7 +471,7 @@ QHash<QString, QPointF> NodeEditor::layoutColumns(const QJsonObject& graph) cons
 
 void NodeEditor::arrange() {
   QJsonObject g = graph();
-  const QHash<QString, QPointF> pos = layoutColumns(g);
+  const QHash<QString, QPointF> pos = modelMode() ? layoutModel(g) : layoutColumns(g);
   QJsonArray nodes = g["nodes"].toArray();
   for (int k = 0; k < nodes.size(); ++k) {
     QJsonObject n = nodes[k].toObject();
@@ -494,6 +524,7 @@ void NodeEditor::rebuild() {
   scene()->clear();
   nodes_.clear();
   links_.clear();
+  connections_.clear();
   drag_line_ = nullptr;
   const QJsonObject g = graph();
   // problems per node from the last check
@@ -527,7 +558,7 @@ void NodeEditor::rebuild() {
   for (const QJsonValue& v : g["nodes"].toArray()) {
     const QJsonObject n = v.toObject();
     const QString type = n["type"].toString();
-    auto* item = new NodeItem(this, n, socketsOf(n), categories.value(type, type_category(type)),
+    auto* item = new NodeItem(this, n, shownSockets(n), categories.value(type, type_category(type)),
                               problems.value(n["id"].toString()).trimmed(), conversions.value(n["id"].toString()),
                               n["id"].toString() == running_,
                               states_.contains(n["id"].toString()) ? (states_.value(n["id"].toString()) ? 1 : 0) : -1);
@@ -541,6 +572,14 @@ void NodeEditor::rebuild() {
     NodeItem* b = nodes_.value(l["to"].toArray().at(0).toString());
     SocketItem* sa = a != nullptr ? a->socket(l["from"].toArray().at(1).toString()) : nullptr;
     SocketItem* sb = b != nullptr ? b->socket(l["to"].toArray().at(1).toString()) : nullptr;
+    if (modelMode()) {  // a light channel is drawn at its port (an observer: port -> display)
+      if (sa == nullptr && a != nullptr) {
+        sa = a->socket(portOfSocket(node_of(g, a->id()), l["from"].toArray().at(1).toString()));
+      }
+      if (sb == nullptr && b != nullptr) {
+        sb = b->socket(portOfSocket(node_of(g, b->id()), l["to"].toArray().at(1).toString()));
+      }
+    }
     if (sa == nullptr || sb == nullptr) continue;  // reported by the check of the plugin
     const QString key = link_key(l);
     auto* link = new LinkItem(k, sa, sb, l["transport"].toString(QStringLiteral("auto")),
@@ -549,6 +588,69 @@ void NodeEditor::rebuild() {
     scene()->addItem(link);
     links_.append(link);
   }
+  if (!modelMode()) return;
+  // connections of two ports (R24): no direction; the planned representation per direction
+  const QJsonObject planned_connections = plan["connections"].toObject();
+  const QJsonArray connections = g["connections"].toArray();
+  for (int k = 0; k < connections.size(); ++k) {
+    const QJsonObject c = connections[k].toObject();
+    const QJsonArray ends = c["ports"].toArray();
+    NodeItem* a = nodes_.value(ends.at(0).toArray().at(0).toString());
+    NodeItem* b = nodes_.value(ends.at(1).toArray().at(0).toString());
+    SocketItem* sa = a != nullptr ? a->socket(ends.at(0).toArray().at(1).toString()) : nullptr;
+    SocketItem* sb = b != nullptr ? b->socket(ends.at(1).toArray().at(1).toString()) : nullptr;
+    if (sa == nullptr || sb == nullptr) continue;
+    QString transport = c["transport"].toString(QStringLiteral("auto"));
+    if (c["transport"].isObject()) {
+      transport = c["transport"].toObject()["forward"].toString() + QLatin1Char('/') + c["transport"].toObject()["back"].toString();
+    }
+    const QJsonObject reps = planned_connections[QString::number(k)].toObject();
+    QStringList shown;
+    for (const char* side : {"forward", "back"}) {
+      const QString r = reps[QLatin1String(side)].toString();
+      if (!r.isEmpty() && !shown.contains(r)) shown << r;
+    }
+    QJsonObject planned;
+    if (!shown.isEmpty()) {
+      planned["representation"] = shown.join(QLatin1Char('/'));
+      planned["reason"] = tr("forward %1, back %2").arg(reps["forward"].toString(QStringLiteral("–")),
+                                                        reps["back"].toString(QStringLiteral("–")));
+    }
+    // problems of the connection's checks are reported at "a.p — b.q"
+    const QString where = QStringLiteral("%1.%2 — %3.%4").arg(ends.at(0).toArray().at(0).toString(), ends.at(0).toArray().at(1).toString(),
+                                                            ends.at(1).toArray().at(0).toString(), ends.at(1).toArray().at(1).toString());
+    QString problem;
+    for (const QJsonValue& d : workflow_.value(QStringLiteral("diagnostics")).toArray()) {
+      if (d.toObject()["location"].toString() == where) problem += d.toObject()["code"].toString() + QStringLiteral(": ") + d.toObject()["message"].toString() + QLatin1Char('\n');
+    }
+    auto* item = new LinkItem(k, sa, sb, transport, true, planned, problem.trimmed());
+    item->setConnection(true);
+    scene()->addItem(item);
+    connections_.append(item);
+  }
+  // the highlighted branch and the branch being recorded
+  auto mark = [this](const QJsonArray& steps, const QColor& color) {
+    for (int k = 0; k < steps.size(); ++k) {
+      const QJsonArray s = steps[k].toArray();
+      if (NodeItem* n = nodes_.value(s.at(0).toString())) n->setPen(QPen(color, 3.0));
+      if (k + 1 >= steps.size() || s.at(2).isNull()) continue;
+      const QJsonArray next = steps[k + 1].toArray();
+      for (LinkItem* c : connections_) {
+        const QJsonArray ends = graph()["connections"].toArray().at(c->index()).toObject()["ports"].toArray();
+        const QJsonArray from{s.at(0), s.at(2)};
+        const QJsonArray to{next.at(0), next.at(1)};
+        if ((ends.at(0).toArray() == from && ends.at(1).toArray() == to) || (ends.at(1).toArray() == from && ends.at(0).toArray() == to)) {
+          c->setHighlight(color);
+        }
+      }
+    }
+  };
+  if (!highlighted_.isEmpty()) {
+    for (const QJsonValue& v : g["branches"].toArray()) {
+      if (v.toObject()["name"].toString() == highlighted_) mark(v.toObject()["steps"].toArray(), QColor(80, 220, 255));
+    }
+  }
+  if (recording_) mark(recorded_, QColor(255, 210, 80));
 }
 
 void NodeEditor::fitAll() {
@@ -594,8 +696,33 @@ void NodeEditor::setGraph(const QJsonObject& graph) {
   for (const QJsonValue& v : old_links) {
     if (!new_links.contains(v)) seeds.insert(v.toObject()["to"].toArray().at(0).toString());
   }
-  workflow_["graph"] = graph;
-  invalidate(seeds);
+  if (modelMode()) {  // connections (both ends) and branches (their blocks) that changed
+    const QJsonArray old_c = before["connections"].toArray();
+    const QJsonArray new_c = graph["connections"].toArray();
+    for (const QJsonValue& v : new_c) {
+      if (old_c.contains(v)) continue;
+      for (const QJsonValue& e : v.toObject()["ports"].toArray()) seeds.insert(e.toArray().at(0).toString());
+    }
+    for (const QJsonValue& v : old_c) {
+      if (new_c.contains(v)) continue;
+      for (const QJsonValue& e : v.toObject()["ports"].toArray()) seeds.insert(e.toArray().at(0).toString());
+    }
+    const QJsonArray old_b = before["branches"].toArray();
+    const QJsonArray new_b = graph["branches"].toArray();
+    for (const QJsonArray* list : {&old_b, &new_b}) {
+      for (const QJsonValue& v : *list) {
+        if (old_b.contains(v) && new_b.contains(v)) continue;
+        const QJsonArray steps = v.toObject()["steps"].toArray();
+        if (!steps.isEmpty()) seeds.insert(steps.last().toArray().at(0).toString());  // its detector
+      }
+    }
+  }
+  workflow_[key()] = graph;
+  if (modelMode()) {
+    if (!states_.isEmpty() && !seeds.isEmpty()) invalidateModel(seeds);
+  } else {
+    invalidate(seeds);
+  }
   workflow_.remove(QStringLiteral("diagnostics"));  // stale after an edit; the next check renews it
   workflow_.remove(QStringLiteral("plan"));
   rebuild();
@@ -614,7 +741,7 @@ void NodeEditor::commit() {
     nodes[k] = n;
   }
   g["nodes"] = nodes;
-  workflow_["graph"] = g;
+  workflow_[key()] = g;
   emit edited(workflow_);
 }
 
@@ -669,6 +796,15 @@ void NodeEditor::removeNode(const QString& id) {
   }
   g["nodes"] = nodes;
   g["links"] = links;
+  if (modelMode()) {  // its connections go; branches through it stay (the check reports them)
+    QJsonArray connections;
+    for (const QJsonValue& v : g["connections"].toArray()) {
+      bool touches = false;
+      for (const QJsonValue& e : v.toObject()["ports"].toArray()) touches = touches || e.toArray().at(0).toString() == id;
+      if (!touches) connections.append(v);
+    }
+    g["connections"] = connections;
+  }
   setGraph(g);
 }
 
@@ -690,20 +826,6 @@ void NodeEditor::setMuted(const QString& id, bool muted) {
 }
 
 namespace {
-QJsonObject type_of(const QJsonObject& workflow, const QString& type) {
-  for (const QJsonValue& t : workflow.value(QStringLiteral("types")).toArray()) {
-    if (t.toObject()["type"].toString() == type) return t.toObject();
-  }
-  return {};
-}
-
-QJsonObject node_of(const QJsonObject& graph, const QString& id) {
-  for (const QJsonValue& v : graph["nodes"].toArray()) {
-    if (v.toObject()["id"].toString() == id) return v.toObject();
-  }
-  return {};
-}
-
 /// Socket map old -> new for the linked sockets of `id`; empty optional if not unique.
 std::optional<QHash<QString, QString>> socket_map(const QJsonArray& old_sockets, const QJsonArray& new_sockets,
                                                   const QSet<QString>& linked) {
@@ -732,9 +854,56 @@ std::optional<QHash<QString, QString>> socket_map(const QJsonArray& old_sockets,
 }
 }  // namespace
 
+namespace {
+/// Ports with a connection of block `id` (R24).
+QSet<QString> connected_ports(const QJsonObject& model, const QString& id) {
+  QSet<QString> out;
+  for (const QJsonValue& v : model["connections"].toArray()) {
+    for (const QJsonValue& e : v.toObject()["ports"].toArray()) {
+      if (e.toArray().at(0).toString() == id) out.insert(e.toArray().at(1).toString());
+    }
+  }
+  return out;
+}
+
+/// Port map old -> new for the connected ports: the same name, else the only port of the new
+/// type; empty optional if not unique (or two would share a port).
+std::optional<QHash<QString, QString>> port_map(const QJsonArray& new_ports, const QSet<QString>& connected) {
+  QStringList names;
+  for (const QJsonValue& p : new_ports) names << p.toObject()["name"].toString();
+  QHash<QString, QString> map;
+  for (const QString& old : connected) {
+    if (names.contains(old)) {
+      map[old] = old;
+    } else if (names.size() == 1) {
+      map[old] = names.first();
+    } else {
+      return std::nullopt;
+    }
+  }
+  QSet<QString> used;
+  for (const QString& v : map) {
+    if (used.contains(v)) return std::nullopt;
+    used.insert(v);
+  }
+  return map;
+}
+}  // namespace
+
 QStringList NodeEditor::replacementsFor(const QString& id) const {
   const QJsonObject g = graph();
   const QJsonObject old = node_of(g, id);
+  if (modelMode()) {
+    QStringList out;
+    const QSet<QString> connected = connected_ports(g, id);
+    for (const QJsonValue& v : workflow_.value(QStringLiteral("types")).toArray()) {
+      const QJsonObject t = v.toObject();
+      if (t["type"].toString() == old["type"].toString() || t["ports"].toArray().isEmpty()) continue;
+      if (t["category"].toString() == QLatin1String("meta") || t["category"].toString() == QLatin1String("analysis")) continue;
+      if (port_map(t["ports"].toArray(), connected)) out << t["type"].toString();
+    }
+    return out;
+  }
   QSet<QString> linked;
   for (const QJsonValue& v : g["links"].toArray()) {
     const QJsonObject l = v.toObject();
@@ -756,6 +925,66 @@ bool NodeEditor::replaceNode(const QString& id, const QString& type) {
   const QJsonObject old = node_of(g, id);
   const QJsonObject t = type_of(workflow_, type);
   if (old.isEmpty() || t.isEmpty()) return false;
+  if (modelMode()) {  // R24: the connections and the branch steps move to the new ports
+    const auto map = port_map(t["ports"].toArray(), connected_ports(g, id));
+    if (!map) return false;
+    QJsonObject node{{"id", id}, {"type", type}, {"position", old["position"]}, {"ports", t["ports"]}, {"sockets", t["sockets"]}};
+    if (old.contains("name")) node["name"] = old["name"];
+    QJsonObject params;
+    for (const QJsonValue& p : t["params"].toArray()) params[p.toObject()["name"].toString()] = p.toObject()["default"];
+    if (!params.isEmpty()) node["params"] = params;
+    QJsonArray nodes = g["nodes"].toArray();
+    for (int k = 0; k < nodes.size(); ++k) {
+      if (nodes[k].toObject()["id"].toString() == id) nodes[k] = node;
+    }
+    QJsonArray connections = g["connections"].toArray();
+    for (int k = 0; k < connections.size(); ++k) {
+      QJsonObject c = connections[k].toObject();
+      QJsonArray ends = c["ports"].toArray();
+      for (int e = 0; e < 2; ++e) {
+        QJsonArray end = ends[e].toArray();
+        if (end.at(0).toString() == id) end[1] = map->value(end.at(1).toString(), end.at(1).toString());
+        ends[e] = end;
+      }
+      c["ports"] = ends;
+      connections[k] = c;
+    }
+    QJsonArray branches = g["branches"].toArray();
+    for (int k = 0; k < branches.size(); ++k) {
+      QJsonObject b = branches[k].toObject();
+      QJsonArray steps = b["steps"].toArray();
+      for (int s = 0; s < steps.size(); ++s) {
+        QJsonArray step = steps[s].toArray();
+        if (step.at(0).toString() != id) continue;
+        for (int i : {1, 2}) {
+          if (!step.at(i).isNull()) step[i] = map->value(step.at(i).toString(), step.at(i).toString());
+        }
+        while (step.size() > 3) step.removeLast();  // a channel of the old block means nothing here
+        steps[s] = step;
+      }
+      b["steps"] = steps;
+      branches[k] = b;
+    }
+    QJsonArray links;  // data links of the old block that the new one has no socket for go
+    QSet<QString> sockets;
+    for (const QJsonValue& s : t["sockets"].toArray()) sockets.insert(s.toObject()["name"].toString());
+    for (const QJsonValue& v : g["links"].toArray()) {
+      const QJsonObject l = v.toObject();
+      const bool from = l["from"].toArray().at(0).toString() == id;
+      const bool to = l["to"].toArray().at(0).toString() == id;
+      if ((from && !sockets.contains(l["from"].toArray().at(1).toString())) ||
+          (to && !sockets.contains(l["to"].toArray().at(1).toString()))) {
+        continue;
+      }
+      links.append(v);
+    }
+    g["nodes"] = nodes;
+    g["connections"] = connections;
+    g["branches"] = branches;
+    g["links"] = links;
+    setGraph(g);
+    return true;
+  }
   QSet<QString> linked;
   for (const QJsonValue& v : g["links"].toArray()) {
     const QJsonObject l = v.toObject();
@@ -976,12 +1205,17 @@ QString NodeEditor::addNode(const QString& type, const QPointF& position) {
     }
   }
   if (!params.isEmpty()) node["params"] = params;
+  if (modelMode()) {  // the editor draws ports from the node (R24)
+    const QJsonObject t = type_of(workflow_, type);
+    if (!t["ports"].toArray().isEmpty()) node["ports"] = t["ports"];
+    if (!t["sockets"].toArray().isEmpty()) node["sockets"] = t["sockets"];
+  }
   QJsonArray nodes = g["nodes"].toArray();
   nodes.append(node);
   g["nodes"] = nodes;
   if (!g.contains("format")) {
     g["format"] = QStringLiteral("rtt-fusion-graph");
-    g["version"] = 1;
+    g["version"] = modelMode() ? 2 : 1;
   }
   setGraph(g);
   return id;
@@ -1002,6 +1236,21 @@ void NodeEditor::mousePressEvent(QMouseEvent* event) {
     right_dragged_ = false;
     right_from_ = event->position();
     pan_from_ = event->position();
+    return;
+  }
+  if (event->button() == Qt::LeftButton && recording_) {  // recording a branch (R24)
+    for (QGraphicsItem* item : items(event->position().toPoint())) {
+      if (auto* s = dynamic_cast<SocketItem*>(item); s != nullptr && s->isPort()) {
+        if (!recordPort(s->node(), s->name())) recordDetector(s->node());
+        return;
+      }
+      for (QGraphicsItem* p = item; p != nullptr; p = p->parentItem()) {
+        if (auto* node = dynamic_cast<NodeItem*>(p)) {
+          recordDetector(node->id());
+          return;
+        }
+      }
+    }
     return;
   }
   if (event->button() == Qt::LeftButton) {
@@ -1063,6 +1312,20 @@ void NodeEditor::mouseReleaseEvent(QMouseEvent* event) {
     for (QGraphicsItem* item : items(event->position().toPoint())) {
       auto* to = dynamic_cast<SocketItem*>(item);
       if (to == nullptr || to == from || to->node() == from->node()) continue;
+      if (from->isPort() && to->isPort()) {  // R24: two ports; to a display: an observer link
+        SocketItem* shown = categoryOf(to->node()) == QLatin1String("analysis") ? to
+                            : categoryOf(from->node()) == QLatin1String("analysis") ? from : nullptr;
+        if (shown == nullptr) {
+          addConnection(from->node(), from->name(), to->node(), to->name());
+        } else {
+          SocketItem* seen = shown == to ? from : to;
+          if (!seen->outSocket().isEmpty() && !shown->inSocket().isEmpty()) {
+            addLink(seen->node(), seen->outSocket(), shown->node(), shown->inSocket());
+          }
+        }
+        break;
+      }
+      if (from->isPort() || to->isPort()) break;  // a port with a data socket: refused
       if (to->isInput() == from->isInput() || to->kind() != from->kind()) break;  // refused
       SocketItem* out = from->isInput() ? to : from;
       SocketItem* in = from->isInput() ? from : to;
@@ -1150,6 +1413,10 @@ void NodeEditor::zoomSelected() {
 }
 
 void NodeEditor::keyPressEvent(QKeyEvent* event) {
+  if (event->key() == Qt::Key_Escape && recording_) {
+    cancelBranch();
+    return;
+  }
   // zoom extents: Z E (as in the CAD views); Home as well; zoom selected: Z S
   if (event->key() == Qt::Key_Home || (z_pressed_ && event->key() == Qt::Key_E)) {
     z_pressed_ = false;
@@ -1195,6 +1462,20 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
   const QPointF at = mapToScene(view_pos);
   NodeItem* node = nullptr;
   LinkItem* link = nullptr;
+  if (const int c = connectionAt(view_pos); c >= 0) {  // a connection of two ports (R24)
+    QMenu* both = menu.addMenu(tr("Transport"));
+    QMenu* forward = menu.addMenu(tr("Transport forward only"));
+    QMenu* back = menu.addMenu(tr("Transport back only"));
+    for (const char* t : {"auto", "R", "H", "G", "S", "T", "P"}) {
+      const QString name = QString::fromLatin1(t);
+      both->addAction(name, this, [this, c, name] { setConnectionTransport(c, QStringLiteral("both"), name); });
+      forward->addAction(name, this, [this, c, name] { setConnectionTransport(c, QStringLiteral("forward"), name); });
+      back->addAction(name, this, [this, c, name] { setConnectionTransport(c, QStringLiteral("back"), name); });
+    }
+    menu.addAction(tr("Delete connection"), this, [this, c] { removeConnection(c); });
+    menu.exec(global_pos);
+    return;
+  }
   for (QGraphicsItem* item : items(view_pos)) {
     for (QGraphicsItem* p = item; p != nullptr && node == nullptr; p = p->parentItem()) node = dynamic_cast<NodeItem*>(p);
     for (QGraphicsItem* p = item; p != nullptr && link == nullptr; p = p->parentItem()) {
@@ -1253,11 +1534,326 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
     }
     add->setEnabled(!by_category.empty());
     add->setToolTipsVisible(true);
+    if (modelMode()) menu.addAction(tr("New branch…"), this, &NodeEditor::beginBranch);
     menu.addAction(tr("Arrange"), this, &NodeEditor::arrange);
     menu.addAction(tr("Zoom selected"), this, &NodeEditor::zoomSelected)->setEnabled(!scene()->selectedItems().isEmpty());
     menu.addAction(tr("Show all"), this, &NodeEditor::fitAll);
   }
   menu.exec(global_pos);
+}
+
+// ------------------------------------------------------------------------------ model (R24)
+
+QJsonArray NodeEditor::portsOf(const QJsonObject& node) const {
+  if (node.contains("ports") && !node["ports"].toArray().isEmpty()) return node["ports"].toArray();
+  return type_of(workflow_, node["type"].toString())["ports"].toArray();
+}
+
+QString NodeEditor::portOfSocket(const QJsonObject& node, const QString& socket) const {
+  for (const QJsonValue& v : portsOf(node)) {
+    const QJsonObject p = v.toObject();
+    if (p["in"].toString() == socket || p["out"].toString() == socket) return p["name"].toString();
+  }
+  return {};
+}
+
+QString NodeEditor::categoryOf(const QString& node) const {
+  const QString type = node_of(graph(), node)["type"].toString();
+  const QString c = type_of(workflow_, type)["category"].toString();
+  return c.isEmpty() ? type_category(type) : c;
+}
+
+bool NodeEditor::portOnLeft(const QString& node, const QString& port) const {
+  // left: a port light comes in by at the block's first visit in some branch; every other port
+  // of a block on a branch right (light leaves there, or comes back)
+  bool on_branch = false;
+  for (const QJsonValue& b : graph()["branches"].toArray()) {
+    for (const QJsonValue& v : b.toObject()["steps"].toArray()) {
+      const QJsonArray s = v.toArray();
+      if (s.at(0).toString() != node) continue;
+      on_branch = true;
+      if (s.at(1).toString() == port) return true;
+      break;  // only the first visit decides
+    }
+  }
+  if (on_branch) return false;
+  for (const QJsonValue& v : portsOf(node_of(graph(), node))) {
+    const QJsonObject p = v.toObject();
+    if (p["name"].toString() != port) continue;
+    if (p["out"].toString().isEmpty()) return true;
+    if (p["in"].toString().isEmpty()) return false;
+    return p["side"].toString() != QLatin1String("back");
+  }
+  return true;
+}
+
+QJsonArray NodeEditor::shownSockets(const QJsonObject& node) const {
+  const QJsonArray sockets = socketsOf(node);
+  if (!modelMode()) return sockets;
+  QJsonArray out;
+  for (const QJsonValue& s : sockets) {
+    if (s.toObject()["kind"].toString() != QLatin1String("light")) out.append(s);
+  }
+  const QString id = node["id"].toString();
+  for (const QJsonValue& v : portsOf(node)) {
+    const QJsonObject p = v.toObject();
+    const QString name = p["name"].toString();
+    out.append(QJsonObject{{"name", name},
+                           {"kind", "light"},
+                           {"port", true},
+                           {"direction", portOnLeft(id, name) ? "in" : "out"},
+                           {"accepts", QJsonArray{}},
+                           {"label", p["label"].toString(name)},
+                           {"in", p["in"]},
+                           {"out", p["out"]}});
+  }
+  return out;
+}
+
+int NodeEditor::connectionCount() const { return graph()["connections"].toArray().size(); }
+
+QGraphicsPathItem* NodeEditor::connectionItem(int index) const {
+  for (LinkItem* c : connections_) {
+    if (c->index() == index) return c;
+  }
+  return nullptr;
+}
+
+int NodeEditor::connectionAt(const QPoint& view_pos) const {
+  for (QGraphicsItem* item : items(view_pos)) {
+    for (QGraphicsItem* p = item; p != nullptr; p = p->parentItem()) {
+      if (dynamic_cast<NodeItem*>(p) != nullptr) return -1;
+      if (auto* l = dynamic_cast<LinkItem*>(p)) return l->isConnection() ? l->index() : -1;
+    }
+  }
+  return -1;
+}
+
+bool NodeEditor::addConnection(const QString& a, const QString& port_a, const QString& b, const QString& port_b) {
+  if (a == b) return false;
+  QJsonObject g = graph();
+  QJsonArray connections = g["connections"].toArray();
+  for (const QJsonValue& v : connections) {  // a port has at most one connection
+    for (const QJsonValue& e : v.toObject()["ports"].toArray()) {
+      if (e.toArray() == QJsonArray{a, port_a} || e.toArray() == QJsonArray{b, port_b}) return false;
+    }
+  }
+  connections.append(QJsonObject{{"ports", QJsonArray{QJsonArray{a, port_a}, QJsonArray{b, port_b}}}});
+  g["connections"] = connections;
+  setGraph(g);
+  return true;
+}
+
+void NodeEditor::removeConnection(int index) {
+  QJsonObject g = graph();
+  QJsonArray connections = g["connections"].toArray();
+  if (index < 0 || index >= connections.size()) return;
+  connections.removeAt(index);
+  g["connections"] = connections;
+  setGraph(g);
+}
+
+void NodeEditor::setConnectionTransport(int index, const QString& direction, const QString& transport) {
+  QJsonObject g = graph();
+  QJsonArray connections = g["connections"].toArray();
+  if (index < 0 || index >= connections.size()) return;
+  QJsonObject c = connections[index].toObject();
+  QString forward = c["transport"].isObject() ? c["transport"].toObject()["forward"].toString() : c["transport"].toString(QStringLiteral("auto"));
+  QString back = c["transport"].isObject() ? c["transport"].toObject()["back"].toString() : forward;
+  if (direction != QLatin1String("back")) forward = transport;
+  if (direction != QLatin1String("forward")) back = transport;
+  if (forward == back) {
+    if (forward == QLatin1String("auto")) {
+      c.remove(QStringLiteral("transport"));
+    } else {
+      c["transport"] = forward;
+    }
+  } else {
+    c["transport"] = QJsonObject{{"forward", forward}, {"back", back}};
+  }
+  connections[index] = c;
+  g["connections"] = connections;
+  setGraph(g);
+}
+
+QStringList NodeEditor::branchNames() const {
+  QStringList out;
+  for (const QJsonValue& v : graph()["branches"].toArray()) out << v.toObject()["name"].toString();
+  return out;
+}
+
+void NodeEditor::highlightBranch(const QString& name) {
+  if (name == highlighted_) return;
+  highlighted_ = name;
+  rebuild();
+}
+
+void NodeEditor::removeBranch(const QString& name) {
+  QJsonObject g = graph();
+  QJsonArray kept;
+  for (const QJsonValue& v : g["branches"].toArray()) {
+    if (v.toObject()["name"].toString() != name) kept.append(v);
+  }
+  g["branches"] = kept;
+  if (highlighted_ == name) highlighted_.clear();
+  setGraph(g);
+  emit branchesChanged();
+}
+
+void NodeEditor::recordingHint() {
+  QString hint;
+  if (!recording_) {
+    hint.clear();
+  } else if (recorded_.isEmpty()) {
+    hint = tr("New branch: click the port of a source the light leaves by (Esc cancels)");
+  } else if (branchComplete()) {
+    hint = tr("The branch reaches a detector");
+  } else {
+    hint = tr("Click the port the light leaves the next block by, or the detector (Esc cancels)");
+  }
+  emit recordingChanged(recording_, hint);
+}
+
+void NodeEditor::beginBranch() {
+  if (!modelMode()) return;
+  recording_ = true;
+  recorded_ = QJsonArray{};
+  rebuild();
+  recordingHint();
+}
+
+void NodeEditor::cancelBranch() {
+  if (!recording_) return;
+  recording_ = false;
+  recorded_ = QJsonArray{};
+  rebuild();
+  recordingHint();
+}
+
+bool NodeEditor::branchComplete() const {
+  return !recorded_.isEmpty() && recorded_.last().toArray().at(2).isNull() && recorded_.size() > 1;
+}
+
+namespace {
+/// The port at the other end of the connection of (node, port), or an empty array.
+QJsonArray other_end(const QJsonObject& model, const QString& node, const QString& port) {
+  for (const QJsonValue& v : model["connections"].toArray()) {
+    const QJsonArray ends = v.toObject()["ports"].toArray();
+    if (ends.at(0).toArray() == QJsonArray{node, port}) return ends.at(1).toArray();
+    if (ends.at(1).toArray() == QJsonArray{node, port}) return ends.at(0).toArray();
+  }
+  return {};
+}
+}  // namespace
+
+bool NodeEditor::recordPort(const QString& node, const QString& port) {
+  if (!recording_ || branchComplete()) return false;
+  if (recorded_.isEmpty()) {
+    if (categoryOf(node) != QLatin1String("source")) return false;
+    recorded_.append(QJsonArray{node, QJsonValue::Null, port});
+  } else {
+    const QJsonArray last = recorded_.last().toArray();
+    const QJsonArray next = other_end(graph(), last.at(0).toString(), last.at(2).toString());
+    if (next.isEmpty() || next.at(0).toString() != node) return false;  // not where the light goes
+    recorded_.append(QJsonArray{node, next.at(1), port});
+  }
+  rebuild();
+  recordingHint();
+  return true;
+}
+
+bool NodeEditor::recordDetector(const QString& node) {
+  if (!recording_ || recorded_.isEmpty() || branchComplete()) return false;
+  if (categoryOf(node) != QLatin1String("detector")) return false;
+  const QJsonArray last = recorded_.last().toArray();
+  const QJsonArray next = other_end(graph(), last.at(0).toString(), last.at(2).toString());
+  if (next.isEmpty() || next.at(0).toString() != node) return false;
+  recorded_.append(QJsonArray{node, next.at(1), QJsonValue::Null});
+  rebuild();
+  recordingHint();
+  emit branchRecorded();
+  return true;
+}
+
+bool NodeEditor::finishBranch(const QString& name) {
+  if (!branchComplete() || name.trimmed().isEmpty() || branchNames().contains(name.trimmed())) return false;
+  QJsonObject g = graph();
+  QJsonArray branches = g["branches"].toArray();
+  branches.append(QJsonObject{{"name", name.trimmed()}, {"steps", recorded_}});
+  g["branches"] = branches;
+  recording_ = false;
+  recorded_ = QJsonArray{};
+  highlighted_ = name.trimmed();
+  recordingHint();
+  setGraph(g);
+  emit branchesChanged();
+  return true;
+}
+
+void NodeEditor::invalidateModel(const QSet<QString>& seeds) {
+  // along the branches (everything after a changed block) and the data links (not a drive)
+  QSet<QString> stale(seeds.begin(), seeds.end());
+  const QJsonObject g = graph();
+  bool grew = true;
+  while (grew) {
+    grew = false;
+    for (const QJsonValue& b : g["branches"].toArray()) {
+      bool after = false;
+      for (const QJsonValue& v : b.toObject()["steps"].toArray()) {
+        const QString id = v.toArray().at(0).toString();
+        if (after && !stale.contains(id)) {
+          stale.insert(id);
+          grew = true;
+        }
+        after = after || stale.contains(id);
+      }
+    }
+    for (const QJsonValue& v : g["links"].toArray()) {
+      const QJsonObject l = v.toObject();
+      const QString from = l["from"].toArray().at(0).toString();
+      const QString to = l["to"].toArray().at(0).toString();
+      if (!stale.contains(from) || stale.contains(to)) continue;
+      bool drive = false;
+      for (const QJsonValue& s : socketsOf(node_of(g, from))) {
+        const QJsonObject o = s.toObject();
+        if (o["name"].toString() == l["from"].toArray().at(1).toString()) drive = o["accepts"].toArray().contains(QStringLiteral("drive"));
+      }
+      if (drive) continue;
+      stale.insert(to);
+      grew = true;
+    }
+  }
+  for (const QString& id : stale) states_.insert(id, false);
+}
+
+QHash<QString, QPointF> NodeEditor::layoutModel(const QJsonObject& model) const {
+  // column: the first step at which a branch reaches the block; blocks off the branches one
+  // column behind what links into them
+  QHash<QString, int> column;
+  for (const QJsonValue& b : model["branches"].toArray()) {
+    const QJsonArray steps = b.toObject()["steps"].toArray();
+    for (int k = 0; k < steps.size(); ++k) {
+      const QString id = steps[k].toArray().at(0).toString();
+      if (!column.contains(id) || k < column[id]) column[id] = k;
+    }
+  }
+  QStringList ids;
+  for (const QJsonValue& v : model["nodes"].toArray()) ids << v.toObject()["id"].toString();
+  for (int pass = 0; pass < 4; ++pass) {
+    for (const QJsonValue& v : model["links"].toArray()) {
+      const QString from = v.toObject()["from"].toArray().at(0).toString();
+      const QString to = v.toObject()["to"].toArray().at(0).toString();
+      if (column.contains(from) && !column.contains(to)) column[to] = column[from] + 1;
+    }
+  }
+  QHash<int, int> rows;
+  QHash<QString, QPointF> out;
+  for (const QString& id : ids) {
+    const int c = column.value(id, 0);
+    const int r = rows[c]++;
+    out[id] = QPointF(c * (kWidth + 70.0), r * 130.0);
+  }
+  return out;
 }
 
 }  // namespace nfcad::ui
