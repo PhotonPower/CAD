@@ -133,6 +133,15 @@ class Raytracer(plugin.Plugin):
             ctx.plots.append("Merit", it.index, it.merit)
 ```
 
+Actions on the node workflow:
+
+- `@action(..., on_workflow_edit=True)`: CAD also runs it, quietly, about 0.6 s after the user
+  edited the node workflow, if the plugin is running and idle (the Raytracer redraws with it).
+- `@action(..., block_types=("rtt.section",))`: an action on **one block**. It is not in the
+  menu or the plugin panel; the node editor shows it in the context menu of blocks of these
+  types. `ctx.target` names the block: `{"block": id, "scope": [group ids from the top level]}`
+  (the level of the editor the block lies on). The Raytracer's *Section → group* is one.
+
 ### Signing (decided, D3: one publisher)
 
 - Ed25519 signature over the manifest and the SHA-256 of every file (`nfcad-plugin sign`,

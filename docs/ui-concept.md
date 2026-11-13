@@ -126,7 +126,11 @@ group names (sources, detectors and data links across the border are refused, wi
 A double-click on a group (or *Open group*) shows its inside – the level is named at the top left,
 Escape or *Back out of the group* returns; the branch list then shows the inner branches.
 *Variant* chooses the active variant, *Condensed (plane-wave tables)* switches R29's condensing,
-*Ungroup* puts the blocks back. Recording a branch through a group takes its fitting inner branch. Old workflows (socket
+*Ungroup* puts the blocks back. Recording a branch through a group takes its fitting inner branch.
+**Section → group** (a Raytatouille section's context menu, from the Raytracer plugin) turns a
+section – several elements of an assembly in one block, e.g. an objective – into a group with one
+block per element (lens group, stop …), each with its data and its part of every traversal; the
+section's traversals become the inner branches. The light stays the same; one undo step. Old workflows (socket
 graphs) still open as before; *Workflow from system* turns them into a model and keeps the
 edits (positions, parameters, replaced blocks with their ports, added blocks and links,
 transports, own branches). *Replace with* moves the connections and branch steps of a block to

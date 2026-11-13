@@ -18,11 +18,13 @@ class UserError(Exception):
 
 
 class Context:
-    def __init__(self, host, job: int, params: dict, selection: list[int]):
+    def __init__(self, host, job: int, params: dict, selection: list[int], target: dict | None = None):
         self._host = host
         self.job = job
         self.params = params
         self.selection = selection
+        #: the block an action with ``block_types`` was chosen on: {"block": id, "scope": [...]}
+        self.target = target or {}
         self._cancel = threading.Event()
 
     # ---- run control

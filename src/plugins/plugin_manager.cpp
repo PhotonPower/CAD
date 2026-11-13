@@ -178,9 +178,9 @@ PluginHost* PluginManager::plugin(const QString& id) const {
   return nullptr;
 }
 
-int PluginManager::run(PluginHost* host, const QString& action, const QJsonObject& params) {
+int PluginManager::run(PluginHost* host, const QString& action, const QJsonObject& params, const QJsonObject& target) {
   if (!host->running()) host->start(python(), nfcadPythonPath());
-  const int job = host->run(action, params);
+  const int job = host->run(action, params, target);
   if (job != 0) emit jobStarted(host, job);
   return job;
 }

@@ -4,6 +4,9 @@
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <functional>
+#include <utility>
+#include <vector>
 
 class QGraphicsPathItem;
 class QLabel;
@@ -32,6 +35,11 @@ class NodeEditor : public QGraphicsView {
   Q_OBJECT
  public:
   explicit NodeEditor(QWidget* parent = nullptr);
+
+  /// Actions of the plugins on one block (its context menu): label and what to do, for a block
+  /// of a type; the main window fills it from the plugins' actions with block types.
+  using BlockAction = std::pair<QString, std::function<void()>>;
+  std::function<std::vector<BlockAction>(const QString& id, const QString& type)> block_actions;
 
   void setWorkflow(const QJsonObject& workflow);
   [[nodiscard]] const QJsonObject& workflow() const { return workflow_; }

@@ -453,6 +453,22 @@ void MainWindow::createPanels() {
       }
     }
   });
+  // the plugins' actions on one block (context menu of the node editor)
+  node_editor_->block_actions = [this](const QString& id, const QString& type) {
+    std::vector<ui::NodeEditor::BlockAction> out;
+    if (plugins_ == nullptr) return out;
+    for (const auto& host : plugins_->plugins()) {
+      for (const auto& a : host->actions()) {
+        if (!a.block_types.contains(type)) continue;
+        QJsonArray scope;
+        for (const QString& g : node_editor_->scope()) scope.append(g);
+        out.emplace_back(a.label, [this, h = host.get(), action = a.id, target = QJsonObject{{"block", id}, {"scope", scope}}] {
+          plugins_->run(h, action, doc_->pluginParameters(h->manifest().id), target);
+        });
+      }
+    }
+    return out;
+  };
   // the block a plugin computes now
   connect(doc_, &document::Document::workflowRunning, this, [this, workflow](const QString& node) {
     node_editor_->setRunning(node);

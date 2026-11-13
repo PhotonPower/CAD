@@ -224,6 +224,7 @@ void MainWindow::rebuildPluginUi() {
       sub->addAction(h->running() ? tr("(starting …)") : tr("(not running – see the plugin log)"))->setEnabled(false);
     }
     for (const auto& a : h->actions()) {
+      if (!a.block_types.isEmpty()) continue;  // in the node editor's context menu of its blocks
       plugins::PluginHost* host = h.get();
       const QString action = a.id;
       sub->addAction(a.label, this, [this, host, action] { runPluginAction(host, action); });
