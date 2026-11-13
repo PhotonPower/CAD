@@ -144,6 +144,8 @@ class Param:
 
     @staticmethod
     def json(default: Any = None, *, label: str | None = None, group: str | None = None,
-             description: str | None = None) -> "Param":
-        """Any JSON value, edited as text (invalid text is marked and blocks the actions)."""
-        return Param("json", default, label=label, group=group, description=description)
+             description: str | None = None, hidden: bool = False) -> "Param":
+        """Any JSON value, edited as text (invalid text is marked and blocks the actions);
+        `hidden`: not shown in the panel, kept and passed to the actions (a plugin's bookkeeping)."""
+        return Param("json", default, label=label, group=group, description=description,
+                     hidden=True if hidden else None)

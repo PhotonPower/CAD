@@ -65,6 +65,7 @@ PluginForm::PluginForm(const QJsonArray& schema, const QJsonObject& values, Call
     const QString name = p["name"].toString();
     if (name.isEmpty()) continue;
     values_.insert(name, values.contains(name) ? values[name] : p["default"]);
+    if (p["hidden"].toBool()) continue;  // kept and passed on, not shown (a plugin's own bookkeeping)
     QWidget* editor = makeEditor(p);
     editor->setToolTip(p["description"].toString());
     const QString label = p["label"].toString(name);
