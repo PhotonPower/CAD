@@ -379,9 +379,25 @@ void MainWindow::createPanels() {
   // windows (double-click on the block); they open no general window
   auto own = [](const results::ResultItem* item) { return item->key.startsWith(QLatin1String("workflow:")); };
   connect(results_, &results::ResultStore::changed, this, [this, plot, own] {
-    for (const auto* item : results_->visibleItems(results::ResultItem::Kind::Curve)) {
-      if (!own(item)) {
-        plot->show();
+    for (const auto kind : {results::ResultItem::Kind::Curve, results::ResultItem::Kind::Bars}) {
+      for (const auto* item : results_->visibleItems(kind)) {
+        if (!own(item)) {
+          plot->show();
+          return;
+        }
+      }
+    }
+  });
+  // tables (e.g. the orders of a grating, ADR 0010 W4a): their own dock with the first one
+  auto* table = new QDockWidget(tr("Table"), this);
+  table->setObjectName(QStringLiteral("tableDock"));
+  table->setWidget(new ui::TableView(results_, table));
+  addDockWidget(Qt::BottomDockWidgetArea, table);
+  table->hide();
+  connect(results_, &results::ResultStore::changed, this, [this, table, own] {
+    for (const auto* item : results_->visibleItems(results::ResultItem::Kind::Table)) {
+      if (!own(item) && !table->isVisible()) {
+        table->show();
         return;
       }
     }
