@@ -6,6 +6,8 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QScrollBar>
+#include <QComboBox>
+#include <QTableWidget>
 #include <QTimer>
 #include <QTreeWidget>
 #include <QVBoxLayout>
@@ -28,6 +30,8 @@ QString kind_text(results::ResultItem::Kind k) {
     case results::ResultItem::Kind::Field: return QObject::tr("Field on face");
     case results::ResultItem::Kind::Curve: return QObject::tr("Curve");
     case results::ResultItem::Kind::Image: return QObject::tr("Image");
+    case results::ResultItem::Kind::Table: return QObject::tr("Table");
+    case results::ResultItem::Kind::Bars: return QObject::tr("Bars");
   }
   return {};
 }
@@ -132,6 +136,47 @@ std::vector<const results::ResultItem*> PlotWidget::curves() const {
                         : store_->itemsWithKey(key_, results::ResultItem::Kind::Curve);
 }
 
+std::vector<const results::ResultItem*> PlotWidget::bars() const {
+  return key_.isEmpty() ? store_->visibleItems(results::ResultItem::Kind::Bars)
+                        : store_->itemsWithKey(key_, results::ResultItem::Kind::Bars);
+}
+
+void PlotWidget::paintBars(QPainter& p, const results::ResultItem& item) {
+  const results::Bars& b = *item.bars;
+  double y0 = 0, y1 = 0;
+  for (double v : b.values) {
+    if (!std::isfinite(v)) continue;
+    y0 = std::min(y0, v);
+    y1 = std::max(y1, v);
+  }
+  if (y1 == y0) y1 = y0 + 1;
+  const QRectF area(52, 24, width() - 64, height() - 56);
+  auto y_at = [&](double v) { return area.bottom() - (v - y0) / (y1 - y0) * area.height(); };
+  p.setPen(QColor(80, 86, 96));
+  p.drawRect(area);
+  QFont f = font();
+  f.setPointSizeF(f.pointSizeF() * 0.85);
+  p.setFont(f);
+  p.setPen(QColor(170, 176, 186));
+  for (int i = 0; i <= 4; ++i) {
+    const double ty = y0 + (y1 - y0) * i / 4.0;
+    p.drawText(QRectF(0, y_at(ty) - 8, 48, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(ty, 'g', 4));
+  }
+  const int n = static_cast<int>(b.values.size());
+  const double slot = n > 0 ? area.width() / n : area.width();
+  for (int k = 0; k < n; ++k) {
+    const double v = std::isfinite(b.values[static_cast<std::size_t>(k)]) ? b.values[static_cast<std::size_t>(k)] : 0.0;
+    const QRectF bar(area.left() + k * slot + slot * 0.15, std::min(y_at(v), y_at(0.0)), slot * 0.7,
+                     std::abs(y_at(v) - y_at(0.0)));
+    p.fillRect(bar, kCurveColors[0]);
+    p.setPen(QColor(170, 176, 186));
+    p.drawText(QRectF(area.left() + k * slot, area.bottom() + 2, slot, 16), Qt::AlignHCenter | Qt::AlignTop,
+               b.labels.value(k));
+  }
+  p.drawText(QRectF(area.left(), 4, area.width(), 16), Qt::AlignCenter,
+             item.name + (b.y_label.isEmpty() ? QString() : QStringLiteral(" – ") + b.y_label));
+}
+
 void PlotWidget::paintEvent(QPaintEvent* /*event*/) {
   QPainter p(this);
   p.fillRect(rect(), QColor(28, 31, 36));
@@ -139,6 +184,10 @@ void PlotWidget::paintEvent(QPaintEvent* /*event*/) {
   const auto curves = this->curves();
   p.setPen(QColor(150, 155, 165));
   if (curves.empty()) {
+    if (const auto bars = this->bars(); !bars.empty()) {  // the newest bar chart (W4a)
+      paintBars(p, *bars.back());
+      return;
+    }
     p.drawText(rect(), Qt::AlignCenter, tr("No curves (e.g. the merit function of an optimisation)"));
     return;
   }
@@ -206,5 +255,68 @@ void PlotWidget::paintEvent(QPaintEvent* /*event*/) {
   p.setPen(QColor(170, 176, 186));
   p.drawText(QRectF(area.left(), height() - 16, area.width(), 16), Qt::AlignCenter, first->x_label);
 }
+
+// ------------------------------------------------------------------------------ table
+
+TableView::TableView(const results::ResultStore* store, QWidget* parent) : QWidget(parent), store_(store) {
+  auto* layout = new QVBoxLayout(this);
+  layout->setContentsMargins(2, 2, 2, 2);
+  choice_ = new QComboBox(this);
+  layout->addWidget(choice_);
+  table_ = new QTableWidget(this);
+  table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  table_->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+  table_->horizontalHeader()->setStretchLastSection(true);
+  table_->setSortingEnabled(false);
+  layout->addWidget(table_);
+  connect(store_, &results::ResultStore::changed, this, &TableView::refresh);
+  connect(choice_, &QComboBox::currentIndexChanged, this, [this](int) { show(); });
+  refresh();
+}
+
+std::vector<const results::ResultItem*> TableView::tables() const {
+  return store_->visibleItems(results::ResultItem::Kind::Table);
+}
+
+void TableView::refresh() {
+  const auto tables = this->tables();
+  const QVariant kept = choice_->currentData();
+  const QSignalBlocker block(choice_);
+  choice_->clear();
+  for (const auto* t : tables) choice_->addItem(t->name, QVariant::fromValue<qulonglong>(t->id));
+  // a new table is shown (as new images are); else the user's choice stays
+  const results::ResultId newest = tables.empty() ? 0 : tables.back()->id;
+  const int at = kept.isValid() ? choice_->findData(kept) : -1;
+  choice_->setCurrentIndex(newest != newest_ || at < 0 ? choice_->count() - 1 : at);
+  newest_ = newest;
+  choice_->setVisible(choice_->count() > 1);
+  show();
+}
+
+void TableView::show() {
+  const results::ResultItem* item = store_->item(choice_->currentData().toULongLong());
+  if (item == nullptr || item->table == nullptr) {
+    table_->clear();
+    table_->setRowCount(0);
+    table_->setColumnCount(0);
+    return;
+  }
+  const results::Table& t = *item->table;
+  table_->setColumnCount(static_cast<int>(t.columns.size()));
+  table_->setHorizontalHeaderLabels(t.columns);
+  table_->setRowCount(static_cast<int>(t.rows.size()));
+  for (int r = 0; r < static_cast<int>(t.rows.size()); ++r) {
+    for (int c = 0; c < static_cast<int>(t.columns.size()); ++c) {
+      auto* cell = new QTableWidgetItem(t.rows[static_cast<std::size_t>(r)].value(c));
+      bool number = false;
+      cell->text().toDouble(&number);
+      if (number) cell->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+      table_->setItem(r, c, cell);
+    }
+  }
+  table_->resizeColumnsToContents();
+}
+
+const results::ResultItem* TableView::shown() const { return store_->item(choice_->currentData().toULongLong()); }
 
 }  // namespace nfcad::ui

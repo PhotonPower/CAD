@@ -455,6 +455,31 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
                                        args["name"].toString(), std::move(c), args["key"].toString());
     return static_cast<qint64>(id);
   }
+  if (method == QLatin1String("results.table")) {
+    results::Table t;
+    for (const QJsonValue& c : args["columns"].toArray()) t.columns << c.toString();
+    for (const QJsonValue& r : args["rows"].toArray()) {
+      QStringList row;
+      for (const QJsonValue& c : r.toArray()) row << c.toString();
+      if (row.size() != t.columns.size()) throw std::runtime_error("table: a row does not match the columns");
+      t.rows.push_back(row);
+    }
+    const auto id = results_->addTable(static_cast<results::ResultId>(args["set"].toInteger()),
+                                       args["name"].toString(), std::move(t), args["key"].toString());
+    return static_cast<qint64>(id);
+  }
+  if (method == QLatin1String("results.bars")) {
+    results::Bars b;
+    for (const QJsonValue& l : args["labels"].toArray()) b.labels << l.toString();
+    for (const QJsonValue& v : args["values"].toArray()) b.values.push_back(v.toDouble());
+    if (static_cast<std::size_t>(b.labels.size()) != b.values.size()) {
+      throw std::runtime_error("bars: labels and values differ in number");
+    }
+    b.y_label = args["y_label"].toString();
+    const auto id = results_->addBars(static_cast<results::ResultId>(args["set"].toInteger()),
+                                      args["name"].toString(), std::move(b), args["key"].toString());
+    return static_cast<qint64>(id);
+  }
   if (method == QLatin1String("results.append")) {
     results_->appendToCurve(static_cast<results::ResultId>(args["item"].toInteger()), args["x"].toDouble(),
                             args["y"].toDouble());
