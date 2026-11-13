@@ -7,7 +7,9 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPlainTextEdit>
 #include <QPushButton>
+#include <QTableWidget>
 #include <QSignalSpy>
 #include <QSpinBox>
 #include <QTemporaryDir>
@@ -69,6 +71,99 @@ class TestPluginForm : public QObject {
     edit->setText(QStringLiteral("1, x"));
     QCOMPARE(f.invalid(), QStringList{QStringLiteral("wl")});
     QCOMPARE(f.values()["wl"].toArray().size(), 3);  // the last valid value stays
+  }
+
+  // ---------------------------------------------------------------- structured (ADR 0010, W4a)
+
+  void listOfEntries() {
+    // a layer stack: entries with a kind, a thickness and – nested – a table of lamellae
+    const QJsonArray lamellae{QJsonObject{{"name", "x"}, {"type", "number"}, {"default", 0.0}, {"label", "x"}},
+                              QJsonObject{{"name", "material"}, {"type", "text"}, {"default", "air"}, {"label", "material"}}};
+    const QJsonArray layer{
+        QJsonObject{{"name", "kind"}, {"type", "choice"}, {"default", "homogeneous"}, {"options", QJsonArray{"homogeneous", "lamellar"}}},
+        QJsonObject{{"name", "thickness"}, {"type", "number"}, {"default", 0.1}, {"unit", "µm"}},
+        QJsonObject{{"name", "lamellae"}, {"type", "table"}, {"default", QJsonArray{}}, {"columns", lamellae}}};
+    const QJsonArray s{QJsonObject{{"name", "layers"}, {"type", "list"}, {"default", QJsonArray{}}, {"of", layer}, {"item_label", "kind"}}};
+    PluginForm::Callbacks cb;
+    int edits = 0;
+    cb.edit_entry = [&edits](const QJsonArray& schema, QJsonObject& entry) {
+      ++edits;
+      if (schema.size() != 3) return false;  // the entry's own schema, nested table included
+      entry["kind"] = edits == 1 ? QStringLiteral("lamellar") : QStringLiteral("homogeneous");
+      entry["thickness"] = 0.1 * edits;
+      return true;
+    };
+    PluginForm f(s, {}, cb);
+    auto* list = f.findChild<QWidget*>(QStringLiteral("list:layers"));
+    QVERIFY(list != nullptr);
+    auto press = [list](const char* id) { list->findChild<QPushButton*>(QString::fromLatin1(id))->click(); };
+    press("add");  // a new entry with the defaults, edited before it is added
+    press("add");
+    QJsonArray layers = f.values()["layers"].toArray();
+    QCOMPARE(layers.size(), 2);
+    QCOMPARE(layers[0].toObject()["kind"].toString(), QStringLiteral("lamellar"));
+    QCOMPARE(layers[0].toObject()["lamellae"].toArray().size(), 0);  // the nested default
+    auto* items = list->findChild<QListWidget*>();
+    QCOMPARE(items->item(0)->text(), QStringLiteral("1. lamellar"));
+    items->setCurrentRow(1);
+    press("up");  // the second entry first
+    layers = f.values()["layers"].toArray();
+    QCOMPARE(layers[0].toObject()["kind"].toString(), QStringLiteral("homogeneous"));
+    QCOMPARE(items->currentRow(), 0);
+    cb.edit_entry = nullptr;
+    press("remove");
+    QCOMPARE(f.values()["layers"].toArray().size(), 1);
+    // a cancelled edit changes nothing
+    PluginForm::Callbacks no;
+    no.edit_entry = [](const QJsonArray&, QJsonObject& entry) {
+      entry["kind"] = QStringLiteral("lamellar");
+      return false;
+    };
+    PluginForm g(s, QJsonObject{{"layers", f.values()["layers"]}}, no);
+    g.findChild<QWidget*>(QStringLiteral("list:layers"))->findChild<QListWidget*>()->setCurrentRow(0);
+    g.findChild<QWidget*>(QStringLiteral("list:layers"))->findChild<QPushButton*>(QStringLiteral("edit"))->click();
+    QCOMPARE(g.values()["layers"], f.values()["layers"]);
+  }
+
+  void tableInPlace() {
+    const QJsonArray columns{
+        QJsonObject{{"name", "x"}, {"type", "number"}, {"default", 0.0}, {"label", "x"}, {"unit", "µm"}},
+        QJsonObject{{"name", "n"}, {"type", "integer"}, {"default", 1}, {"label", "n"}},
+        QJsonObject{{"name", "m"}, {"type", "choice"}, {"default", "air"}, {"options", QJsonArray{"air", "glass"}}}};
+    const QJsonArray s{QJsonObject{{"name", "rows"}, {"type", "table"}, {"columns", columns},
+                                   {"default", QJsonArray{QJsonObject{{"x", 0.3}, {"n", 2}, {"m", "glass"}}}}}};
+    PluginForm f(s, {}, {});
+    auto* table = f.findChild<QTableWidget*>();
+    QCOMPARE(table->rowCount(), 1);
+    QCOMPARE(table->horizontalHeaderItem(0)->text(), QStringLiteral("x µm"));
+    QCOMPARE(table->item(0, 0)->text(), QStringLiteral("0.3"));
+    table->item(0, 0)->setText(QStringLiteral("0.45"));
+    QCOMPARE(f.values()["rows"].toArray()[0].toObject()["x"].toDouble(), 0.45);
+    table->item(0, 1)->setText(QStringLiteral("2.5"));  // no integer
+    QCOMPARE(f.invalid(), QStringList{QStringLiteral("rows")});
+    table->item(0, 1)->setText(QStringLiteral("3"));
+    table->item(0, 2)->setText(QStringLiteral("gold"));  // not an option
+    QCOMPARE(f.invalid(), QStringList{QStringLiteral("rows")});
+    table->item(0, 2)->setText(QStringLiteral("air"));
+    QVERIFY(f.invalid().isEmpty());
+    QCOMPARE(f.values()["rows"].toArray()[0].toObject(), (QJsonObject{{"x", 0.45}, {"n", 3}, {"m", "air"}}));
+    f.findChild<QWidget*>(QStringLiteral("table:rows"))->findChild<QPushButton*>(QStringLiteral("add"))->click();
+    QCOMPARE(f.values()["rows"].toArray()[1].toObject(), (QJsonObject{{"x", 0.0}, {"n", 1}, {"m", "air"}}));
+  }
+
+  void jsonText() {
+    const QJsonArray s{QJsonObject{{"name", "raw"}, {"type", "json"}, {"default", QJsonObject{{"a", 1}}}}};
+    PluginForm f(s, {}, {});
+    auto* edit = f.findChild<QPlainTextEdit*>();
+    QVERIFY(edit->toPlainText().contains(QStringLiteral("\"a\"")));
+    edit->setPlainText(QStringLiteral("[1, 2, {\"b\": null}]"));
+    QCOMPARE(f.values()["raw"].toArray().size(), 3);
+    edit->setPlainText(QStringLiteral("{oops"));
+    QCOMPARE(f.invalid(), QStringList{QStringLiteral("raw")});
+    QCOMPARE(f.values()["raw"].toArray().size(), 3);  // the last valid value stays
+    edit->setPlainText(QStringLiteral("2.5"));  // any JSON value
+    QVERIFY(f.invalid().isEmpty());
+    QCOMPARE(f.values()["raw"].toDouble(), 2.5);
   }
 
   void entityFromSelectionAndPointPick() {

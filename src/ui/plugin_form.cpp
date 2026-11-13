@@ -1,6 +1,12 @@
 #include "ui/plugin_form.hpp"
 
 #include <QCheckBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QHeaderView>
+#include <QJsonDocument>
+#include <QPlainTextEdit>
+#include <QTableWidget>
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
@@ -128,6 +134,9 @@ QWidget* PluginForm::makeEditor(const QJsonObject& p) {
     connect(w, &QComboBox::currentTextChanged, this, [this, name](const QString& t) { set(name, t); });
     return w;
   }
+  if (type == QLatin1String("list")) return makeList(p);
+  if (type == QLatin1String("table")) return makeTable(p);
+  if (type == QLatin1String("json")) return makeJson(p);
   if (type == QLatin1String("numbers")) {
     // comma separated, decimal point (as in the command line)
     auto* w = new QLineEdit(this);
@@ -303,6 +312,242 @@ QWidget* PluginForm::makeEditor(const QJsonObject& p) {
   // text and unknown types
   auto* w = new QLineEdit(value.toString(), this);
   connect(w, &QLineEdit::textChanged, this, [this, name](const QString& t) { set(name, t); });
+  return w;
+}
+
+// ---------------------------------------------------------------- structured parameters (W4a)
+
+namespace {
+/// The defaults of an entry's parameters.
+QJsonObject entry_defaults(const QJsonArray& schema) {
+  QJsonObject out;
+  for (const QJsonValue& v : schema) out.insert(v.toObject()["name"].toString(), v.toObject()["default"]);
+  return out;
+}
+
+/// What names an entry in the list: the field `item_label`, else the first text or choice.
+QString entry_text(const QJsonObject& p, const QJsonObject& entry, int index) {
+  QString key = p["item_label"].toString();
+  if (key.isEmpty()) {
+    for (const QJsonValue& v : p["of"].toArray()) {
+      const QString t = v.toObject()["type"].toString();
+      if (t == QLatin1String("text") || t == QLatin1String("choice")) {
+        key = v.toObject()["name"].toString();
+        break;
+      }
+    }
+  }
+  const QJsonValue named = key.isEmpty() ? QJsonValue() : entry.value(key);
+  const QString text = named.isString() ? named.toString() : named.isDouble() ? QString::number(named.toDouble()) : QString();
+  return QStringLiteral("%1. %2").arg(index + 1).arg(text.isEmpty() ? QObject::tr("entry") : text);
+}
+}  // namespace
+
+bool PluginForm::editEntry(const QJsonArray& schema, QJsonObject& entry) {
+  if (callbacks_.edit_entry) return callbacks_.edit_entry(schema, entry);
+  QDialog dialog(this);
+  dialog.setWindowTitle(tr("Edit entry"));
+  auto* layout = new QVBoxLayout(&dialog);
+  auto* form = new PluginForm(schema, entry, callbacks_, &dialog);  // nested lists work the same way
+  layout->addWidget(form);
+  auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+  layout->addWidget(buttons);
+  connect(buttons, &QDialogButtonBox::accepted, &dialog, [&dialog, form] {
+    if (form->invalid().isEmpty()) dialog.accept();  // fix the red fields first
+  });
+  connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+  if (dialog.exec() != QDialog::Accepted) return false;
+  entry = form->values();
+  return true;
+}
+
+QWidget* PluginForm::makeList(const QJsonObject& p) {
+  const QString name = p["name"].toString();
+  const QJsonArray schema = p["of"].toArray();
+  auto* box = new QWidget(this);
+  box->setObjectName(QStringLiteral("list:") + name);
+  auto* column = new QVBoxLayout(box);
+  column->setContentsMargins(0, 0, 0, 0);
+  column->setSpacing(2);
+  auto* list = new QListWidget(box);
+  list->setMaximumHeight(130);
+  column->addWidget(list);
+  auto* row = new QHBoxLayout;
+  auto button = [box, row](const QString& text, const QString& id) {
+    auto* b = new QPushButton(text, box);
+    b->setObjectName(id);
+    row->addWidget(b);
+    return b;
+  };
+  QPushButton* add = button(tr("Add"), QStringLiteral("add"));
+  QPushButton* edit = button(tr("Edit…"), QStringLiteral("edit"));
+  QPushButton* remove = button(tr("Remove"), QStringLiteral("remove"));
+  QPushButton* up = button(QStringLiteral("↑"), QStringLiteral("up"));
+  QPushButton* down = button(QStringLiteral("↓"), QStringLiteral("down"));
+  row->addStretch(1);
+  column->addLayout(row);
+  auto show = [this, name, list, p](int current) {
+    list->clear();
+    const QJsonArray entries = values_.value(name).toArray();
+    for (int k = 0; k < entries.size(); ++k) list->addItem(entry_text(p, entries[k].toObject(), k));
+    if (current >= 0 && current < list->count()) list->setCurrentRow(current);
+  };
+  show(-1);
+  auto change = [this, name, show](const std::function<void(QJsonArray&)>& f, int current) {
+    QJsonArray entries = values_.value(name).toArray();
+    f(entries);
+    set(name, entries);
+    show(current);
+  };
+  connect(add, &QPushButton::clicked, this, [this, schema, list, change] {
+    QJsonObject entry = entry_defaults(schema);
+    if (!editEntry(schema, entry)) return;
+    const int at = list->count();
+    change([&entry](QJsonArray& e) { e.append(entry); }, at);
+  });
+  auto edit_current = [this, name, schema, list, change] {
+    const int k = list->currentRow();
+    const QJsonArray entries = values_.value(name).toArray();
+    if (k < 0 || k >= entries.size()) return;
+    QJsonObject entry = entries[k].toObject();
+    if (!editEntry(schema, entry)) return;
+    change([k, &entry](QJsonArray& e) { e[k] = entry; }, k);
+  };
+  connect(edit, &QPushButton::clicked, this, edit_current);
+  connect(list, &QListWidget::itemDoubleClicked, this, edit_current);
+  connect(remove, &QPushButton::clicked, this, [list, change] {
+    const int k = list->currentRow();
+    if (k < 0) return;
+    change([k](QJsonArray& e) { e.removeAt(k); }, k - 1);
+  });
+  connect(up, &QPushButton::clicked, this, [list, change] {
+    const int k = list->currentRow();
+    if (k <= 0) return;
+    change([k](QJsonArray& e) {
+      const QJsonValue a = e[k];
+      e[k] = e[k - 1];
+      e[k - 1] = a;
+    }, k - 1);
+  });
+  connect(down, &QPushButton::clicked, this, [list, change] {
+    const int k = list->currentRow();
+    if (k < 0 || k + 1 >= list->count()) return;
+    change([k](QJsonArray& e) {
+      const QJsonValue a = e[k];
+      e[k] = e[k + 1];
+      e[k + 1] = a;
+    }, k + 1);
+  });
+  return box;
+}
+
+QWidget* PluginForm::makeTable(const QJsonObject& p) {
+  const QString name = p["name"].toString();
+  const QJsonArray columns = p["columns"].toArray();
+  auto* box = new QWidget(this);
+  box->setObjectName(QStringLiteral("table:") + name);
+  auto* column = new QVBoxLayout(box);
+  column->setContentsMargins(0, 0, 0, 0);
+  column->setSpacing(2);
+  auto* table = new QTableWidget(0, static_cast<int>(columns.size()), box);
+  QStringList heads;
+  for (const QJsonValue& c : columns) heads << c.toObject()["label"].toString(c.toObject()["name"].toString()) + suffix(c.toObject());
+  table->setHorizontalHeaderLabels(heads);
+  table->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+  table->verticalHeader()->setDefaultSectionSize(22);
+  table->setMaximumHeight(160);
+  column->addWidget(table);
+  auto* row = new QHBoxLayout;
+  auto* add = new QPushButton(tr("Add row"), box);
+  add->setObjectName(QStringLiteral("add"));
+  auto* remove = new QPushButton(tr("Remove row"), box);
+  remove->setObjectName(QStringLiteral("remove"));
+  row->addWidget(add);
+  row->addWidget(remove);
+  row->addStretch(1);
+  column->addLayout(row);
+  auto cell_text = [](const QJsonValue& v) {
+    return v.isDouble() ? QString::number(v.toDouble(), 'g', 12) : v.toString();
+  };
+  auto fill = [table, columns, cell_text](const QJsonArray& rows) {
+    const QSignalBlocker block(table);
+    table->setRowCount(static_cast<int>(rows.size()));
+    for (int r = 0; r < rows.size(); ++r) {
+      for (int c = 0; c < columns.size(); ++c) {
+        const QString key = columns[c].toObject()["name"].toString();
+        table->setItem(r, c, new QTableWidgetItem(cell_text(rows[r].toObject().value(key))));
+      }
+    }
+  };
+  fill(values_.value(name).toArray());
+  // the rows from the cells; a cell that is no number in a number column marks the table invalid
+  auto store = [this, name, table, columns] {
+    QJsonArray rows;
+    bool ok = true;
+    for (int r = 0; r < table->rowCount(); ++r) {
+      QJsonObject out;
+      for (int c = 0; c < columns.size(); ++c) {
+        const QJsonObject col = columns[c].toObject();
+        const QString text = table->item(r, c) != nullptr ? table->item(r, c)->text().trimmed() : QString();
+        const QString t = col["type"].toString();
+        if (t == QLatin1String("number") || t == QLatin1String("integer")) {
+          bool good = false;
+          const double x = QLocale::c().toDouble(text, &good);
+          good = good && std::isfinite(x) && (t == QLatin1String("number") || std::floor(x) == x);
+          if (table->item(r, c) != nullptr) table->item(r, c)->setBackground(good ? QBrush() : QBrush(QColor(224, 80, 80, 90)));
+          ok = ok && good;
+          out.insert(col["name"].toString(), t == QLatin1String("integer") ? QJsonValue(static_cast<qint64>(x)) : QJsonValue(x));
+        } else if (t == QLatin1String("choice")) {
+          bool known = false;
+          for (const QJsonValue& o : col["options"].toArray()) known = known || o.toString() == text;
+          if (table->item(r, c) != nullptr) table->item(r, c)->setBackground(known ? QBrush() : QBrush(QColor(224, 80, 80, 90)));
+          ok = ok && known;
+          out.insert(col["name"].toString(), text);
+        } else {
+          out.insert(col["name"].toString(), text);
+        }
+      }
+      rows.append(out);
+    }
+    setValid(name, ok);
+    if (ok) set(name, rows);
+  };
+  connect(table, &QTableWidget::cellChanged, this, [store](int, int) { store(); });
+  connect(add, &QPushButton::clicked, this, [this, name, columns, fill] {
+    QJsonArray rows = values_.value(name).toArray();
+    rows.append(entry_defaults(columns));
+    set(name, rows);
+    fill(rows);
+  });
+  connect(remove, &QPushButton::clicked, this, [this, name, table, fill] {
+    const int r = table->currentRow();
+    QJsonArray rows = values_.value(name).toArray();
+    if (r < 0 || r >= rows.size()) return;
+    rows.removeAt(r);
+    set(name, rows);
+    fill(rows);
+  });
+  return box;
+}
+
+QWidget* PluginForm::makeJson(const QJsonObject& p) {
+  const QString name = p["name"].toString();
+  auto* w = new QPlainTextEdit(this);
+  w->setObjectName(QStringLiteral("json:") + name);
+  // QJsonDocument holds an object or an array: a scalar travels inside a one-element array
+  const QByteArray text = QJsonDocument(QJsonArray{values_.value(name)}).toJson(QJsonDocument::Indented);
+  QString inner = QString::fromUtf8(text).trimmed();
+  inner = inner.mid(1, inner.size() - 2).trimmed();  // without the wrapping brackets
+  w->setPlainText(inner);
+  w->setMinimumHeight(90);
+  connect(w, &QPlainTextEdit::textChanged, this, [this, name, w] {
+    QJsonParseError error{};
+    const QJsonDocument doc = QJsonDocument::fromJson("[" + w->toPlainText().toUtf8() + "]", &error);
+    const bool ok = error.error == QJsonParseError::NoError && doc.isArray() && doc.array().size() == 1;
+    setValid(name, ok);
+    w->setStyleSheet(ok ? QString() : QStringLiteral("border: 1px solid #e05050;"));
+    if (ok) set(name, doc.array().at(0));
+  });
   return w;
 }
 
