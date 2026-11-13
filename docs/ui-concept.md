@@ -155,8 +155,15 @@ angles in degree, a parameter's "variable" as a check box); the source shows the
 settings (wavelengths, fields, aperture, object) and the assemblies split over blocks. Only the
 values you change are written back (a value with more digits than shown stays exact).
 
-Once the workflow holds the system it is the truth for the Raytracer plugin: *Run workflow*,
-*Trace rays*, *Camera image* and *Optimise* compute with the system the workflow makes, and the
+*Check workflow* and *Run workflow* belong to the **Workflow** plugin (the workflow engine, ADR
+0010): it checks, plans and runs the graph whatever plugin provides its blocks, keeps earlier
+results and holds the image settings (rays, pixels, image window, Gaussian illumination) in its
+panel. The plugins that provide blocks describe their editable data and keep it up to date after
+an edit (the Raytracer does so in *Follow the workflow*).
+
+Once the workflow holds the system it is the truth for the Raytracer plugin: the engine's runs,
+*Trace rays*, *Camera image* and *Optimise* compute with the system the workflow makes (the glass
+catalogues travel with it, `rtt_catalogs` of the source), and the
 CAD view shows it – NURBS derived from the exact data, drawn again shortly after every edit of
 the workflow (a plugin action marked `on_workflow_edit`, run by CAD when the plugin is idle; an
 unfinished value just waits for the next edit), before a computation, or with *Update drawing*. *Optimise* writes its result into the blocks;
