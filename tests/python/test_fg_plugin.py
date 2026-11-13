@@ -49,6 +49,17 @@ assert (p_nf["nf_y_from"], p_nf["nf_nx"], p_nf["nf_ny"]) == (-0.3, 100, 300)
 p_nf["nf_periods"] = 3  # changed: written; the file's keys stay, the defaults stay out
 assert fg_config.to_config(p_nf)["nearfield"] == {**OTHER["nearfield"], "periods": 3}
 assert fg_config.nearfield(p_nf, complete=True)["ny"] == 300
+# Littrow: sin φ = −n λ / (2 Λ ν cos ψ); λ 0.6 µm, Λ 0.7 µm, air
+import math  # noqa: E402
+
+assert abs(fg_config.littrow_phi_deg(p, -1) - math.degrees(math.asin(0.6 / 1.4))) < 1e-12
+assert abs(fg_config.littrow_phi_deg(p, 1) + math.degrees(math.asin(0.6 / 1.4))) < 1e-12
+for order, why in ((-3, "no Littrow angle"), (0, "no Littrow angle")):
+    try:
+        fg_config.littrow_phi_deg(p, order)
+        raise AssertionError("not refused")
+    except ValueError as e:
+        assert why in str(e)
 p["nz"] = 5  # a value the file lacked, set off its default by the user, is written
 assert fg_config.to_config(p)["truncation"] == {"Nx": 4, "Nz": 5}
 
@@ -187,9 +198,17 @@ with tempfile.TemporaryDirectory() as d:
     ctx = Ctx({"config_file": str(src), "save_as": str(dst)})
     plugin = FourierGratingPlugin()
     plugin.load_config(ctx)
+    ctx.params["solve_csv"] = str(Path(d) / "orders.csv")
     plugin.solve(ctx)
     plugin.save_config(ctx)
     assert json.loads(dst.read_text()) == LAMELLAR
+    lines = (Path(d) / "orders.csv").read_text().splitlines()
+    assert lines[0] == "side,n,m,efficiency,eff_s,eff_p" and len(lines) == 1 + len(ctx.out["table"][1])
+    ctx.params["littrow_order"] = -1
+    message = plugin.set_littrow(ctx)
+    assert ctx.params["phi_deg"].startswith("25.37"), (ctx.params["phi_deg"], message)
+    plugin.solve(ctx)  # at Littrow the reflected -1 order propagates
+    assert any(r[0] == "R" and r[1] == -1 for r in ctx.out["table"][1])
 columns, rows = ctx.out["table"]
 assert columns[:4] == ["side", "n", "m", "efficiency"]
 total = sum(r[3] for r in rows)
@@ -210,9 +229,15 @@ with tempfile.TemporaryDirectory() as d:
     assert (Path(d) / "scan.csv").exists()
 print("scan ok:", message)
 
-# a real near field: the vertical cut as an image, the horizontal one (1D) as a curve
-ctx = Ctx({**fg_config.to_params(LAMELLAR), "nf_show": "|E|²", "nf_nx": 40, "nf_ny": 30})
+# a real near field: the vertical cut as an image, the horizontal one (1D) as a curve; all as .npz
+npz_dir = tempfile.TemporaryDirectory()
+npz = Path(npz_dir.name) / "nf.npz"
+ctx = Ctx({**fg_config.to_params(LAMELLAR), "nf_show": "|E|²", "nf_nx": 40, "nf_ny": 30, "nf_npz": str(npz)})
 message = plugin.near_field(ctx)
+with np.load(npz) as z:
+    assert z["vertical/Ex"].shape == (30, 40) and z["vertical/Ex"].dtype == np.complex128
+    assert "normalization" in json.loads(str(z["vertical/meta"]))
+npz_dir.cleanup()
 count, width, height, extra = ctx.out["images"]["|E|² – vertical cut"]
 assert (count, width, height) == (1200, 40, 30) and extra["colormap"] == "inferno", ctx.out["images"]
 x = ctx.out["curves"]["|E|² – horizontal cut"][0]

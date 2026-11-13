@@ -14,7 +14,8 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
   shows the field in the grating (|E|², |H|², power flow, components, material) as images; the
   plugin provides the grating block `fg.grating` of the node workflow, computed in its process;
   *Optimise* finds layer depths, breakpoints or periods for an objective Σ weight · efficiency with
-  FourierGrating's exact gradients (live curve, the optimum applied to the panel).
+  FourierGrating's exact gradients (live curve, the optimum applied to the panel); *Set Littrow
+  angle*; the order table as CSV and the near field as `.npz`.
 - Plugins: structured parameters (lists, tables, JSON), result tables and bar charts,
   `ctx.set_params` (ADR 0010, W4a).
 - **Camera image** (Raytracer): the irradiance on the last surface of each path from many rays

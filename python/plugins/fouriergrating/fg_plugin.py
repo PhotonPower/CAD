@@ -78,6 +78,10 @@ class FourierGratingPlugin(Plugin):
         "scan_min": Param.number(0.01, min=0.0, max=1.0, decimals=4, label="Orders from efficiency", group="Scan",
                                  description="an order gets a curve if it reaches this efficiency somewhere"),
         "scan_max_curves": Param.integer(24, min=1, max=500, label="At most curves", group="Scan"),
+        "littrow_order": Param.integer(-1, min=-50, max=50, label="Littrow order", group="Incidence",
+                                       description="Set Littrow angle: φ at which this reflected order runs back"),
+        "solve_csv": Param.file("", filter="CSV (*.csv)", save=True, label="Solve: also write CSV",
+                                group="Structure", description="the order table of Solve"),
         "scan_csv": Param.file("", filter="CSV (*.csv)", save=True, label="Also write CSV", group="Scan",
                                description="every order at every point, as FourierGrating's efficiencies.csv"),
         "nf_show": Param.choice(list(fg_nearfield.QUANTITIES), "|E|²", label="Show", group="Near field"),
@@ -90,6 +94,8 @@ class FourierGratingPlugin(Plugin):
         "nf_ny": Param.integer(300, min=2, max=4000, label="Points y", group="Near field"),
         "nf_nz": Param.integer(200, min=2, max=4000, label="Points z (2D)", group="Near field"),
         "nf_periods": Param.integer(2, min=1, max=20, label="Periods", group="Near field"),
+        "nf_npz": Param.file("", filter="NumPy archive (*.npz)", save=True, label="Also write .npz",
+                             group="Near field", description="every quantity of both cuts with their axes"),
         "opt_goal": Param.choice(["maximise", "minimise"], "maximise", label="Goal", group="Optimisation"),
         "opt_terms": Param.table({"side": Param.choice(["R", "T"], "R", label="side"),
                                   "n": Param.integer(-1, min=-1000, max=1000, label="n"),
@@ -187,7 +193,16 @@ class FourierGratingPlugin(Plugin):
                 labels.append(f"{side} {order}")
                 values.append(float(o["eff"]))
                 total[side] += float(o["eff"])
-        ctx.table(run, "Orders", ["side", "n", "m", "efficiency", "s part", "p part"], rows)
+        columns = ["side", "n", "m", "efficiency", "s part", "p part"]
+        ctx.table(run, "Orders", columns, rows)
+        if ctx.params.get("solve_csv"):
+            import csv
+
+            with open(ctx.params["solve_csv"], "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["side", "n", "m", "efficiency", "eff_s", "eff_p"])
+                w.writerows([r[:3] + [repr(v) for v in r[3:]] for r in rows])
+            ctx.log(f"{len(rows)} orders written to {Path(ctx.params['solve_csv']).name}")
         ctx.bars(run, "Efficiency per order", labels, values, y_label="efficiency")
         absorption = float(res.absorption)
         diagnostics = res.diagnostics if isinstance(res.diagnostics, dict) else {}
@@ -243,6 +258,9 @@ class FourierGratingPlugin(Plugin):
             cuts = fg.near_field(cfg)
         except Exception as e:  # noqa: BLE001 - FourierGrating's message is for the user
             raise UserError(f"FourierGrating: {e}") from e
+        if ctx.params.get("nf_npz"):
+            fg_nearfield.write_npz(cuts, ctx.params["nf_npz"])
+            ctx.log(f"near field written to {Path(ctx.params['nf_npz']).name}")
         quantity = ctx.params["nf_show"]
         inc = cuts.get("incidence", {})
         run = ctx.result_set(f"FourierGrating near field λ = {inc.get('lambda_um', '?')} µm")
@@ -311,3 +329,13 @@ class FourierGratingPlugin(Plugin):
             applied = ", applied to the panel"
         return (f"L {out.start_objective:.4g} → {out.objective:.4g}" + (" (stopped)" if out.stopped else "")
                 + applied)
+
+    @action("Set Littrow angle", description="φ for the Littrow order (reflected, back into the incident "
+                                             "direction) at the first λ and ψ")
+    def set_littrow(self, ctx):
+        try:
+            phi = fg_config.littrow_phi_deg(ctx.params, int(ctx.params["littrow_order"]))
+        except (KeyError, ValueError) as e:
+            raise UserError(str(e).strip("'\"")) from e
+        ctx.set_params({"phi_deg": f"{phi:.10g}"})
+        return f"φ = {phi:.6g}° (Littrow, order {ctx.params['littrow_order']})"

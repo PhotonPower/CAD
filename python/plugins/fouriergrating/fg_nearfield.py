@@ -82,3 +82,19 @@ def show(cut: dict, quantity: str) -> Picture | Line:
     y0, y1 = _edges(a2)
     return Picture(np.ascontiguousarray(v, dtype=np.float32).ravel(), len(a1), len(a2), (x0, x1, y0, y1),
                    name1, f"{cut.get('axis2_name', 'y')} / µm", colormap, value_range)
+
+
+def write_npz(cuts: dict, path: str) -> list[str]:
+    """Every array of every cut as `<cut>/<name>` (complex fields as they are) plus `<cut>/meta`
+    (JSON text) in one .npz; returns the names written."""
+    import json as _json
+
+    arrays: dict[str, np.ndarray] = {}
+    for cut, data in cuts.items():
+        if not isinstance(data, dict):
+            continue
+        for name, value in data.items():
+            is_json = name == "meta" or isinstance(value, dict)
+            arrays[f"{cut}/{name}"] = np.asarray(_json.dumps(value, default=float) if is_json else value)
+    np.savez_compressed(path, **arrays)
+    return sorted(arrays)
