@@ -105,6 +105,38 @@ with tempfile.TemporaryDirectory() as d:
     head = (Path(d) / "s.csv").read_text().splitlines()[0]
     assert head.endswith("efficiency,amp_re,amp_im"), head
 
+# optimisation without FourierGrating: pointers, checks, L-BFGS-B on a known function
+import fg_optimize  # noqa: E402
+
+assert fg_optimize.pointer_get(LAMELLAR, "/layers/0/breakpoints_um/1") == 0.3
+for bad_rows, why in (([{"pointer": "/layers/9/thickness_um", "lower": 0, "upper": 1}], "not in"),
+                      ([{"pointer": "/superstrate", "lower": 0, "upper": 1}], "not a number"),
+                      ([{"pointer": "/layers/0/thickness_um", "lower": 0.5, "upper": 1}], "outside"),
+                      ([], "no parameters")):
+    try:
+        fg_optimize.parameters_of(bad_rows, LAMELLAR)
+        raise AssertionError(f"not refused: {bad_rows}")
+    except (KeyError, ValueError) as e:
+        assert why in str(e), (why, e)
+assert fg_optimize.objective_of([{"side": "R", "n": -1, "m": 0, "weight": 1.0},
+                                 {"side": "R", "n": -1, "m": 0, "weight": 0.5}]) == {("R", -1, 0): 1.5}
+try:
+    import scipy  # noqa: F401
+
+    pars = [fg_optimize.Parameter("/a", 0.0, 1.0), fg_optimize.Parameter("/b", -1.0, 0.25)]
+    seen = []
+    out = fg_optimize.optimize(lambda x: (-(x[0] - 0.3) ** 2 - (x[1] - 0.5) ** 2, [-2 * (x[0] - 0.3), -2 * (x[1] - 0.5)]),
+                               [0.9, 0.0], pars, step=lambda k, L, x: seen.append(L))
+    assert abs(out.values[0] - 0.3) < 1e-6 and abs(out.values[1] - 0.25) < 1e-12, out  # b at its bound
+    assert out.objective >= out.start_objective and seen and not out.stopped
+    out = fg_optimize.optimize(lambda x: (x[0], [1.0]), [0.5], pars[:1], stop=lambda: len(seen) > 0)
+    assert out.stopped and out.values == [0.5] and out.steps == 0
+    cfg_opt = fg_optimize.Outcome([0.123], [0.2], 0, 0, 1, "", False).config(
+        LAMELLAR, [fg_optimize.Parameter("/layers/0/thickness_um", 0, 1)])
+    assert cfg_opt["layers"][0]["thickness_um"] == 0.123 and LAMELLAR["layers"][0]["thickness_um"] == 0.2
+except ImportError:
+    print("scipy not installed: optimisation skipped")
+
 try:
     import fouriergrating  # noqa: F401
 except ImportError:
@@ -133,7 +165,7 @@ class Ctx:
     def bars(self, run, name, labels, values, **k):
         self.out["bars"] = (labels, values)
 
-    def curve(self, run, name, x, y, **k):
+    def curve(self, run, name, x=(), y=(), **k):
         self.out.setdefault("curves", {})[name] = (x, y)
 
     def image(self, run, name, values, width, height, **k):
@@ -141,6 +173,12 @@ class Ctx:
 
     def set_params(self, values):
         self.params.update(values)
+
+    def append(self, curve, x, y):
+        self.out.setdefault("appended", []).append((x, y))
+
+    def cancelled(self):
+        return False
 
 
 with tempfile.TemporaryDirectory() as d:
@@ -180,3 +218,18 @@ assert (count, width, height) == (1200, 40, 30) and extra["colormap"] == "infern
 x = ctx.out["curves"]["|E|² – horizontal cut"][0]
 assert len(x) == 40 and abs(x[-1] - x[0] - 2 * 0.7) < 0.1, (len(x), x[0], x[-1])  # nx points over two periods
 print("near field ok:", message)
+
+# a real optimisation: the depth of the lamellar layer for the most light in R -1, from 0.25 µm
+# (L = 0.00059); a scan of the depth in steps of 0.05 µm (adjoint gradient = finite differences)
+# puts the maximum near 0.17 µm (L ≈ 0.00127; 0.001216 at 0.15, 0.00119 at 0.2)
+start_params = fg_config.to_params(LAMELLAR)
+start_params["layers"][0]["thickness"] = 0.25
+ctx = Ctx({**start_params, "opt_goal": "maximise", "opt_iterations": 15, "opt_apply": True,
+           "opt_terms": [{"side": "R", "n": -1, "m": 0, "weight": 1.0}],
+           "opt_params": [{"pointer": "/layers/0/thickness_um", "lower": 0.05, "upper": 0.6}]})
+message = plugin.optimise(ctx)
+start_L, best_L = ctx.out["appended"][0][1], max(L for _, L in ctx.out["appended"])
+assert abs(start_L - 0.000592) < 1e-5 and best_L > 0.00125, (start_L, best_L, message)
+depth = ctx.params["layers"][0]["thickness"]  # applied to the panel
+assert 0.15 < depth < 0.2, depth
+print("optimisation ok:", message, "depth", depth)

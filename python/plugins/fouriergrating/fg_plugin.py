@@ -13,6 +13,7 @@ from nfcad import Param, Plugin, UserError, action
 
 import fg_config
 import fg_nearfield
+import fg_optimize
 import fg_scan
 
 _LAMELLA = {
@@ -89,6 +90,20 @@ class FourierGratingPlugin(Plugin):
         "nf_ny": Param.integer(300, min=2, max=4000, label="Points y", group="Near field"),
         "nf_nz": Param.integer(200, min=2, max=4000, label="Points z (2D)", group="Near field"),
         "nf_periods": Param.integer(2, min=1, max=20, label="Periods", group="Near field"),
+        "opt_goal": Param.choice(["maximise", "minimise"], "maximise", label="Goal", group="Optimisation"),
+        "opt_terms": Param.table({"side": Param.choice(["R", "T"], "R", label="side"),
+                                  "n": Param.integer(-1, min=-1000, max=1000, label="n"),
+                                  "m": Param.integer(0, min=-1000, max=1000, label="m"),
+                                  "weight": Param.number(1.0, decimals=4, label="weight")},
+                                 label="Objective L = Σ weight · efficiency", group="Optimisation"),
+        "opt_params": Param.table({"pointer": Param.text("/layers/0/thickness_um", label="JSON pointer"),
+                                   "lower": Param.number(0.0, decimals=6, label="lower"),
+                                   "upper": Param.number(1.0, decimals=6, label="upper")},
+                                  label="Parameters", group="Optimisation",
+                                  description="numbers of the configuration by JSON pointer, e.g. "
+                                              "/layers/0/thickness_um or /layers/0/breakpoints_um/1"),
+        "opt_iterations": Param.integer(50, min=1, max=10000, label="Iterations", group="Optimisation"),
+        "opt_apply": Param.boolean(True, label="Apply the optimum to the panel", group="Optimisation"),
         "advanced": Param.json({}, label="Further settings (JSON)", group="Advanced",
                                description="solver options, sweeps, near field, output – as in the configuration file"),
         "_order": Param.json([], hidden=True),
@@ -249,3 +264,50 @@ class FourierGratingPlugin(Plugin):
                           description=str(cuts[name].get("meta", {}).get("normalization", "")))
             shown.append(name)
         return f"{quantity}: {', '.join(shown)} cut" + ("s" if len(shown) > 1 else "")
+
+    @action("Optimise", description="L-BFGS-B with FourierGrating's exact gradients: the parameters within their "
+                                    "bounds for the objective, at the first incidence point")
+    def optimise(self, ctx):
+        fg = _fg()
+        cfg = self.config(ctx)
+        try:
+            terms = fg_optimize.objective_of(ctx.params["opt_terms"])
+            parameters = fg_optimize.parameters_of(ctx.params["opt_params"], cfg)
+        except (KeyError, ValueError) as e:
+            raise UserError(str(e).strip("'\"")) from e
+        pointers = [p.pointer for p in parameters]
+        start = [float(fg_optimize.pointer_get(cfg, p)) for p in pointers]
+        try:
+            sim = fg.Simulation(cfg)
+        except Exception as e:  # noqa: BLE001 - FourierGrating's message is for the user
+            raise UserError(f"FourierGrating: {e}") from e
+
+        def value_and_grad(x):
+            for p, v in zip(pointers, x, strict=True):
+                sim.set_parameter(p, v)
+            L, g = sim.value_and_grad(terms, pointers)
+            return float(L), [float(v) for v in g]
+
+        run = ctx.result_set("FourierGrating optimisation")
+        curve = ctx.curve(run, "objective L", x_label="evaluation", y_label="L")
+        limit = int(ctx.params["opt_iterations"])
+
+        def step(k, L, x):
+            ctx.append(curve, k, L)
+            ctx.progress(min(0.99, k / (2.0 * limit)), f"L = {L:.6g}")
+
+        try:
+            out = fg_optimize.optimize(value_and_grad, start, parameters,
+                                       maximize=ctx.params["opt_goal"] == "maximise", iterations=limit,
+                                       step=step, stop=ctx.cancelled)
+        except Exception as e:  # noqa: BLE001 - FourierGrating's message is for the user
+            raise UserError(f"FourierGrating: {e}") from e
+        ctx.table(run, "Parameters", ["parameter", "start", "optimum", "lower", "upper"],
+                  [[p.pointer, s, v, p.lower, p.upper] for p, s, v in zip(parameters, out.start, out.values, strict=True)])
+        ctx.log(f"L {out.start_objective:.6g} → {out.objective:.6g} in {out.steps} evaluations ({out.message})")
+        applied = ""
+        if ctx.params["opt_apply"] and out.steps > 0:
+            ctx.set_params(fg_config.to_params(out.config(cfg, parameters)))
+            applied = ", applied to the panel"
+        return (f"L {out.start_objective:.4g} → {out.objective:.4g}" + (" (stopped)" if out.stopped else "")
+                + applied)

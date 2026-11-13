@@ -4,6 +4,6 @@
   "version": "0.1.0",
   "api": 1,
   "entry": "fg_plugin:FourierGratingPlugin",
-  "requires": ["numpy", "fouriergrating>=0.18"],
+  "requires": ["numpy", "scipy", "fouriergrating>=0.18"],
   "description": "FourierGrating: diffraction by periodic structures (RCWA, differential method) – structure, materials and layers in the panel, efficiencies per order (ADR 0010, W4)."
 }
