@@ -51,7 +51,7 @@ class TestPluginHost : public QObject {
     host_->start(python_, plugins::PluginManager::nfcadPythonPath());
     QVERIFY2(ready.wait(20000), qPrintable(failed.isEmpty() ? QStringLiteral("timeout")
                                                             : failed.first().at(0).toString()));
-    QCOMPARE(host_->actions().size(), std::size_t{8});
+    QCOMPARE(host_->actions().size(), std::size_t{9});
     QCOMPARE(host_->paramsSchema().size(), 5);
     QCOMPARE(host_->paramsSchema()[0].toObject()["name"].toString(), QStringLiteral("count"));  // order kept
   }
@@ -172,6 +172,19 @@ class TestPluginHost : public QObject {
     host_->run(QStringLiteral("on_block"));  // without a target: empty
     QVERIFY(waitFinished(finished));
     QCOMPARE(finished.first().at(3).toString(), QStringLiteral("|"));
+  }
+
+  void pluginSetsItsParameters() {
+    // ADR 0010, W4a: ctx.set_params writes the plugin's parameters into the document and tells
+    // the panel; an unknown name is refused
+    QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
+    QSignalSpy told(&doc_, &document::Document::pluginParametersSet);
+    QVERIFY(host_->run(QStringLiteral("set_params")) > 0);
+    QVERIFY(waitFinished(finished));
+    QCOMPARE(finished.first().at(3).toString(), QStringLiteral("9|refused: no parameter nonsense"));
+    QCOMPARE(doc_.pluginParameters(QStringLiteral("test"))["count"].toInt(), 9);
+    QCOMPARE(told.count(), 1);
+    QCOMPARE(told.first().at(0).toString(), QStringLiteral("test"));
   }
 
   void cancel() {

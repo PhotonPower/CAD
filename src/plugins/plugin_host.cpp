@@ -365,6 +365,19 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     doc_->setEntityAttributes(id, a);
     return QJsonValue::Null;
   }
+  if (method == QLatin1String("params.set")) {  // the plugin's own parameters (ADR 0010, W4a)
+    QJsonObject values = doc_->pluginParameters(manifest_.id);
+    const QJsonObject given = args["values"].toObject();
+    QStringList known;
+    for (const QJsonValue& p : params_) known << p.toObject()["name"].toString();
+    for (auto it = given.begin(); it != given.end(); ++it) {
+      if (!known.contains(it.key())) throw std::runtime_error(("no parameter " + it.key()).toStdString());
+      values.insert(it.key(), it.value());
+    }
+    doc_->setPluginParameters(manifest_.id, values);
+    emit doc_->pluginParametersSet(manifest_.id);
+    return true;
+  }
   if (method == QLatin1String("workflow.get")) return doc_->workflow();
   if (method == QLatin1String("workflow.state")) {
     doc_->reportWorkflowState(args["states"].toObject());

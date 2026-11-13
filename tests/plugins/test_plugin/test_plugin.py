@@ -62,6 +62,15 @@ class TestPlugin(Plugin):
     def on_block(self, ctx):
         return f"{ctx.target.get('block', '')}|{'/'.join(ctx.target.get('scope', []))}"
 
+    @action("Set parameters")
+    def set_params(self, ctx):
+        ctx.set_params({"count": 9})
+        try:
+            ctx.set_params({"nonsense": 1})
+        except RuntimeError as e:
+            return f"{ctx.params['count']}|refused: {e}"
+        return "not refused"
+
     @action("Needs input")
     def needs_input(self, ctx):
         raise UserError("Choose a file first.")

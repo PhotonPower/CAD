@@ -26,6 +26,10 @@ PluginPanel::PluginPanel(plugins::PluginManager* manager, document::Document* do
   scroll_->setWidgetResizable(true);
   scroll_->setFrameShape(QFrame::NoFrame);
   layout->addWidget(scroll_, 1);
+  // a plugin set its parameters (e.g. a loaded configuration): show the new values
+  connect(doc_, &document::Document::pluginParametersSet, this, [this](const QString& plugin) {
+    if (chooser_->currentData().toString() == plugin) showPlugin();
+  });
   actions_ = new QWidget(this);
   action_layout_ = new QVBoxLayout(actions_);
   action_layout_->setContentsMargins(0, 0, 0, 0);
