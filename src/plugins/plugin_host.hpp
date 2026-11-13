@@ -9,6 +9,7 @@
 #include <memory>
 #include <map>
 #include <optional>
+#include <tuple>
 
 #include "document/document.hpp"
 
@@ -63,6 +64,7 @@ class PluginHost : public QObject {
     QString label;
     QString description;
     bool on_workflow_edit = false;  ///< also run quietly after an edit of the node workflow
+    QStringList block_types;        ///< an action on one block of these types (its context menu)
   };
 
   PluginHost(Manifest manifest, document::Document* doc, document::Selection* selection,
@@ -83,7 +85,8 @@ class PluginHost : public QObject {
   /// directory that contains the nfcad package.
   void start(const QString& python, const QString& pythonpath);
   /// Runs an action (starts the process first if needed); returns the job id, 0 if busy.
-  int run(const QString& action, const QJsonObject& params = {});
+  /// `target`: the block an action with block types was chosen on ({"block", "scope"}).
+  int run(const QString& action, const QJsonObject& params = {}, const QJsonObject& target = {});
   /// Asks the action to stop; kills the process if it does not end within `grace_ms`.
   void cancel(int grace_ms = 5000);
   void stop();
@@ -124,7 +127,7 @@ class PluginHost : public QObject {
   bool ready_ = false;
   std::vector<Action> actions_;
   QJsonArray params_;
-  std::optional<std::pair<QString, QJsonObject>> queued_;  // run requested before ready
+  std::optional<std::tuple<QString, QJsonObject, QJsonObject>> queued_;  // run requested before ready
   std::optional<int> active_job_;
   int next_job_ = 1;
   QString stderr_;

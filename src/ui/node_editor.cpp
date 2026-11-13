@@ -1716,6 +1716,9 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
       menu.addSeparator();
     }
     menu.addAction(tr("Parameters…"), this, [this, id] { editParams(id); });
+    if (block_actions) {  // the plugins' actions on this block (e.g. Section → group)
+      for (auto& [label, run] : block_actions(id, self["type"].toString())) menu.addAction(label, this, run);
+    }
     if (modelMode()) {
       menu.addAction(tr("Group selected blocks…"), this, [this, id] {
         QStringList ids;

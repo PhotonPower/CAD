@@ -58,6 +58,10 @@ class TestPlugin(Plugin):
             ctx.check_cancel()
             time.sleep(0.01)
 
+    @action("On a block", block_types=("demo.block", "demo.other"))
+    def on_block(self, ctx):
+        return f"{ctx.target.get('block', '')}|{'/'.join(ctx.target.get('scope', []))}"
+
     @action("Needs input")
     def needs_input(self, ctx):
         raise UserError("Choose a file first.")

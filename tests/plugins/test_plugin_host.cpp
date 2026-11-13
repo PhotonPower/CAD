@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QSignalSpy>
@@ -50,7 +51,7 @@ class TestPluginHost : public QObject {
     host_->start(python_, plugins::PluginManager::nfcadPythonPath());
     QVERIFY2(ready.wait(20000), qPrintable(failed.isEmpty() ? QStringLiteral("timeout")
                                                             : failed.first().at(0).toString()));
-    QCOMPARE(host_->actions().size(), std::size_t{7});
+    QCOMPARE(host_->actions().size(), std::size_t{8});
     QCOMPARE(host_->paramsSchema().size(), 5);
     QCOMPARE(host_->paramsSchema()[0].toObject()["name"].toString(), QStringLiteral("count"));  // order kept
   }
@@ -152,6 +153,25 @@ class TestPluginHost : public QObject {
     host_->run(QStringLiteral("echo"), QJsonObject{{"count", 7}, {"target", QJsonArray{42}}});
     QVERIFY(waitFinished(finished));
     QCOMPARE(finished.first().at(3).toString(), QStringLiteral("7|1.5|(1.0, 2.0, 3.0)|42|[1.0, 2.0]"));
+  }
+
+  void blockActionGetsItsTarget() {
+    // an action with block types belongs in the context menu of such blocks and learns the block
+    const auto a = std::find_if(host_->actions().begin(), host_->actions().end(),
+                                [](const auto& x) { return x.id == QStringLiteral("on_block"); });
+    QVERIFY(a != host_->actions().end());
+    QCOMPARE(a->block_types, (QStringList{"demo.block", "demo.other"}));
+    for (const auto& x : host_->actions()) {
+      if (x.id != QStringLiteral("on_block")) QVERIFY(x.block_types.isEmpty());
+    }
+    QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
+    host_->run(QStringLiteral("on_block"), {}, QJsonObject{{"block", "b1"}, {"scope", QJsonArray{"g1", "g2"}}});
+    QVERIFY(waitFinished(finished));
+    QCOMPARE(finished.first().at(3).toString(), QStringLiteral("b1|g1/g2"));
+    finished.clear();
+    host_->run(QStringLiteral("on_block"));  // without a target: empty
+    QVERIFY(waitFinished(finished));
+    QCOMPARE(finished.first().at(3).toString(), QStringLiteral("|"));
   }
 
   void cancel() {

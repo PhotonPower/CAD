@@ -85,6 +85,7 @@ void PluginPanel::showPlugin() {
     action_layout_->addWidget(new QLabel(host->running() ? tr("starting …") : tr("not running – see the plugin log"), actions_));
   }
   for (const auto& a : host->actions()) {
+    if (!a.block_types.isEmpty()) continue;  // in the context menu of its blocks
     auto* b = new QPushButton(a.label, actions_);
     b->setToolTip(a.description);
     b->setEnabled(!busy_);

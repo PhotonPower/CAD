@@ -185,10 +185,14 @@ class RaytracerPlugin(Plugin):
             fg = importlib.import_module("rtt_fusion.graph")
         except ImportError:
             return None
-        stamp = str(abs(hash(json.dumps(
-            [[n.get("id"), {k: n.get("params", {}).get(k)
-                            for k in ("rtt", "runs", "rtt_system", "rtt_tree", "rtt_paths", "rtt_new")}]
-             for n in model.get("nodes", [])] + [model.get("branches")], sort_keys=True))))
+        def data(body: dict) -> list:  # what the system depends on, also inside groups
+            out = [[n.get("id"), {k: n.get("params", {}).get(k)
+                                  for k in ("rtt", "runs", "rtt_system", "rtt_tree", "rtt_paths", "rtt_new")},
+                    n.get("variant"), {v: data(b) for v, b in (n.get("variants") or {}).items()}]
+                   for n in body.get("nodes", [])]
+            return out + [body.get("branches")]
+
+        stamp = str(abs(hash(json.dumps(data(model), sort_keys=True))))
         cached = getattr(self, "_made", None)
         if cached is not None and cached[1] == stamp:
             return cached
@@ -1258,6 +1262,35 @@ class RaytracerPlugin(Plugin):
             if "rtt_system" in params:
                 params["rtt_system"] = {k: v for k, v in new.items() if k not in ("root", "paths")}
         ctx.set_workflow(wf)
+
+    @action("Section → group", description="The elements of this section as blocks of a group, each with its "
+                                             "data and its part of every traversal (the light stays the same)",
+            block_types=("rtt.section",))
+    def section_to_group(self, ctx):
+        fg, _, execute, io, validate = self._fusion()
+        wf = ctx.workflow()
+        if not wf.get("model"):
+            raise UserError("Section → group needs a node workflow made from a system (Workflow from system).")
+        if not hasattr(fg, "section_to_group"):
+            raise UserError("Section → group needs a newer RTT-Fusion (section_to_group, W61).")
+        block = str(ctx.target.get("block", ""))
+        registry, _ = self._registry(fg)
+        model = io.model_from_dict(wf["model"], registry)
+        where = model
+        for gid in ctx.target.get("scope", []):  # the section may lie inside groups
+            group = where.groups.get(str(gid))
+            if group is None:
+                raise UserError(f"The group {gid} is gone – check the workflow and try again.")
+            where = group.variants[group.active].model
+        if block not in where.nodes:
+            raise UserError(f"The block {block} is gone – check the workflow and try again.")
+        try:
+            fg.section_to_group(where, block)
+        except ValueError as e:
+            raise UserError(f"{block} cannot become a group: {e}") from e
+        ctx.set_workflow({**wf, **self._model_workflow(fg, execute, io, validate, model, registry)})
+        inner = where.groups[block].variants[where.groups[block].active].model
+        return f"{block}: a group of {len(inner.nodes)} blocks ({', '.join(inner.nodes)}) – double-click opens it"
 
     @action("Follow the workflow", description="Draw what an edit of the node workflow changed (run by CAD "
                                                  "after every edit)", on_workflow_edit=True)

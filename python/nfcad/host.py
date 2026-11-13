@@ -68,7 +68,7 @@ class Host:
                 self._events.pop(rid).set()
             elif kind == "run":
                 params = self.plugin.convert_params(msg.get("params", {}))
-                ctx = Context(self, msg["job"], params, msg.get("selection", []))
+                ctx = Context(self, msg["job"], params, msg.get("selection", []), msg.get("target"))
                 self._jobs[ctx.job] = ctx
                 threading.Thread(target=self._run_job, args=(ctx, msg["action"]), daemon=True).start()
             elif kind == "cancel":
