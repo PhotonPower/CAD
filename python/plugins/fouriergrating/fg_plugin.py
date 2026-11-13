@@ -132,17 +132,27 @@ class FourierGratingPlugin(Plugin):
 
     # ------------------------------------------------------------------ blocks (ADR 0010, W4)
     def _block_provider(self):
-        """RTT-Fusion's provider of this plugin's blocks: the grating block (`fg.grating`, before
-        RTT-Fusion's rename `fusion.grating`) with RTT-Fusion's evaluator, evaluated in this process.
-        None without RTT-Fusion or one with remote blocks. A grating with a stored Jones table needs
-        no FourierGrating; one with a configuration builds its table with fouriergrating."""
+        """RTT-Fusion's provider of this plugin's blocks, evaluated in this process with RTT-Fusion's
+        evaluators: the grating (`fg.grating`, before RTT-Fusion's rename `fusion.grating`) and,
+        with an RTT-Fusion that has it, the layer stack (`fg.stack`). None without RTT-Fusion or one
+        with remote blocks. A grating with a stored Jones table needs no FourierGrating; one with a
+        configuration, and the stack, compute with fouriergrating."""
         if getattr(self, "_provider", None) is None:
             try:
                 remote = importlib.import_module("rtt_fusion.graph.remote")
-                grating = importlib.import_module("rtt_fusion.graph.grating")
             except ImportError:
                 return None
-            self._provider = remote.BlockProvider([grating.TYPE], dict(grating.EVALUATORS))
+            types, evaluators = [], {}
+            for name in ("rtt_fusion.graph.grating", "rtt_fusion.graph.stack"):
+                try:
+                    module = importlib.import_module(name)
+                except ImportError:
+                    continue
+                types.append(module.TYPE)
+                evaluators.update(module.EVALUATORS)
+            if not types:
+                return None
+            self._provider = remote.BlockProvider(types, evaluators)
         return self._provider
 
     def blocks(self) -> list:

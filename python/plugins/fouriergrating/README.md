@@ -72,5 +72,11 @@ to 2.5 solves per step whatever the number of parameters) at the first incidence
 rough memory need (rule of thumb of GUI-FourierGrating: parallel points × 12 n² × 16 bytes);
 *Scan* and *Optimise* warn in the log beforehand when it exceeds 70 % of the RAM.
 
+**Layer stacks in the node workflow.** With an RTT-Fusion that has it, the plugin also provides
+`fg.stack`: a laterally invariant stack of homogeneous layers (coating, filter, mirror layers)
+between two media, exact per ray direction (FourierGrating with N = 0), light from both sides; its
+configuration is a FourierGrating file with homogeneous layers only, listed from the substrate
+upwards – the panel's layers, saved with *Save configuration*.
+
 **Next steps:** further blocks (`fg.*`: grating as
 S-matrix operator, stacks).

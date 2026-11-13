@@ -2,11 +2,13 @@
 // and a provider (a test plugin with RTT-Fusion's thin lens as "lensprov.thin_lens"). The
 // workflow gives the same image as with the built-in lens in the engine's process; a provider that
 // dies fails its block, the engine keeps running.
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include "document/document.hpp"
@@ -54,6 +56,25 @@ QJsonObject gratingWorkflow(const QString& grating_type) {
   const QJsonArray links{
       QJsonObject{{"from", QJsonArray{"src", "out"}}, {"to", QJsonArray{"gr", "in"}}},
       QJsonObject{{"from", QJsonArray{"gr", "out"}}, {"to", QJsonArray{"cam", "in"}}},
+      QJsonObject{{"from", QJsonArray{"cam", "image"}}, {"to", QJsonArray{"show", "in"}}}};
+  return QJsonObject{{"graph", QJsonObject{{"format", "rtt-fusion-graph"}, {"version", 1}, {"nodes", nodes}, {"links", links}}}};
+}
+/// A collimated beam through a window with a two-layer coating (fg.stack) onto a camera.
+QJsonObject stackWorkflow(const QString& config) {
+  const QJsonArray nodes{
+      QJsonObject{{"id", "src"}, {"type", "optics.collimated_source"},
+                  {"params", QJsonObject{{"radius", 0.5}, {"rings", 6}, {"center", QJsonArray{0, 0, -1}},
+                                         {"wavelengths_um", QJsonArray{0.55}},
+                                         {"field_angles_deg", QJsonArray{QJsonArray{20.0, 0.0}}}}}},
+      QJsonObject{{"id", "st"}, {"type", "fg.stack"},
+                  {"params", QJsonObject{{"fouriergrating", config}, {"normal", QJsonArray{0, 0, -1}}}}},
+      QJsonObject{{"id", "cam"}, {"type", "optics.detector"},
+                  {"params", QJsonObject{{"point", QJsonArray{0, 0, 1.0}}, {"normal", QJsonArray{0, 0, -1}},
+                                         {"half_size", QJsonArray{1.5, 1.5}}, {"pixels", QJsonArray{16, 16}}}}},
+      QJsonObject{{"id", "show"}, {"type", "display.image"}}};
+  const QJsonArray links{
+      QJsonObject{{"from", QJsonArray{"src", "out"}}, {"to", QJsonArray{"st", "front_in"}}},
+      QJsonObject{{"from", QJsonArray{"st", "back_out"}}, {"to", QJsonArray{"cam", "in"}}},
       QJsonObject{{"from", QJsonArray{"cam", "image"}}, {"to", QJsonArray{"show", "in"}}}};
   return QJsonObject{{"graph", QJsonObject{{"format", "rtt-fusion-graph"}, {"version", 1}, {"nodes", nodes}, {"links", links}}}};
 }
@@ -174,6 +195,41 @@ class TestMultiPluginWorkflow : public QObject {
     float sum = 0;
     for (float v : in_fg) sum += v;
     QVERIFY2(sum > 0, qPrintable(msg_fg + QLatin1Char('\n') + log_.join(QLatin1Char('\n'))));
+  }
+
+  void stackInTheFourierGratingPlugin() {
+    // grating ADR, stage F4: the layer stack fg.stack computed in the FourierGrating plugin's
+    // process gives the engine's image, bit for bit (needs RTT-Fusion with fg.stack and
+    // fouriergrating in the plugin Python)
+    QProcess probe;
+    probe.start(python_, {QStringLiteral("-c"), QStringLiteral("import rtt_fusion.graph.stack, fouriergrating")});
+    if (!probe.waitForFinished(30000) || probe.exitCode() != 0) QSKIP("no RTT-Fusion with fg.stack or no fouriergrating");
+    QTemporaryDir dir;
+    const QString config = dir.filePath(QStringLiteral("coating.json"));
+    QFile f(config);
+    QVERIFY(f.open(QIODevice::WriteOnly));
+    f.write(QJsonDocument(QJsonObject{
+        {"materials", QJsonObject{{"air", QJsonObject{{"n", 1.0}}}, {"glass", QJsonObject{{"n", 1.52}}},
+                                  {"mgf2", QJsonObject{{"n", 1.38}}}, {"tio2", QJsonObject{{"n", 2.4}}}}},
+        {"superstrate", "air"}, {"substrate", "glass"},
+        {"layers", QJsonArray{QJsonObject{{"type", "homogeneous"}, {"thickness_um", 0.06}, {"material", "tio2"}},
+                              QJsonObject{{"type", "homogeneous"}, {"thickness_um", 0.1}, {"material", "mgf2"}}}}}).toJson());
+    f.close();
+    with_fg_ = false;
+    doc_.setWorkflow(stackWorkflow(config));
+    auto [ok_local, msg_local] = run();
+    QVERIFY2(ok_local, qPrintable(msg_local + QLatin1Char('\n') + log_.join(QLatin1Char('\n'))));
+    const std::vector<float> local = lastImage();
+    with_fg_ = true;
+    auto [ok_fg, msg_fg] = run();
+    with_fg_ = false;
+    QVERIFY2(ok_fg, qPrintable(msg_fg));
+    const std::vector<float> in_fg = lastImage();
+    QCOMPARE(in_fg.size(), local.size());
+    QVERIFY(in_fg == local);
+    float sum = 0;
+    for (float v : in_fg) sum += v;
+    QVERIFY(sum > 0);
   }
 
   void cleanupTestCase() {
