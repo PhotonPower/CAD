@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib
 import math
+import tempfile
 
 from nfcad import Param, Plugin, UserError, action
 
@@ -67,9 +68,35 @@ class WorkflowEngine(Plugin):
     }
 
     def __init__(self):
+        self._portdata = tempfile.TemporaryDirectory(prefix="nfcad-portdata-")  # remote blocks (D4)
         self._cache = None
         self._notes: list[str] = []
         self._model_ids: set[str] | None = None
+
+    def _blocks(self, ctx, registry) -> tuple[dict, dict]:
+        """The other plugins' block types in `registry` (ADR 0010, D2/D3): their evaluators (a
+        request each) and the providers by type {"plugin", "version"}."""
+        try:
+            remote = importlib.import_module("rtt_fusion.graph.remote")
+        except ImportError:
+            return {}, {}
+        try:  # no routing (an older CAD, a test host): no other plugins' blocks
+            catalogues = ctx.block_catalogues() if hasattr(ctx, "block_catalogues") else []
+        except RuntimeError as e:
+            ctx.log(f"blocks of other plugins: {e}")
+            catalogues = []
+        evaluators = remote.register_remote(registry, catalogues, ctx.evaluate_block, self._portdata.name)
+        providers = {str(e["type"]["type"]): {"plugin": str(e["provider"]), "version": str(e.get("version", ""))}
+                     for e in catalogues}
+        return evaluators, providers
+
+    @staticmethod
+    def _document(workflow, model, registry, wf, providers):
+        try:  # with the provider records (ADR 0010, D7)
+            return workflow.model_document(model, registry, None, workflow.kept_fields(wf), providers,
+                                           wf.get("providers") or {})
+        except TypeError:  # RTT-Fusion before W2c
+            return workflow.model_document(model, registry, None, workflow.kept_fields(wf))
 
     # ------------------------------------------------------------------ check
     @action("Check workflow", description="Check the node workflow and mark problems; the plan per link")
@@ -80,10 +107,12 @@ class WorkflowEngine(Plugin):
             raise UserError("No node workflow yet – a plugin makes one (Raytracer: Workflow from system, "
                             "New Raytatouille system).")
         registry, extra = workflow.registry()
+        remote, providers = self._blocks(ctx, registry)
+        extra = {**extra, **remote}
         graph = None
         if wf.get("model"):
             model = io.model_from_dict(wf["model"], registry)
-            wf = {**wf, **workflow.model_document(model, registry, None, workflow.kept_fields(wf))}
+            wf = {**wf, **self._document(workflow, model, registry, wf, providers)}
             if not any(d["severity"] == "error" for d in wf["diagnostics"]):
                 graph = fg.unroll(model, registry)
             self._model_ids = set(model.nodes)
@@ -116,6 +145,8 @@ class WorkflowEngine(Plugin):
             raise UserError("No node workflow yet – a plugin makes one (Raytracer: Workflow from system, "
                             "New Raytatouille system).")
         registry, extra = workflow.registry()
+        remote, _ = self._blocks(ctx, registry)
+        extra = {**extra, **remote}
         if wf.get("model"):  # RTT-Fusion R24: exactly the branches of the model, unrolled
             model = io.model_from_dict(wf["model"], registry)
             try:

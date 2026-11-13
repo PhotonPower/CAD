@@ -6,6 +6,10 @@ blocks; **Run workflow** computes what the display blocks show (camera images, s
 probes; links set to H as fields), keeps earlier results and turns every display's view into a
 result with the key `workflow:<block>`.
 
+Blocks of other plugins (ADR 0010, W2): the engine asks CAD for the other plugins' block catalogues,
+adds those types to its library and has such a block evaluated in its plugin's process (inputs and
+outputs as RTT-Fusion port data); the workflow records the provider of every such type it uses.
+
 The panel holds the image settings: rays per field and wavelength, pixels, image window (0: each
 detector's own size) and a Gaussian illumination. The engine knows no kernel – the blocks' data
 come with the workflow (a Raytatouille system from the data of the `rtt.*` blocks, its glass
