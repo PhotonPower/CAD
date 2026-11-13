@@ -19,6 +19,13 @@ _SHOWN = ("dimension", "solver", "truncation", "period_um", "incidence", "materi
 INCIDENCE = ("lambda_um", "phi_deg", "psi_deg", "delta_deg")
 
 
+#: near-field keys shown as fields (panel name, config key, FourierGrating's default); y_range_um
+#: is shown as two fields
+NEARFIELD = (("nf_horizontal_y", "horizontal_y_um", 0.1), ("nf_vertical_z", "vertical_z_um", 0.0),
+             ("nf_nx", "nx", 400), ("nf_ny", "ny", 300), ("nf_nz", "nz", 200), ("nf_periods", "periods", 2))
+NF_Y_RANGE = (-0.2, 0.5)
+
+
 def _number_text(v: Any) -> str:
     return repr(float(v)) if isinstance(v, float) else str(v)
 
@@ -98,10 +105,18 @@ def to_params(cfg: dict[str, Any]) -> dict[str, Any]:
             layers.append({"type": "json", "thickness": 0.0, "material": "", "lamellae": [], "end": 0.0,
                            "json": layer})
     out["layers"] = layers
-    advanced = {k: v for k, v in c.items() if k not in _SHOWN}
+    nf = c.get("nearfield", {})
+    for field, key, default in NEARFIELD:
+        out[field] = type(default)(nf.get(key, default))
+    y_range = nf.get("y_range_um", NF_Y_RANGE)
+    out["nf_y_from"], out["nf_y_to"] = float(y_range[0]), float(y_range[1])
+    advanced = {k: v for k, v in c.items() if k not in _SHOWN and k != "nearfield"}
     extra_inc = {k: v for k, v in inc.items() if k not in INCIDENCE}
     if extra_inc:
         advanced["incidence"] = extra_inc
+    extra_nf = {k: v for k, v in nf.items() if k not in {key for _, key, _ in NEARFIELD} | {"y_range_um"}}
+    if extra_nf:
+        advanced["nearfield"] = extra_nf
     extra_trunc = {k: v for k, v in trunc.items() if k not in ("Nx", "Nz")}
     if extra_trunc:
         advanced["truncation"] = extra_trunc
@@ -109,7 +124,23 @@ def to_params(cfg: dict[str, Any]) -> dict[str, Any]:
     out["_order"] = list(c)  # the key order of the file (written back the same way)
     # keys the file has (a key it lacks is written only when the user sets it off its default)
     out["_present"] = [k for k in ("dimension", "solver") if k in c] + [
-        f"truncation.{k}" for k in ("Nx", "Nz") if k in trunc] + [f"period_um.{k}" for k in ("x", "z") if k in period]
+        f"truncation.{k}" for k in ("Nx", "Nz") if k in trunc] + [f"period_um.{k}" for k in ("x", "z") if k in period] + [
+        f"nearfield.{k}" for k in [key for _, key, _ in NEARFIELD] + ["y_range_um"] if k in nf]
+    return out
+
+
+def nearfield(p: dict[str, Any], *, complete: bool = False) -> dict[str, Any]:
+    """The nearfield block of the panel's values: the keys the file had or the user changed (all
+    with `complete`, for a computation), with the further keys from Advanced."""
+    present = p.get("_present") or []
+    out: dict[str, Any] = {}
+    for field, key, default in NEARFIELD:
+        value = type(default)(p.get(field, default))
+        if complete or f"nearfield.{key}" in present or value != default:
+            out[key] = value
+    y_range = [float(p.get("nf_y_from", NF_Y_RANGE[0])), float(p.get("nf_y_to", NF_Y_RANGE[1]))]
+    if complete or "nearfield.y_range_um" in present or tuple(y_range) != NF_Y_RANGE:
+        out["y_range_um"] = y_range
     return out
 
 
@@ -165,6 +196,10 @@ def to_config(p: dict[str, Any]) -> dict[str, Any]:
         else:
             layers.append(copy.deepcopy(layer["json"]))
     cfg["layers"] = layers
+    nf_extra = advanced.pop("nearfield", {})
+    nf = nearfield(p)
+    if nf or nf_extra:
+        cfg["nearfield"] = {**nf_extra, **nf}
     cfg.update(advanced)
     order = [k for k in p.get("_order", []) if k in cfg] + [k for k in cfg if k not in p.get("_order", [])]
     return {k: cfg[k] for k in order}
