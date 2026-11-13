@@ -7,6 +7,8 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
 ## [Unreleased]
 
 ### Added
+- **Layer stacks** in the node workflow: the FourierGrating plugin provides `fg.stack` (coatings,
+  filters, mirror layers between two media, exact per ray), with an RTT-Fusion that has it.
 - **FourierGrating plugin** (ADR 0010, W4, step 1): a grating's structure, materials, layers and
   incidence in the plugin panel; load and save FourierGrating configurations; *Solve* shows the
   efficiency of every order as a table and as bars; *Scan* shows the efficiency per order over λ,
