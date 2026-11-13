@@ -709,6 +709,22 @@ class RaytracerPlugin(Plugin):
         diagnostics += [d.__dict__ for d in plan.diagnostics]
         return diagnostics, plan.to_dict()
 
+    @action("New Raytatouille system", description="Start a system in the node workflow without a file: "
+                                                    "source, stop and detector (insert parts in between)")
+    def new_rtt_system(self, ctx):
+        _require_rt()
+        fg, _, execute, io, validate = self._fusion()
+        if not hasattr(fg, "new_system"):
+            raise UserError("A new system needs a newer RTT-Fusion (new_system, W64).")
+        registry, _ = self._registry(fg)
+        model = fg.new_system()
+        ctx.set_workflow(self._model_workflow(fg, execute, io, validate, model, registry))
+        self._model_ids = set(model.nodes)
+        system, _ = self._current(ctx)  # drawn from the workflow
+        return (f"new system \"{system.name}\": source, stop, detector and the branch main – insert "
+                "parts from the library in between; the settings are in the source's Parameters… "
+                "(Edit → Undo brings the previous workflow back)")
+
     @action("Workflow from system", description="Node workflow of the loaded system from its paths (RTT-Fusion)")
     def workflow_from_system(self, ctx):
         _require_rt()

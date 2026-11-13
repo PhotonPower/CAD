@@ -642,6 +642,35 @@ class TestRaytracerPlugin : public QObject {
     QCOMPARE(with_data, stripped);
   }
 
+  void newSystemWithoutAFile() {
+    // a Raytatouille system started in the workflow, without a system file (RTT-Fusion W64)
+    QProcess probe;
+    probe.start(python_, {QStringLiteral("-c"), QStringLiteral("from rtt_fusion.graph import new_system")});
+    if (!probe.waitForFinished(30000) || probe.exitCode() != 0) QSKIP("rtt_fusion without new_system");
+    const QJsonObject saved = params_;
+    params_.insert(QStringLiteral("system"), QString());  // no file
+    doc_.setWorkflow(QJsonObject{});
+    const int before = doc_.undoStack()->index();
+    run(QStringLiteral("new_rtt_system"));
+    QStringList ids;
+    QJsonObject source;
+    for (const QJsonValue& v : doc_.workflow()["model"].toObject()["nodes"].toArray()) {
+      ids << v.toObject()["id"].toString();
+      if (v.toObject()["type"].toString() == QStringLiteral("rtt.source")) source = v.toObject();
+    }
+    QCOMPARE(ids, (QStringList{"source", "stop", "detector"}));
+    QVERIFY(source["params"].toObject().contains("rtt_system"));
+    QVERIFY(!source["fields"].toArray().isEmpty());  // the settings are editable in the dialog
+    QVERIFY(by_name(doc_, QStringLiteral("stop.STO")) != nullptr);  // drawn from the workflow
+    QVERIFY(by_name(doc_, QStringLiteral("detector.IMG")) != nullptr);
+    run(QStringLiteral("check_workflow"));
+    QVERIFY(doc_.workflow()["diagnostics"].toArray().isEmpty());
+    QVERIFY(doc_.undoStack()->index() > before);  // one undo step back to the empty workflow
+    while (doc_.undoStack()->index() > before) doc_.undoStack()->undo();
+    QVERIFY(doc_.workflow()["model"].toObject().isEmpty());
+    params_ = saved;
+  }
+
   void save() {
     QTemporaryDir dir;
     params_.insert(QStringLiteral("save_as"), dir.filePath(QStringLiteral("out.rtt.json")));
