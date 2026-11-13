@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -80,9 +81,23 @@ struct Curve {
   QString y_label;
 };
 
+/// A table (e.g. the diffraction orders of a grating: order, efficiency, s, p): column heads and
+/// rows of cells as text (the plugin formats its numbers).
+struct Table {
+  QStringList columns;
+  std::vector<QStringList> rows;
+};
+
+/// A bar chart for the plot dock (e.g. the efficiency per order): one bar per label.
+struct Bars {
+  QStringList labels;
+  std::vector<double> values;
+  QString y_label;
+};
+
 /// One displayable result.
 struct ResultItem {
-  enum class Kind { Lines, Field, Curve, Image };
+  enum class Kind { Lines, Field, Curve, Image, Table, Bars };
   ResultId id = 0;
   QString name;
   /// Optional key of the producer, e.g. "workflow:<block id>" – a display window shows the items
@@ -94,6 +109,8 @@ struct ResultItem {
   std::shared_ptr<const FaceField> field;
   std::shared_ptr<const Curve> curve;
   std::shared_ptr<const Image> image;
+  std::shared_ptr<const Table> table;
+  std::shared_ptr<const Bars> bars;
 };
 
 /// The results of one run (one trace, one optimisation, …).

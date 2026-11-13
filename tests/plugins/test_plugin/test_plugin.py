@@ -71,6 +71,17 @@ class TestPlugin(Plugin):
             return f"{ctx.params['count']}|refused: {e}"
         return "not refused"
 
+    @action("Tables")
+    def tables(self, ctx):
+        run = ctx.result_set("orders")
+        ctx.table(run, "orders", ["n", "efficiency"], [[-1, 0.25], [0, 0.5]])
+        ctx.bars(run, "R", ["-1", "0"], [0.25, 0.5], y_label="efficiency")
+        try:
+            ctx.table(run, "broken", ["a", "b"], [[1]])
+        except RuntimeError as e:
+            return f"refused: {e}"
+        return "not refused"
+
     @action("Needs input")
     def needs_input(self, ctx):
         raise UserError("Choose a file first.")

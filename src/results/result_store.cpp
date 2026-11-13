@@ -106,6 +106,24 @@ ResultId ResultStore::addCurve(ResultId set, const QString& name, Curve curve, c
   return add(set, std::move(i));
 }
 
+ResultId ResultStore::addTable(ResultId set, const QString& name, Table table, const QString& key) {
+  ResultItem i;
+  i.name = name;
+  i.key = key;
+  i.kind = ResultItem::Kind::Table;
+  i.table = std::make_shared<const Table>(std::move(table));
+  return add(set, std::move(i));
+}
+
+ResultId ResultStore::addBars(ResultId set, const QString& name, Bars bars, const QString& key) {
+  ResultItem i;
+  i.name = name;
+  i.key = key;
+  i.kind = ResultItem::Kind::Bars;
+  i.bars = std::make_shared<const Bars>(std::move(bars));
+  return add(set, std::move(i));
+}
+
 void ResultStore::setKey(ResultId item, const QString& key) {
   if (ResultItem* i = mutableItem(item)) {
     i->key = key;

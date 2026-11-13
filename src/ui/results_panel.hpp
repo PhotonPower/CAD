@@ -15,6 +15,10 @@ namespace nfcad::results {
 class ResultStore;
 }
 
+class QComboBox;
+class QPainter;
+class QTableWidget;
+
 namespace nfcad::ui {
 
 /// Right dock "Results": result sets (one per run) and their items with visibility check boxes;
@@ -49,13 +53,39 @@ class PlotWidget : public QWidget {
   }
   /// The curves plotted now.
   [[nodiscard]] std::vector<const results::ResultItem*> curves() const;
+  /// The bar charts; the newest is drawn when there are no curves.
+  [[nodiscard]] std::vector<const results::ResultItem*> bars() const;
 
  protected:
   void paintEvent(QPaintEvent* event) override;
 
  private:
+  void paintBars(QPainter& p, const results::ResultItem& item);
   const results::ResultStore* store_;
   QString key_;
+};
+
+/// Table dock: the visible table results (e.g. the orders of a grating), the newest shown – a
+/// choice when there are several.
+class TableView : public QWidget {
+  Q_OBJECT
+ public:
+  explicit TableView(const results::ResultStore* store, QWidget* parent = nullptr);
+  [[nodiscard]] QSize sizeHint() const override { return {420, 260}; }
+  /// The visible tables.
+  [[nodiscard]] std::vector<const results::ResultItem*> tables() const;
+  /// The table shown now (nullptr if none).
+  [[nodiscard]] const results::ResultItem* shown() const;
+  [[nodiscard]] QTableWidget* grid() const { return table_; }
+
+ private:
+  void refresh();
+  void show();
+
+  const results::ResultStore* store_;
+  QComboBox* choice_ = nullptr;
+  QTableWidget* table_ = nullptr;
+  results::ResultId newest_ = 0;
 };
 
 }  // namespace nfcad::ui

@@ -51,7 +51,7 @@ class TestPluginHost : public QObject {
     host_->start(python_, plugins::PluginManager::nfcadPythonPath());
     QVERIFY2(ready.wait(20000), qPrintable(failed.isEmpty() ? QStringLiteral("timeout")
                                                             : failed.first().at(0).toString()));
-    QCOMPARE(host_->actions().size(), std::size_t{9});
+    QCOMPARE(host_->actions().size(), std::size_t{10});
     QCOMPARE(host_->paramsSchema().size(), 5);
     QCOMPARE(host_->paramsSchema()[0].toObject()["name"].toString(), QStringLiteral("count"));  // order kept
   }
@@ -185,6 +185,21 @@ class TestPluginHost : public QObject {
     QCOMPARE(doc_.pluginParameters(QStringLiteral("test"))["count"].toInt(), 9);
     QCOMPARE(told.count(), 1);
     QCOMPARE(told.first().at(0).toString(), QStringLiteral("test"));
+  }
+
+  void tablesAndBars() {
+    // ADR 0010, W4a: ctx.table and ctx.bars; a row that does not match the columns is refused
+    QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
+    QVERIFY(host_->run(QStringLiteral("tables")) > 0);
+    QVERIFY(waitFinished(finished));
+    QVERIFY(finished.first().at(3).toString().contains(QStringLiteral("refused: table: a row does not match")));
+    const auto tables = results_.visibleItems(results::ResultItem::Kind::Table);
+    QCOMPARE(tables.size(), std::size_t{1});
+    QCOMPARE(tables[0]->table->rows[0], (QStringList{"-1", "0.25"}));
+    const auto bars = results_.visibleItems(results::ResultItem::Kind::Bars);
+    QCOMPARE(bars.size(), std::size_t{1});
+    QCOMPARE(bars[0]->bars->values, (std::vector<double>{0.25, 0.5}));
+    QCOMPARE(bars[0]->bars->y_label, QStringLiteral("efficiency"));
   }
 
   void cancel() {

@@ -165,6 +165,8 @@ interface the plugin host (P3) fills:
 | `LineSet` | polylines (points + start indices), optional value per point, colour map, range, unit; `on_top` | coloured lines in all views (on top of the model by default, so rays inside lenses stay visible); NaN ends a polyline (lost ray) |
 | `FaceField` | entity + face, grid of values (or RGBA image) over the face's normalised (u, v) | texture on the face (shaded: lit; surfaces / wireframe: flat), colour bar with name, unit and range in every view |
 | `Curve` | x / y with labels; `appendToCurve` for live updates | Plot dock (appears with the first curve) |
+| `Table` | column heads and rows (text) | Table dock (appears with the first table; the newest shown, a choice with several) |
+| `Bars` | labels and values, y label | Plot dock as a bar chart (when no curves are shown) |
 
 Results are listed in the *Results* dock (visibility per run and item, delete a run, *Convert to
 CAD curves* for rays). Colour maps: viridis, inferno, plasma, coolwarm, grey. 2D images (`ctx.image`) open in the *Image* window. Not yet: saving results with the document.
