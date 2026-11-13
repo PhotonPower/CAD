@@ -125,7 +125,11 @@ selected blocks a group: connections across its border become exported ports
 group names (sources, detectors and data links across the border are refused, with the reason).
 A double-click on a group (or *Open group*) shows its inside – the level is named at the top left,
 Escape or *Back out of the group* returns; the branch list then shows the inner branches.
-*Variant* chooses the active variant, *Condensed (plane-wave tables)* switches R29's condensing,
+*Variant* chooses the active variant; *New variant…* copies the active one under a new name
+and makes it active (then e.g. replace a lens group by an ideal lens inside and switch between
+both), *Rename variant…* and *Delete variant* (the last one stays) complete it. A branch
+highlighted outside goes on inside: opening a group highlights the inner branch its step names,
+backing out highlights the outer branch again. *Condensed (plane-wave tables)* switches R29's condensing,
 *Ungroup* puts the blocks back. Recording a branch through a group takes its fitting inner branch.
 **Section → group** (a Raytatouille section's context menu, from the Raytracer plugin) turns a
 section – several elements of an assembly in one block, e.g. an objective – into a group with one
