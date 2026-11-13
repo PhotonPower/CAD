@@ -43,6 +43,16 @@ class Plugin:
         """Values from CAD as Python types; missing ones get their defaults."""
         return {name: p.convert(values.get(name)) for name, p in self.params.items()}
 
+    def blocks(self) -> list[dict]:
+        """Block types this plugin provides to the node workflow (ADR 0010, D2): catalogue entries
+        (e.g. ``rtt_fusion.graph.remote.BlockProvider.catalogue()``); sent with the hello."""
+        return []
+
+    def evaluate_block(self, request: dict) -> dict:
+        """Evaluates one of this plugin's blocks for the workflow engine (ADR 0010, D3), e.g. with
+        ``BlockProvider.evaluate``; one request at a time, in a thread of its own."""
+        return {"ok": False, "error": f"{type(self).__name__} provides no blocks"}
+
     def actions(self) -> dict[str, dict]:
         out = {}
         for name in dir(type(self)):

@@ -95,6 +95,29 @@ document as modified but is not an undo step.
 | `ctx.image(set, name, values, width, height, extent=(x0, x1, y0, y1), x_label=, y_label=, colormap=, unit=, value_range=, description=)` | 2D image in the *Image* window (e.g. a camera image): `values[j * width + i]`, row 0 at y0, extent in physical units |
 | `ctx.workflow()` / `ctx.set_workflow(wf)` | Node workflow of the document (RTT-Fusion): `{"graph": rtt-fusion-graph, "types": [...], "diagnostics": [...], "plan": planner result}`; the editor shows the planned representation per link and the conversions per block; shown and edited in the *Node workflow* window, saved in the `.rttf` file |
 
+### Blocks for the node workflow (ADR 0010)
+
+A plugin can provide block types to the shared node workflow; the *Workflow* plugin (the engine)
+evaluates them by asking the plugin:
+
+```python
+from rtt_fusion.graph.remote import BlockProvider
+
+class Gratings(Plugin):
+    provider = BlockProvider([grating_type], {"fg.grating": evaluate_grating})
+
+    def blocks(self):                       # sent with the hello: the catalogue entries
+        return self.provider.catalogue()
+
+    def evaluate_block(self, request):      # one block for the engine; inputs/outputs as port data
+        return self.provider.evaluate(request)
+```
+
+CAD routes these requests and starts a plugin when its blocks are asked for; evaluations of one
+plugin run one after the other in a thread of their own (not the action's). The engine uses
+`ctx.block_catalogues()` (the other plugins' types with provider id and version) and
+`ctx.evaluate_block(provider, request)`; a provider that stops while evaluating fails the request.
+
 Raise `nfcad.UserError("…")` for problems the user can fix (missing input, wrong file): CAD
 shows the message as it is. Any other exception is reported as a plugin error with its
 traceback in the *Plugin log*.

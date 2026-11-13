@@ -95,6 +95,16 @@ class Context:
         self._host.send({"type": "notify", "method": "workflow.state",
                          "args": {"states": {str(k): bool(v) for k, v in states.items()}}})
 
+    def block_catalogues(self) -> list:
+        """The block types the other plugins provide (ADR 0010): {"provider", "version", "type"}
+        per type; for the workflow engine."""
+        return list(self._host.request("workflow.blocks", {}) or [])
+
+    def evaluate_block(self, provider: str, request: dict) -> dict:
+        """Has the plugin `provider` evaluate one of its blocks (ADR 0010, D3) and returns its
+        answer; CAD starts the plugin if needed. For the workflow engine."""
+        return dict(self._host.request("workflow.evaluate", {"provider": provider, "request": request}) or {})
+
     def set_workflow(self, workflow: dict) -> None:
         """Replaces the document's node workflow (shown in the node editor)."""
         self._host.request("workflow.set", {"workflow": workflow})

@@ -12,6 +12,9 @@
 
 namespace nfcad::plugins {
 
+class BlockRouter;
+
+
 /// Finds plugins and the Python environment and owns one PluginHost per plugin
 /// (docs/plugin-api.md, "Installation").
 ///
@@ -76,6 +79,7 @@ class PluginManager : public QObject {
   QStringList problems_;
   std::unique_ptr<QTemporaryDir> runtime_;  ///< checked copies of the signed plugins
   std::optional<QStringList> trusted_override_;
+  BlockRouter* router_ = nullptr;  ///< child QObject (ADR 0010)
 };
 
 }  // namespace nfcad::plugins

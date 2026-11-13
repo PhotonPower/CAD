@@ -1,0 +1,1 @@
+{ "id": "provider", "name": "Block provider (test)", "version": "2", "api": 1, "entry": "provider_plugin:Provider" }

@@ -1,5 +1,7 @@
 #include "plugins/plugin_manager.hpp"
 
+#include "plugins/block_router.hpp"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -12,7 +14,16 @@ namespace nfcad::plugins {
 
 PluginManager::PluginManager(document::Document* doc, document::Selection* selection,
                              results::ResultStore* results, QObject* parent)
-    : QObject(parent), doc_(doc), selection_(selection), results_(results) {}
+    : QObject(parent), doc_(doc), selection_(selection), results_(results) {
+  // the node workflow's requests between plugins (ADR 0010)
+  router_ = new BlockRouter(
+      [this] {
+        std::vector<PluginHost*> out;
+        for (const auto& h : hosts_) out.push_back(h.get());
+        return out;
+      },
+      [this](PluginHost* h) { h->start(python(), nfcadPythonPath()); }, this);
+}
 
 PluginManager::~PluginManager() {
   for (auto& h : hosts_) h->stop();
@@ -166,6 +177,7 @@ void PluginManager::reload() {
         continue;
       }
       hosts_.push_back(std::make_unique<PluginHost>(*m, doc_, selection_, results_, this));
+      router_->attach(hosts_.back().get());
     }
   }
   emit pluginsChanged();

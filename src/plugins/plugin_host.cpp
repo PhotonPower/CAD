@@ -232,6 +232,7 @@ void PluginHost::handle(const QJsonObject& msg) {
                           o["on_workflow_edit"].toBool(), types});
     }
     params_ = msg["params"].toArray();
+    blocks_ = msg["blocks"].toArray();
     ready_ = true;
     emit readyChanged(true);
     if (queued_) {
@@ -246,8 +247,14 @@ void PluginHost::handle(const QJsonObject& msg) {
   } else if (type == QLatin1String("done")) {
     endJob(msg["job"].toInt(), msg["ok"].toBool(), msg["cancelled"].toBool(), msg["message"].toString(),
            msg["user_error"].toBool());
+  } else if (type == QLatin1String("evaluated")) {
+    emit evaluated(msg["rid"].toInt(), msg["response"].toObject());
   } else if (type == QLatin1String("request") || type == QLatin1String("notify")) {
     const int rid = msg["rid"].toInt();
+    if (type == QLatin1String("request") && router_ &&
+        router_(this, rid, msg["method"].toString(), msg["args"].toObject())) {
+      return;  // answered later (respond)
+    }
     try {
       const QJsonValue result = request(msg["method"].toString(), msg["args"].toObject());
       if (type == QLatin1String("request")) reply(rid, true, result);
@@ -530,7 +537,12 @@ void PluginHost::stop() {
   }
 }
 
+void PluginHost::evaluate(int rid, const QJsonObject& request) {
+  send({{"type", "evaluate"}, {"rid", rid}, {"request", request}});
+}
+
 void PluginHost::onProcessFinished(int code, QProcess::ExitStatus status) {
+  emit stopped();
   const bool was_ready = ready_;
   ready_ = false;
   if (socket_ != nullptr) socket_->deleteLater();

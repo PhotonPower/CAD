@@ -52,6 +52,7 @@ add_library(nfcad_core STATIC
   src/kernel/step_import.cpp
   src/pick/picking.cpp
   src/plugins/distribution.cpp
+  src/plugins/block_router.cpp
   src/plugins/plugin_host.cpp
   src/plugins/plugin_manager.cpp
   src/plugins/signature.cpp
