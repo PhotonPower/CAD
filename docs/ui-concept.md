@@ -99,6 +99,12 @@ it will be computed again. An edit marks the block and every block behind it red
 the links and the blocks' internal dependencies; a phase shifter's drive passes nothing on); the
 next run computes only the red blocks, *Check workflow* and every run report the state.
 
+A system can also start without a file: *New Raytatouille system* (Raytracer plugin) puts a source
+with default settings (mm/µm, d line, entrance pupil 4 mm, one field point on the axis – editable
+in the source's *Parameters…*), a stop and a detector and the branch "main" into the workflow;
+parts from the library go in between (connect them and record the branch again). It is drawn,
+computed and saved like an imported system.
+
 With RTT-Fusion R24 *Workflow from system* makes a **model**: a block shows one point per light
 port (on the left where the light first comes in, on the right where it leaves or comes back),
 a connection joins two ports and carries both directions: for each direction a branch uses it
