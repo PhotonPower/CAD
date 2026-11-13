@@ -55,14 +55,26 @@ class TestRaytracerPlugin : public QObject {
   document::Selection selection_;
   results::ResultStore results_;
   std::unique_ptr<plugins::PluginHost> host_;
+  std::unique_ptr<plugins::PluginHost> engine_;  // the workflow engine (ADR 0010)
   QJsonObject params_;
+  QJsonObject engine_params_{{"rays", 20000}, {"pixels", 512}, {"window", 0.0}, {"gaussian_waist", 0.0}};
   QString python_;
 
-  /// The finished message of an action (its status line).
+  /// The finished message of an action of the workflow engine (its status line).
   QString runMessage(const QString& action) {
-    QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
-    if (host_->run(action, params_) == 0 || !finished.wait(120000)) return {};
+    QSignalSpy finished(engine_.get(), &plugins::PluginHost::finished);
+    if (engine_->run(action, engine_params_) == 0 || !finished.wait(120000)) return {};
     return finished.first().at(3).toString();
+  }
+
+  /// An action of the workflow engine (Check workflow, Run workflow).
+  void runEngine(const QString& action) {
+    QSignalSpy finished(engine_.get(), &plugins::PluginHost::finished);
+    QVERIFY(engine_->run(action, engine_params_) != 0);
+    QVERIFY(finished.wait(120000));
+    const auto args = finished.first();
+    QVERIFY2(args.at(1).toBool(), qPrintable(action + QStringLiteral(": ") + args.at(3).toString()));
+    qInfo().noquote() << action << "->" << args.at(3).toString();
   }
 
   void run(const QString& action, const QJsonObject& target = {}) {
@@ -88,6 +100,12 @@ class TestRaytracerPlugin : public QObject {
     QSignalSpy ready(host_.get(), &plugins::PluginHost::readyChanged);
     host_->start(python, plugins::PluginManager::nfcadPythonPath());
     QVERIFY(ready.wait(30000));
+    const auto e = plugins::read_manifest(QStringLiteral(NFCAD_SOURCE_DIR "/python/plugins/workflow"), &error);
+    QVERIFY2(e.has_value(), qPrintable(error));
+    engine_ = std::make_unique<plugins::PluginHost>(*e, &doc_, &selection_, &results_);
+    QSignalSpy engine_ready(engine_.get(), &plugins::PluginHost::readyChanged);
+    engine_->start(python, plugins::PluginManager::nfcadPythonPath());
+    QVERIFY(engine_ready.wait(30000));
     params_ = {{"system", dir + QStringLiteral("/examples/singlet_optim.rtt.json")},
                {"irradiance_rays", 469},
                {"grid", 64}};
@@ -248,23 +266,23 @@ class TestRaytracerPlugin : public QObject {
     bool detector = false;
     for (const QJsonValue& n : nodes) detector = detector || n.toObject()["type"].toString() == QStringLiteral("rtt.detector");
     QVERIFY(detector);
-    params_.insert(QStringLiteral("workflow_rays"), 2000);
-    params_.insert(QStringLiteral("workflow_pixels"), 64);
+    engine_params_.insert(QStringLiteral("rays"), 2000);
+    engine_params_.insert(QStringLiteral("pixels"), 64);
     QVERIFY(!doc_.workflow()["plan"].toObject()["links"].toObject().isEmpty());  // R17 planner
-    run(QStringLiteral("check_workflow"));
+    runEngine(QStringLiteral("check_workflow"));
     for (const QJsonValue& v : doc_.workflow()["plan"].toObject()["links"].toObject()) {
       QCOMPARE(v.toObject()["representation"].toString(), QStringLiteral("R"));  // "auto": rays
     }
     // only what a display block shows is computed (no automatic camera images)
     const std::size_t sets_before = results_.sets().size();
-    QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
-    QVERIFY(host_->run(QStringLiteral("run_workflow"), params_) != 0);
+    QSignalSpy finished(engine_.get(), &plugins::PluginHost::finished);
+    QVERIFY(engine_->run(QStringLiteral("run_workflow"), engine_params_) != 0);
     QVERIFY(finished.wait(60000));
     QVERIFY(!finished.at(0).at(1).toBool());
     QVERIFY(finished.at(0).at(3).toString().contains(QStringLiteral("attach a display block")));
     QVERIFY(results_.sets().size() <= sets_before + 1);
     attachDisplay(QStringLiteral("show"), QStringLiteral("display.image"), detectorId(), QStringLiteral("image"));
-    run(QStringLiteral("run_workflow"));
+    runEngine(QStringLiteral("run_workflow"));
     const auto& items = results_.sets().back().items;
     QCOMPARE(items.size(), std::size_t{1});
     QCOMPARE(items[0].kind, results::ResultItem::Kind::Image);
@@ -299,15 +317,15 @@ class TestRaytracerPlugin : public QObject {
     }
     fwf[part()] = graph;
     doc_.setWorkflow(fwf);
-    params_.insert(QStringLiteral("workflow_window"), 0.02);
-    params_.insert(QStringLiteral("workflow_pixels"), 32);
-    run(QStringLiteral("check_workflow"));
+    engine_params_.insert(QStringLiteral("window"), 0.02);
+    engine_params_.insert(QStringLiteral("pixels"), 32);
+    runEngine(QStringLiteral("check_workflow"));
     bool planned_h = false;
     for (const QJsonValue& v : doc_.workflow()["plan"].toObject()["links"].toObject()) {
       planned_h = planned_h || v.toObject()["representation"].toString() == QStringLiteral("H");
     }
     QVERIFY(planned_h);
-    run(QStringLiteral("run_workflow"));
+    runEngine(QStringLiteral("run_workflow"));
     const auto& field_items = results_.sets().back().items;
     QVERIFY(!field_items.empty());
     QCOMPARE(field_items[0].key, QStringLiteral("workflow:show"));
@@ -388,10 +406,10 @@ class TestRaytracerPlugin : public QObject {
     graph["links"] = links;
     wf[part()] = graph;
     doc_.setWorkflow(wf);
-    params_.insert(QStringLiteral("workflow_rays"), 500);
-    params_.insert(QStringLiteral("workflow_pixels"), 32);
-    params_.insert(QStringLiteral("workflow_window"), 0.0);
-    run(QStringLiteral("run_workflow"));
+    engine_params_.insert(QStringLiteral("rays"), 500);
+    engine_params_.insert(QStringLiteral("pixels"), 32);
+    engine_params_.insert(QStringLiteral("window"), 0.0);
+    runEngine(QStringLiteral("run_workflow"));
     bool keyed = false;
     for (const auto& item : results_.sets().back().items) {
       keyed = keyed || (item.key == QStringLiteral("workflow:show") && item.kind == results::ResultItem::Kind::Image);
@@ -405,14 +423,14 @@ class TestRaytracerPlugin : public QObject {
     if (!noted.waitForFinished(30000) || noted.exitCode() != 0) return;  // older RTT-Fusion
     const QString warned = runMessage(QStringLiteral("run_workflow"));
     QVERIFY2(warned.contains(QStringLiteral("warning: Camera window")), qPrintable(warned));
-    const QString hint = QStringLiteral("set Image window (plugin panel) to about ");
+    const QString hint = QStringLiteral("set Image window (Workflow panel) to about ");
     QVERIFY2(warned.contains(hint), qPrintable(warned));
     const double fitting = warned.mid(warned.indexOf(hint) + hint.size()).section(QLatin1Char(' '), 0, 0).toDouble();
     QVERIFY(fitting > 0.0 && fitting < 1.0);
-    params_.insert(QStringLiteral("workflow_window"), fitting);
+    engine_params_.insert(QStringLiteral("window"), fitting);
     const QString clean = runMessage(QStringLiteral("run_workflow"));
     QVERIFY2(!clean.contains(QStringLiteral("warning")), qPrintable(clean));
-    params_.insert(QStringLiteral("workflow_window"), 0.0);
+    engine_params_.insert(QStringLiteral("window"), 0.0);
   }
 
   void workflowKeepsResults() {
@@ -423,11 +441,11 @@ class TestRaytracerPlugin : public QObject {
     doc_.setWorkflow(QJsonObject{});
     run(QStringLiteral("workflow_from_system"));
     attachDisplay(QStringLiteral("shown"), QStringLiteral("display.image"), detectorId(), QStringLiteral("image"));
-    params_.insert(QStringLiteral("workflow_rays"), 500);
-    params_.insert(QStringLiteral("workflow_pixels"), 32);
-    params_.insert(QStringLiteral("workflow_window"), 0.0);
+    engine_params_.insert(QStringLiteral("rays"), 500);
+    engine_params_.insert(QStringLiteral("pixels"), 32);
+    engine_params_.insert(QStringLiteral("window"), 0.0);
     QSignalSpy states(&doc_, &document::Document::workflowState);
-    run(QStringLiteral("run_workflow"));
+    runEngine(QStringLiteral("run_workflow"));
     QVERIFY(!states.isEmpty());
     QVERIFY(states.last().at(0).toJsonObject()["shown"].toBool());
     QVERIFY(states.last().at(0).toJsonObject()[detectorId()].toBool());
@@ -444,7 +462,7 @@ class TestRaytracerPlugin : public QObject {
     wf[part()] = graph;
     doc_.setWorkflow(wf);
     states.clear();
-    run(QStringLiteral("check_workflow"));
+    runEngine(QStringLiteral("check_workflow"));
     QVERIFY(!states.isEmpty());
     QVERIFY(!states.last().at(0).toJsonObject()["shown"].toBool());
     QVERIFY(states.last().at(0).toJsonObject()[detectorId()].toBool());
@@ -477,11 +495,11 @@ class TestRaytracerPlugin : public QObject {
     graph["nodes"] = nodes;
     wf[part()] = graph;
     doc_.setWorkflow(wf);
-    params_.insert(QStringLiteral("workflow_rays"), 500);
-    params_.insert(QStringLiteral("workflow_pixels"), 32);
-    params_.insert(QStringLiteral("workflow_window"), 0.0);
+    engine_params_.insert(QStringLiteral("rays"), 500);
+    engine_params_.insert(QStringLiteral("pixels"), 32);
+    engine_params_.insert(QStringLiteral("window"), 0.0);
     attachDisplay(QStringLiteral("curve"), QStringLiteral("display.plot"), QStringLiteral("sweep"), QStringLiteral("results"));
-    run(QStringLiteral("run_workflow"));
+    runEngine(QStringLiteral("run_workflow"));
     const auto& items = results_.sets().back().items;
     bool curve = false;
     for (const auto& item : items) {
@@ -600,10 +618,11 @@ class TestRaytracerPlugin : public QObject {
       model["nodes"] = nodes;
       wf["model"] = model;
       doc_.setWorkflow(wf);
-      run(QStringLiteral("check_workflow"));  // the new part is drawn (a step of its own)
+      runEngine(QStringLiteral("check_workflow"));
+      run(QStringLiteral("follow_workflow"));  // as CAD after an edit: fields and drawing of the new part
       QVERIFY(surface(QStringLiteral("new_bs.BS")) != nullptr);
       const int steps = doc_.undoStack()->count();
-      run(QStringLiteral("check_workflow"));
+      runEngine(QStringLiteral("check_workflow"));
       QCOMPARE(doc_.undoStack()->count(), steps);  // a check without a change: no undo step
       bool fields = false;
       for (const QJsonValue& n : doc_.workflow()["model"].toObject()["nodes"].toArray()) {
@@ -685,7 +704,7 @@ class TestRaytracerPlugin : public QObject {
     QVERIFY(!source["fields"].toArray().isEmpty());  // the settings are editable in the dialog
     QVERIFY(by_name(doc_, QStringLiteral("stop.STO")) != nullptr);  // drawn from the workflow
     QVERIFY(by_name(doc_, QStringLiteral("detector.IMG")) != nullptr);
-    run(QStringLiteral("check_workflow"));
+    runEngine(QStringLiteral("check_workflow"));
     QVERIFY(doc_.workflow()["diagnostics"].toArray().isEmpty());
     QVERIFY(doc_.undoStack()->index() > before);  // one undo step back to the empty workflow
     while (doc_.undoStack()->index() > before) doc_.undoStack()->undo();
@@ -783,7 +802,7 @@ class TestRaytracerPlugin : public QObject {
       QVERIFY(!v.toObject()["fields"].toArray().isEmpty());  // each element's data editable
     }
     QCOMPARE(inner, (QStringList{"stop", "L1"}));
-    run(QStringLiteral("check_workflow"));  // the grouped workflow is valid and draws
+    runEngine(QStringLiteral("check_workflow"));  // the grouped workflow is valid and draws
     run(QStringLiteral("update_drawing"));
     QVERIFY(by_name(doc_, QStringLiteral("L1.S1")) != nullptr);
     QVERIFY(doc_.undoStack()->index() > steps);  // undo brings the section back
@@ -798,6 +817,7 @@ class TestRaytracerPlugin : public QObject {
   }
 
   void cleanupTestCase() {
+    if (engine_) engine_->stop();
     if (host_) host_->stop();
   }
 };

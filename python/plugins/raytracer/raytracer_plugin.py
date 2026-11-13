@@ -22,7 +22,6 @@ import importlib
 import json
 import math
 import os
-import re
 import warnings
 from pathlib import Path
 
@@ -84,24 +83,11 @@ class RaytracerPlugin(Plugin):
                                      description="Many rays for a smooth image; time grows linearly"),
         "camera_pixels": Param.integer(512, min=16, max=4096, label="Pixels (long side)", group="Camera image"),
         "camera_on_surface": Param.boolean(True, label="Also on the surface in 3D", group="Camera image"),
-        "workflow_rays": Param.integer(20_000, min=7, max=500_000, label="Rays per field and wavelength",
-                                       group="Workflow",
-                                       description="For Run workflow (coherent image; every ray path is "
-                                                   "recorded, so memory grows with rays × events)"),
-        "workflow_pixels": Param.integer(512, min=16, max=4096, label="Pixels (long side)", group="Workflow"),
-        "workflow_window": Param.number(0.0, min=0.0, label="Image window (half width, mm)", group="Workflow",
-                                        description="0: the detector aperture. For a focus computed as a field "
-                                                    "(link into the camera set to H) a small window, e.g. 0.05 mm"),
-        "workflow_gaussian_waist": Param.number(0.0, min=0.0, max=10.0, label="Gaussian illumination (w / pupil radius)",
-                                                group="Workflow",
-                                                description="0: uniform (a hard-edged beam, whose Fresnel diffraction a "
-                                                            "field link shows); e.g. 0.5 for a laser beam"),
         "save_as": Param.file("", filter="Raytatouille system (*.rtt.json)", save=True, label="Save as",
                               group="Optimise", description="Empty: <system>.optimised.rtt.json"),
     }
 
     def __init__(self):
-        self._notes: list[str] = []  # warnings of the images of the last run (RTT-Fusion W65)
         self.revisions: dict[int, object] = {}  # revision -> rt.System
         self.next_revision = 1
         self.path: str | None = None
@@ -110,20 +96,28 @@ class RaytracerPlugin(Plugin):
         self.detector_half: tuple[float, float] | None = None
 
     # ------------------------------------------------------------------ helpers
+    @staticmethod
+    def _catalogue_files(ctx, system_path: str) -> list[str]:
+        """The glass catalogues of the system: the panel's list and *.agf next to the system file
+        (also in a folder "catalogs"), unique, in order, as absolute paths."""
+        files = list(ctx.params.get("catalogs") or [])
+        if system_path:
+            folder = Path(system_path).parent
+            files += sorted(glob.glob(str(folder / "*.agf"))) + sorted(glob.glob(str(folder / "catalogs" / "*.agf")))
+        return [str(Path(f).resolve()) for f in dict.fromkeys(files)]
+
     def _library(self, ctx, system_path: str):
         lib = rt.MaterialLibrary()
-        files = list(ctx.params["catalogs"])
-        folder = Path(system_path).parent
-        files += sorted(glob.glob(str(folder / "*.agf"))) + sorted(glob.glob(str(folder / "catalogs" / "*.agf")))
         loaded = []
-        for f in dict.fromkeys(files):  # unique, in order
+        for f in self._catalogue_files(ctx, system_path):
             try:
                 lib.add_catalog(f)
-                loaded.append(Path(f).name)
+                loaded.append(f)
             except Exception as e:  # noqa: BLE001 - a broken catalogue should not stop the others
                 ctx.log(f"catalogue {f}: {e}")
         if loaded:
-            ctx.log("glass catalogues: " + ", ".join(loaded))
+            ctx.log("glass catalogues: " + ", ".join(Path(f).name for f in loaded))
+        self.catalogue_paths = loaded  # written into the workflow for the engine (ADR 0010)
         return lib
 
     def _entities(self, ctx) -> list[dict]:
@@ -719,8 +713,7 @@ class RaytracerPlugin(Plugin):
             raise UserError("A new system needs a newer RTT-Fusion (new_system, W64).")
         registry, _ = self._registry(fg)
         model = fg.new_system()
-        ctx.set_workflow(self._model_workflow(fg, execute, io, validate, model, registry))
-        self._model_ids = set(model.nodes)
+        ctx.set_workflow(self._model_workflow(fg, execute, io, validate, model, registry, ctx))
         system, _ = self._current(ctx)  # drawn from the workflow
         return (f"new system \"{system.name}\": source, stop, detector and the branch main – insert "
                 "parts from the library in between; the settings are in the source's Parameters… "
@@ -735,7 +728,7 @@ class RaytracerPlugin(Plugin):
             registry, _ = self._registry(fg)
             model = fg.model_from_raytatouille(system)
             kept = self._keep_model_edits(fg, io, model, ctx.workflow(), registry)
-            wf = self._model_workflow(fg, execute, io, validate, model, registry)
+            wf = self._model_workflow(fg, execute, io, validate, model, registry, ctx)
             ctx.set_workflow(wf)
             return (f"workflow: {len(model.nodes)} blocks, {len(model.connections)} connections, "
                     f"{len(model.branches)} branches" + (f"; kept {kept}" if kept else ""))
@@ -787,211 +780,6 @@ class RaytracerPlugin(Plugin):
                 graph.connect(lk.source, lk.target, lk.transport)
         return ", ".join(f"{v} {k}" for k, v in counts.items() if v)
 
-    @action("Check workflow", description="Check the node workflow (RTT-Fusion) and mark problems")
-    def check_workflow(self, ctx):
-        fg, _, execute, io, validate = self._fusion()
-        wf = ctx.workflow()
-        if not wf.get("graph") and not wf.get("model"):
-            raise UserError("No node workflow yet – Workflow from system creates one.")
-        registry, _ = self._registry(fg)
-        if wf.get("model"):
-            model = io.model_from_dict(wf["model"], registry)
-            wf = {**wf, **self._model_workflow(fg, execute, io, validate, model, registry)}
-            graph = fg.unroll(model, registry) if not any(
-                d["severity"] == "error" for d in wf["diagnostics"]) else None
-            self._model_ids = set(model.nodes)
-        else:
-            graph = io.from_dict(wf["graph"])
-            wf["types"] = self._catalogue(registry)
-            wf["diagnostics"], wf["plan"] = self._checked(fg, execute, validate, graph, registry)
-            self._model_ids = None
-        ctx.set_workflow(wf)
-        if graph is not None and not any(d["severity"] == "error" for d in wf["diagnostics"]) and self.loaded_from:
-            try:  # which blocks the kept results still cover
-                system, _ = self._current(ctx)
-                _, extra = self._registry(fg)
-                backend_rtt = importlib.import_module("rtt_fusion.graph.backend_rtt")
-                ex = self._executor(ctx, graph, registry, {**backend_rtt.EVALUATORS, **extra}, execute,
-                                    system, None)
-                self._send_status(ctx, ex)
-            except Exception as e:  # noqa: BLE001 - only a hint
-                ctx.log(f"workflow state: {e}")
-        diagnostics = wf["diagnostics"]
-        n_err = sum(1 for d in diagnostics if d["severity"] == "error")
-        for d in diagnostics:
-            ctx.log(f"{d['severity']}: {d['code']} – {d['message']} ({d['location']})")
-        planned = sorted(set(v["representation"] for v in wf["plan"].get("links", {}).values()))
-        return (f"workflow: {n_err} error(s), {len(diagnostics) - n_err} warning(s); "
-                f"planned {''.join(planned) or '–'}, {len(wf['plan']['conversions'])} conversion(s)")
-
-    @action("Run workflow", description="Compute what the display blocks of the node workflow show (RTT-Fusion): "
-                                         "camera images, sweep curves, beam probes; links set to H as fields")
-    def run_workflow(self, ctx):
-        _require_rt()
-        fg, backend_rtt, execute, io, validate = self._fusion()
-        wf = ctx.workflow()
-        if not wf.get("graph") and not wf.get("model"):
-            raise UserError("No node workflow yet – Workflow from system creates one.")
-        registry, extra = self._registry(fg)
-        if wf.get("model"):  # RTT-Fusion R24: exactly the branches of the model, unrolled
-            model = io.model_from_dict(wf["model"], registry)
-            try:
-                graph = fg.unroll(model, registry)
-            except fg.ModelError as e:
-                for d in e.diagnostics:
-                    ctx.log(f"{d.severity}: {d.code} – {d.message} ({d.location})")
-                raise UserError(f"The workflow has errors – Check workflow marks them: {e}") from e
-            self._model_ids = set(model.nodes)
-        else:
-            graph = io.from_dict(wf["graph"])
-            self._model_ids = None
-        evaluators = {**backend_rtt.EVALUATORS, **extra}
-        displays = [n for n in graph.nodes.values() if n.type_id.startswith("display.")]
-        if not displays:
-            raise UserError("Nothing to show: attach a display block (right-click on the canvas → Add block → "
-                            "analysis → display.image / display.plot / display.beam) to a camera, a phase "
-                            "shifter or a component output, then run again. Only what the displays need is "
-                            "computed.")
-        system, _ = self._current(ctx)
-        compiled = self._compile(system)
-        window = float(ctx.params.get("workflow_window", 0.0) or 0.0)
-        if window > 0:
-            for n in graph.nodes.values():
-                if n.type_id in ("rtt.detector", "rtt.part.detector"):  # also a detector of the library
-                    n.params["half_size"] = [window, window]
-        run = ctx.result_set(f"Workflow {Path(self.loaded_from or 'system').name.split('.')[0]}")
-        self._notes = []
-        made = self._run_displays(ctx, run, graph, registry, evaluators, execute, system, compiled, displays)
-        ctx.workflow_running("")
-        message = "workflow: " + (", ".join(made) if made else "nothing computed")
-        if self._notes:  # shown in the status line, not only in the log
-            message += " – warning: " + "; ".join(self._notes)
-        return message
-
-    @staticmethod
-    def _hook(ctx, ex, a: float, b: float) -> None:
-        """Progress of an executor (RTT-Fusion R21) into a part a … b of the job, the running
-        block into the node editor; every report checks for Cancel."""
-        last = {"node": None}
-
-        def progress(part: float, text: str) -> None:
-            ctx.check_cancel()
-            ctx.progress(a + (b - a) * part, text)
-
-        def on_node(node_id: str) -> None:
-            node_id = RaytracerPlugin._model_id(node_id)
-            if node_id != last["node"]:
-                last["node"] = node_id
-                ctx.workflow_running(node_id)
-
-        if hasattr(ex.context, "progress"):
-            ex.context.progress = progress
-            ex.context.on_node = on_node
-
-    def _run_displays(self, ctx, run, graph, registry, evaluators, execute, system, compiled, displays) -> list:
-        """Display blocks (RTT-Fusion R21) and everything in front of them, in one executor (shared
-        blocks are computed once); their views as results with the key "workflow:<block>", shown in
-        the block's window (double-click)."""
-        made = []
-        ex = self._executor(ctx, graph, registry, evaluators, execute, system, compiled)
-        for k, node in enumerate(displays):
-            ctx.check_cancel()
-            a, b = k / len(displays), (k + 1) / len(displays)
-            self._hook(ctx, ex, a, b)
-            ctx.progress(a, f"display: {node.name or node.id}")
-            try:
-                view = ex.evaluate(node.id, "view")
-            except execute.ExecutionError as e:
-                ctx.log(f"{node.name or node.id}: {e}")
-                continue
-            key = f"workflow:{node.id}"
-            if view.kind == "image" and view.image is not None:
-                ny, nx = view.image.values.shape
-                note = str(getattr(view.image, "note", "") or "")  # RTT-Fusion W65: too few pixels
-                # here the window is the plugin's "Image window" (or more "Workflow pixels")
-                note = note.replace("set the detector's half size to", "set Image window (plugin panel) to")
-                note = note.replace("use more pixels", "raise Workflow pixels")
-                if note:
-                    ctx.log(f"warning: {node.name or node.id}: {note}")
-                    self._notes.append(f"{node.name or node.id}: {note}")
-                elif float(view.image.values.max()) <= 0.0:
-                    hint = ("set the link into the camera to H (right-click on the link → Transport → H) and "
-                            "choose a small image window" if "H" in self._available(execute) else
-                            "install fieldtracing in the plugin environment, then set the link into the "
-                            "camera to H")
-                    ctx.log(f"{node.name or node.id}: dark – the light focuses into less than a pixel; {hint}")
-                ctx.image(run, view.title, view.image.values.reshape(-1), nx, ny, extent=view.image.extent,
-                          x_label=view.x_label, y_label=view.y_label, unit=view.unit,
-                          description=f"{view.title}: {nx}×{ny} px", key=key)
-            else:
-                for c in view.curves:
-                    ctx.curve(run, f"{view.title}: {c.name}", c.x, c.y, x_label=view.x_label,
-                              y_label=view.y_label, key=key)
-            made.append(f"{node.name or node.id}")
-        for line in ex.context.log:
-            ctx.log(line)
-        cache = getattr(ex, "cache", None)
-        for line in getattr(cache, "warnings", [])[-3:]:
-            ctx.log(line)
-        if cache is not None and hasattr(cache, "warnings"):
-            cache.warnings.clear()
-        self._send_status(ctx, ex)
-        return made
-
-    def _executor(self, ctx, graph, registry, evaluators, execute, system, compiled):
-        """An executor with the results of earlier runs (RTT-Fusion R23): only what changed is
-        computed again. The environment covers what the results depend on outside the graph."""
-        shared = {"system": system, "compiled": compiled, "materials": self.library,
-                  "rings": rings_for(ctx.params["workflow_rays"]),
-                  "pixels": [ctx.params["workflow_pixels"]] * 2,
-                  "gaussian_waist": float(ctx.params.get("workflow_gaussian_waist", 0.0) or 0.0)}
-        if compiled is None:
-            shared.pop("compiled")  # the backend compiles when it needs to
-        kwargs = {"available": self._available(execute)}
-        if hasattr(execute, "ResultCache"):
-            if getattr(self, "_workflow_cache", None) is None:
-                self._workflow_cache = execute.ResultCache(limit_bytes=1 << 30)
-            path = self.loaded_from or ""
-            try:
-                stamp = os.path.getmtime(path) if path else 0.0
-            except OSError:
-                stamp = 0.0
-            kwargs["cache"] = self._workflow_cache
-            kwargs["environment"] = {
-                "system": path, "modified": stamp,
-                "system_json_hash": hash(system.to_json()) if hasattr(system, "to_json") else 0,
-                "rings": shared["rings"], "pixels": shared["pixels"], "window": ctx.params.get("workflow_window"),
-                "gaussian": shared["gaussian_waist"], "catalogs": list(ctx.params.get("catalogs") or []),
-                "available": sorted(kwargs["available"]),
-            }
-        return execute.Executor(graph, registry, evaluators, shared, **kwargs)
-
-    def _send_status(self, ctx, ex) -> None:
-        """Up to date / out of date per block (RTT-Fusion R23) for the node editor; with a model
-        (R24) per block of the model: all its copies (id@k) and the blocks of a group."""
-        if not hasattr(ex, "status"):
-            return
-        try:
-            # what the display blocks need (RTT-Fusion: status(wanted=…)); a block nobody needs
-            # gets no mark, an output nobody needs (a splitter's way to an unshown camera) none
-            shown = [(n.id, "view") for n in ex.graph.nodes.values() if n.type_id.startswith("display.")]
-            try:
-                raw = ex.status(wanted=shown)
-            except TypeError:  # RTT-Fusion before the status for what is needed
-                raw = ex.status()
-            states = {k: bool(v) for k, v in raw.items()}
-            ids = getattr(self, "_model_ids", None)
-            if ids is not None:
-                merged: dict = {}
-                for k, v in states.items():
-                    m = self._model_id(k)
-                    if m in ids:
-                        merged[m] = merged.get(m, True) and v
-                states = merged
-            ctx.workflow_state(states)
-        except Exception as e:  # noqa: BLE001 - the state is a display hint only
-            ctx.log(f"workflow state: {e}")
-
     # ------------------------------------------------------------------ the model (RTT-Fusion R24)
     @staticmethod
     def _has_model(fg) -> bool:
@@ -1003,38 +791,22 @@ class RaytracerPlugin(Plugin):
         "g/x" inside a group is the group "g"."""
         return unrolled.split("@")[0].split("/")[0]
 
-    def _model_workflow(self, fg, execute, io, validate, model, registry) -> dict:
-        """The workflow of a model: the model (every block with its sockets and ports, so the
-        editor needs no type knowledge), the block library, the checks of the model and of the
-        unrolled graph, and the plan – per link of the unrolled graph and per connection of the
-        model (direction "forward" a -> b, "back")."""
-        topology = importlib.import_module("rtt_fusion.graph.topology")
-        for node in model.nodes.values():  # with the inputs every block has (drive, pose)
-            node.sockets = tuple(validate.node_sockets(node, registry))
-            if not node.ports:
-                node.ports = topology.node_ports(node, registry)
-        diagnostics = [d.__dict__ for d in fg.validate_model(model, registry)]
-        plan: dict = {"links": {}, "conversions": [], "connections": {}}
-        if not any(d["severity"] == "error" for d in diagnostics):
-            graph = fg.unroll(model, registry)
-            checked, plan = self._checked(fg, execute, validate, graph, registry)
-            diagnostics += checked
-            plan["connections"] = self._connection_plan(graph, model, registry, topology, plan)
-        for d in diagnostics:  # copies and blocks inside groups: the block of the model
-            d["location"] = re.sub(r"@\d+", "", str(d["location"]))
-        data = io.model_to_dict(model)
-
-        def describe(nodes) -> None:  # the editable data of the system (ADR Nachtrag 1), also of
-            for nd in nodes:  # the blocks inside groups (every variant)
-                fields = self._rtt_fields(nd)
-                if fields:
-                    nd["fields"] = fields
-                for body in (nd.get("variants") or {}).values():
-                    describe(body.get("nodes", []))
-
-        describe(data["nodes"])
-        return {"model": data, "types": self._catalogue(registry),
-                "diagnostics": diagnostics, "plan": plan}
+    def _model_workflow(self, fg, execute, io, validate, model, registry, ctx=None) -> dict:
+        """The workflow document of a model (RTT-Fusion graph.workflow, CAD ADR 0010): model,
+        library, diagnostics, plan; this plugin describes the editable data of its blocks
+        (`_rtt_fields`) and writes the system's glass catalogues into the source (`rtt_catalogs`),
+        from which the workflow engine builds the material library."""
+        if ctx is not None and getattr(self, "catalogue_paths", None) is None:
+            self.catalogue_paths = self._catalogue_files(ctx, self.loaded_from or ctx.params.get("system") or "")
+        paths = list(getattr(self, "catalogue_paths", None) or [])
+        for node in model.nodes.values():
+            if node.type_id == "rtt.source" and "rtt_system" in node.params:
+                if paths:
+                    node.params["rtt_catalogs"] = paths
+                else:
+                    node.params.pop("rtt_catalogs", None)
+        workflow = importlib.import_module("rtt_fusion.graph.workflow")
+        return workflow.model_document(model, registry, self._rtt_fields)
 
     # keys that carry the structure (ids are referenced by the paths; a type changes the shape of
     # the entry): shown nowhere, changed by the import or the library only
@@ -1111,23 +883,6 @@ class RaytracerPlugin(Plugin):
             walk(entry, ["rtt_tree", location], "", group)
         if "rtt_system" in params:
             walk(params["rtt_system"], ["rtt_system"], "", "System")
-        return out
-
-    @staticmethod
-    def _connection_plan(graph, model, registry, topology, plan) -> dict:
-        out: dict = {}
-        ports = {nid: topology.node_ports(n, registry) for nid, n in model.nodes.items()}
-        for lk in graph.links:
-            key = f"{lk.source[0]}.{lk.source[1]} -> {lk.target[0]}.{lk.target[1]}"
-            if key not in plan.get("links", {}):
-                continue
-            a, b = RaytracerPlugin._model_id(lk.source[0]), RaytracerPlugin._model_id(lk.target[0])
-            pa = next((p.name for p in ports.get(a, ()) if p.out_socket == lk.source[1]), None)
-            pb = next((p.name for p in ports.get(b, ()) if p.in_socket == lk.target[1]), None)
-            for i, c in enumerate(model.connections):
-                if {c.a, c.b} == {(a, pa), (b, pb)}:
-                    side = "forward" if c.a == (a, pa) else "back"
-                    out.setdefault(str(i), {})[side] = plan["links"][key]["representation"]
         return out
 
     @staticmethod
@@ -1316,15 +1071,20 @@ class RaytracerPlugin(Plugin):
             fg.section_to_group(where, block)
         except ValueError as e:
             raise UserError(f"{block} cannot become a group: {e}") from e
-        ctx.set_workflow({**wf, **self._model_workflow(fg, execute, io, validate, model, registry)})
+        ctx.set_workflow({**wf, **self._model_workflow(fg, execute, io, validate, model, registry, ctx)})
         inner = where.groups[block].variants[where.groups[block].active].model
         return f"{block}: a group of {len(inner.nodes)} blocks ({', '.join(inner.nodes)}) – double-click opens it"
 
     @action("Follow the workflow", description="Draw what an edit of the node workflow changed (run by CAD "
                                                  "after every edit)", on_workflow_edit=True)
     def follow_workflow(self, ctx):
-        """Quiet: redraws only when the system the workflow makes changed, and never fails (an
-        unfinished edit simply waits for the next one)."""
+        """Quiet: describes the editable data of this plugin's blocks where they are missing or out
+        of date (the workflow engine keeps them, ADR 0010) and redraws only when the system the
+        workflow makes changed; never fails (an unfinished edit simply waits for the next one)."""
+        try:
+            self._describe_workflow(ctx)
+        except Exception as e:  # noqa: BLE001 - only the dialog's fields
+            ctx.log(f"fields not updated: {e}")
         if rt is None or self._workflow_system(ctx) is None:
             return ""
         try:
@@ -1332,6 +1092,31 @@ class RaytracerPlugin(Plugin):
         except Exception as e:  # noqa: BLE001 - a half-done edit must not interrupt the user
             ctx.log(f"drawing not updated: {e}")
         return ""
+
+    def _describe_workflow(self, ctx) -> bool:
+        """The editable fields of the Raytatouille blocks in the workflow (also inside groups), set
+        where they differ; True if the workflow was written."""
+        wf = ctx.workflow()
+        model = wf.get("model") if isinstance(wf, dict) else None
+        if not model:
+            return False
+        changed = False
+
+        def walk(nodes) -> None:
+            nonlocal changed
+            for nd in nodes:
+                if str(nd.get("type", "")).startswith("rtt."):
+                    fields = self._rtt_fields(nd)
+                    if fields and nd.get("fields") != fields:
+                        nd["fields"] = fields
+                        changed = True
+                for body in (nd.get("variants") or {}).values():
+                    walk(body.get("nodes", []))
+
+        walk(model.get("nodes", []))
+        if changed:
+            ctx.set_workflow(wf)
+        return changed
 
     @action("Update drawing", description="Draw the system of the node workflow now (it is also drawn "
                                             "before every computation when the workflow changed)")

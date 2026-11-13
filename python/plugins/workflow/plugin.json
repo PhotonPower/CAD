@@ -1,0 +1,9 @@
+{
+  "id": "workflow",
+  "name": "Workflow",
+  "version": "0.1.0",
+  "api": 1,
+  "entry": "workflow_plugin:WorkflowEngine",
+  "requires": ["numpy", "rtt_fusion"],
+  "description": "The engine of the node workflow (ADR 0010): checks, plans and runs the workflow whose blocks the plugins provide; display blocks become results. Raytatouille blocks need the package raytatouille in the same environment (until W3)."
+}
