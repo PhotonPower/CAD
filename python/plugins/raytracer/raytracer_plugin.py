@@ -166,6 +166,19 @@ class RaytracerPlugin(Plugin):
         model = wf.get("model") if isinstance(wf, dict) else None
         if not model or not any("rtt_system" in n.get("params", {}) for n in model.get("nodes", [])):
             return None
+
+        def complete(body: dict) -> bool:  # every Raytatouille block holds its element's data
+            for n in body.get("nodes", []):
+                t, params = str(n.get("type", "")), n.get("params", {})
+                if t.startswith("rtt.") and t != "rtt.source" and not t.startswith("rtt.part.") \
+                        and "rtt" not in params:
+                    return False
+                if not all(complete(b) for b in (n.get("variants") or {}).values()):
+                    return False
+            return True
+
+        if not complete(model):  # a workflow from before the data were kept (or they were lost):
+            return None  # the system file – Workflow from system brings the data into the workflow
         try:
             io = importlib.import_module("rtt_fusion.graph.io")
             importer = importlib.import_module("rtt_fusion.graph.importer")
@@ -1110,10 +1123,13 @@ class RaytracerPlugin(Plugin):
             if nid in model.nodes:
                 new = model.nodes[nid]
                 new.position, new.muted = node.position, node.muted
-                if node.type_id != new.type_id or node.params != new.params:
+                # the old values win (the user's edits); what the old block lacks – the system's data
+                # (rtt, runs) of a workflow from before they were kept – comes from the new import
+                merged = {**new.params, **node.params}
+                if node.type_id != new.type_id or merged != new.params:
                     if node.type_id != new.type_id:  # replaced in the editor (e.g. a grating)
                         replaced[nid] = node
-                    new.params = dict(node.params)
+                    new.params = merged
                     counts["blocks"] += 1
             else:
                 model.add(node)
