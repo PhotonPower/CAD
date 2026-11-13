@@ -9,6 +9,8 @@
 #include <QImage>
 #include <QProcess>
 #include <QSignalSpy>
+#include <QFile>
+#include <QJsonDocument>
 #include <QTemporaryDir>
 #include <QTest>
 #include <cmath>
@@ -56,9 +58,9 @@ class TestRaytracerPlugin : public QObject {
   QJsonObject params_;
   QString python_;
 
-  void run(const QString& action) {
+  void run(const QString& action, const QJsonObject& target = {}) {
     QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
-    QVERIFY(host_->run(action, params_) != 0);
+    QVERIFY(host_->run(action, params_, target) != 0);
     QVERIFY(finished.wait(120000));
     const auto args = finished.first();
     QVERIFY2(args.at(1).toBool(), qPrintable(action + QStringLiteral(": ") + args.at(3).toString()));
@@ -642,6 +644,66 @@ class TestRaytracerPlugin : public QObject {
     }
     QVERIFY2(bright > 0, "no bright irradiance on the image surface");
     if (!dir.isEmpty()) spot.save(QString::fromLocal8Bit(dir) + QStringLiteral("/raytracer_irradiance.png"));
+  }
+
+  void sectionToGroup() {
+    // a plugin action on one block (block_types): Section → group in the block's context menu
+    QProcess probe;
+    probe.start(python_, {QStringLiteral("-c"), QStringLiteral("from rtt_fusion.graph import section_to_group")});
+    if (!probe.waitForFinished(30000) || probe.exitCode() != 0) QSKIP("rtt_fusion without section_to_group");
+    const auto a = std::find_if(host_->actions().begin(), host_->actions().end(),
+                                 [](const auto& x) { return x.id == QStringLiteral("section_to_group"); });
+    QVERIFY(a != host_->actions().end());
+    QCOMPARE(a->block_types, QStringList{QStringLiteral("rtt.section")});
+    // the example with stop and lens in one assembly: one section of two elements
+    QFile in(QStringLiteral(NFCAD_SOURCE_DIR "/python/plugins/raytracer/examples/singlet_optim.rtt.json"));
+    QVERIFY(in.open(QIODevice::ReadOnly));
+    QJsonObject sys = QJsonDocument::fromJson(in.readAll()).object();
+    QJsonObject root = sys["root"].toObject();
+    const QJsonArray children = root["children"].toArray();
+    root["children"] = QJsonArray{QJsonObject{{"type", "assembly"}, {"name", "front"},
+                                              {"children", QJsonArray{children[0], children[1]}}},
+                                  children[2]};
+    sys["root"] = root;
+    QTemporaryDir dir;
+    QFile out(dir.filePath(QStringLiteral("front.rtt.json")));
+    QVERIFY(out.open(QIODevice::WriteOnly));
+    out.write(QJsonDocument(sys).toJson());
+    out.close();
+    const QJsonObject saved = params_;
+    params_.insert(QStringLiteral("system"), out.fileName());
+    run(QStringLiteral("load"));
+    doc_.setWorkflow(QJsonObject{});
+    run(QStringLiteral("workflow_from_system"));
+    auto node = [this](const QString& id) {
+      for (const QJsonValue& v : doc_.workflow()["model"].toObject()["nodes"].toArray()) {
+        if (v.toObject()["id"].toString() == id) return v.toObject();
+      }
+      return QJsonObject{};
+    };
+    QCOMPARE(node(QStringLiteral("front"))["type"].toString(), QStringLiteral("rtt.section"));
+    const int steps = doc_.undoStack()->index();
+    run(QStringLiteral("section_to_group"), QJsonObject{{"block", "front"}, {"scope", QJsonArray{}}});
+    const QJsonObject group = node(QStringLiteral("front"));
+    QCOMPARE(group["type"].toString(), QStringLiteral("group"));
+    QStringList inner;
+    for (const QJsonValue& v : group["variants"].toObject()[group["variant"].toString()].toObject()["nodes"].toArray()) {
+      inner << v.toObject()["id"].toString();
+      QVERIFY(!v.toObject()["fields"].toArray().isEmpty());  // each element's data editable
+    }
+    QCOMPARE(inner, (QStringList{"stop", "L1"}));
+    run(QStringLiteral("check_workflow"));  // the grouped workflow is valid and draws
+    run(QStringLiteral("update_drawing"));
+    QVERIFY(by_name(doc_, QStringLiteral("L1.S1")) != nullptr);
+    QVERIFY(doc_.undoStack()->index() > steps);  // undo brings the section back
+    while (doc_.undoStack()->index() > steps) doc_.undoStack()->undo();
+    QCOMPARE(node(QStringLiteral("front"))["type"].toString(), QStringLiteral("rtt.section"));
+    // a section of one element is refused with the reason, nothing changes
+    QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
+    QVERIFY(host_->run(QStringLiteral("section_to_group"), params_, QJsonObject{{"block", "image"}}) != 0);
+    QVERIFY(finished.wait(60000));
+    QVERIFY(!finished.first().at(1).toBool());
+    params_ = saved;
   }
 
   void cleanupTestCase() {

@@ -62,7 +62,7 @@ class PluginManager : public QObject {
   [[nodiscard]] const QStringList& problems() const { return problems_; }
 
   /// Starts the plugin if needed and runs the action.
-  int run(PluginHost* host, const QString& action, const QJsonObject& params = {});
+  int run(PluginHost* host, const QString& action, const QJsonObject& params = {}, const QJsonObject& target = {});
 
  signals:
   void pluginsChanged();

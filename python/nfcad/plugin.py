@@ -7,16 +7,23 @@ from typing import Callable
 API_VERSION = 1
 
 
-def action(label: str, *, description: str = "", on_workflow_edit: bool = False) -> Callable:
+def action(label: str, *, description: str = "", on_workflow_edit: bool = False,
+           block_types: tuple[str, ...] = ()) -> Callable:
     """Marks a method ``f(self, ctx)`` as an action shown in CAD (menu / tool column).
 
     ``on_workflow_edit``: CAD also runs it, quietly, shortly after the node workflow was edited
-    (e.g. to draw what the edit changed); it should be quick and raise nothing."""
+    (e.g. to draw what the edit changed); it should be quick and raise nothing.
+
+    ``block_types``: an action on one block of the node workflow – CAD shows it in the context menu
+    of blocks of these types (not in the menu or the tool column); ``ctx.target`` names the block
+    ({"block": id, "scope": [group ids from the top level]})."""
 
     def mark(f: Callable) -> Callable:
         f._nfcad_action = {"label": label, "description": description}
         if on_workflow_edit:
             f._nfcad_action["on_workflow_edit"] = True
+        if block_types:
+            f._nfcad_action["block_types"] = list(block_types)
         return f
 
     return mark

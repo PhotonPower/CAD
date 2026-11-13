@@ -226,16 +226,18 @@ void PluginHost::handle(const QJsonObject& msg) {
     actions_.clear();
     for (const QJsonValue& a : msg["actions"].toArray()) {
       const QJsonObject o = a.toObject();
+      QStringList types;
+      for (const QJsonValue& t : o["block_types"].toArray()) types << t.toString();
       actions_.push_back({o["id"].toString(), o["label"].toString(), o["description"].toString(),
-                          o["on_workflow_edit"].toBool()});
+                          o["on_workflow_edit"].toBool(), types});
     }
     params_ = msg["params"].toArray();
     ready_ = true;
     emit readyChanged(true);
     if (queued_) {
-      const auto [action, params] = *queued_;
+      const auto [action, params, target] = *queued_;
       queued_.reset();
-      run(action, params);
+      run(action, params, target);
     }
   } else if (type == QLatin1String("progress")) {
     emit progress(msg["job"].toInt(), msg["value"].toDouble(), msg["text"].toString());
@@ -454,10 +456,10 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
   throw std::runtime_error("unknown method " + method.toStdString());
 }
 
-int PluginHost::run(const QString& action, const QJsonObject& params) {
+int PluginHost::run(const QString& action, const QJsonObject& params, const QJsonObject& target) {
   if (active_job_) return 0;
   if (!ready_) {
-    queued_ = std::make_pair(action, params);  // sent when the plugin said hello
+    queued_ = std::make_tuple(action, params, target);  // sent when the plugin said hello
     return next_job_;
   }
   const int job = next_job_++;
@@ -466,7 +468,9 @@ int PluginHost::run(const QString& action, const QJsonObject& params) {
   if (selection_ != nullptr) {
     for (document::EntityId id : selection_->entities()) selection.append(static_cast<qint64>(id));
   }
-  send({{"type", "run"}, {"job", job}, {"action", action}, {"params", params}, {"selection", selection}});
+  QJsonObject msg{{"type", "run"}, {"job", job}, {"action", action}, {"params", params}, {"selection", selection}};
+  if (!target.isEmpty()) msg["target"] = target;
+  send(msg);
   return job;
 }
 
