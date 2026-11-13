@@ -7,6 +7,11 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
 ## [Unreleased]
 
 ### Added
+- **FourierGrating plugin** (ADR 0010, W4, step 1): a grating's structure, materials, layers and
+  incidence in the plugin panel; load and save FourierGrating configurations; *Solve* shows the
+  efficiency of every order as a table and as bars.
+- Plugins: structured parameters (lists, tables, JSON), result tables and bar charts,
+  `ctx.set_params` (ADR 0010, W4a).
 - **Camera image** (Raytracer): the irradiance on the last surface of each path from many rays
   (default 200 000 per field and wavelength, millions possible), square pixels over the
   sensor, shown in the new **Image** window and optionally on the surface in 3D. The quick

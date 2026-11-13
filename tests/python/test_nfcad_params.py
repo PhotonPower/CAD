@@ -46,3 +46,8 @@ except ValueError as e:
 else:
     raise AssertionError("a point column must be refused")
 print("ok")
+
+# a hidden parameter (a plugin's bookkeeping): in the schema with "hidden", not shown, value kept
+hidden = Param.json([], hidden=True).to_json("_order")
+assert hidden["hidden"] is True and hidden["type"] == "json", hidden
+assert "hidden" not in Param.json([]).to_json("x")
