@@ -68,5 +68,9 @@ to 2.5 solves per step whatever the number of parameters) at the first incidence
   sectioned) with their area fractions per material, findings with their position – and, with
   *Preview SVG*, the section at *Preview at height*.
 
-**Next steps:** a cost estimate, further blocks (`fg.*`: grating as
+**Step 8: Estimate.** *Estimate* shows the number of solves, the matrix size n = 4 n_f and a
+rough memory need (rule of thumb of GUI-FourierGrating: parallel points × 12 n² × 16 bytes);
+*Scan* and *Optimise* warn in the log beforehand when it exceeds 70 % of the RAM.
+
+**Next steps:** further blocks (`fg.*`: grating as
 S-matrix operator, stacks).
