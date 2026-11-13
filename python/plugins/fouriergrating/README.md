@@ -57,5 +57,16 @@ to 2.5 solves per step whatever the number of parameters) at the first incidence
 - *Solve: also write CSV*: the order table; *Scan → Also write CSV*: every order at every point;
   *Near field → Also write .npz*: every quantity of both cuts with axes and metadata.
 
-**Next steps:** layers from CAD (STEP), a cost estimate, further blocks (`fg.*`: grating as
+**Step 7: Layers from CAD bodies.** Needs a fouriergrating with the CAD slicer (built with
+`FG_ENABLE_NURBFORGE`, FourierGrating `docs/cad.md`); without it the layer is added but not checked.
+- Draw the bodies of one unit cell (closed shells; CAD +Z is the stacking direction, CAD +X the
+  grating's x), in µm or mm (*Bodies drawn in*). Each body's material is its attribute `material`,
+  else its name if that names a material of the panel.
+- *Layer from CAD bodies* writes them to the *STEP file* and adds a `cad` layer on top of the stack
+  (move it with ↑/↓), material *Around the bodies* from the superstrate or the substrate.
+- *Check CAD layers*: FourierGrating's geometry check – the bands (homogeneous, extrusion,
+  sectioned) with their area fractions per material, findings with their position – and, with
+  *Preview SVG*, the section at *Preview at height*.
+
+**Next steps:** a cost estimate, further blocks (`fg.*`: grating as
 S-matrix operator, stacks).

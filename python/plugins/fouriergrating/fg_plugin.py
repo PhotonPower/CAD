@@ -11,6 +11,7 @@ from pathlib import Path
 
 from nfcad import Param, Plugin, UserError, action
 
+import fg_cad
 import fg_config
 import fg_nearfield
 import fg_optimize
@@ -110,6 +111,18 @@ class FourierGratingPlugin(Plugin):
                                               "/layers/0/thickness_um or /layers/0/breakpoints_um/1"),
         "opt_iterations": Param.integer(50, min=1, max=10000, label="Iterations", group="Optimisation"),
         "opt_apply": Param.boolean(True, label="Apply the optimum to the panel", group="Optimisation"),
+        "cad_bodies": Param.entity(kinds=["shell"], multiple=True, label="Bodies", group="CAD layer",
+                                   description="closed bodies of one unit cell; the material from the body's attribute "
+                                               "'material' or its name; CAD +Z is the stacking direction"),
+        "cad_unit": Param.choice(["µm", "mm"], "µm", label="Bodies drawn in", group="CAD layer"),
+        "cad_step": Param.file("", filter="STEP (*.step *.stp)", save=True, label="STEP file", group="CAD layer",
+                               description="where the bodies are written; the layer refers to it"),
+        "cad_background": Param.choice(["superstrate", "substrate"], "superstrate", label="Around the bodies",
+                                       group="CAD layer"),
+        "cad_slices": Param.integer(30, min=1, max=1000, label="RCWA slices per band", group="CAD layer"),
+        "cad_preview_y": Param.number(0.0, decimals=6, unit="µm", label="Preview at height", group="CAD layer"),
+        "cad_preview": Param.file("", filter="SVG (*.svg)", save=True, label="Preview SVG", group="CAD layer",
+                                  description="Check CAD layers also writes the section of the first one at this height"),
         "advanced": Param.json({}, label="Further settings (JSON)", group="Advanced",
                                description="solver options, sweeps, near field, output – as in the configuration file"),
         "_order": Param.json([], hidden=True),
@@ -339,3 +352,63 @@ class FourierGratingPlugin(Plugin):
             raise UserError(str(e).strip("'\"")) from e
         ctx.set_params({"phi_deg": f"{phi:.10g}"})
         return f"φ = {phi:.6g}° (Littrow, order {ctx.params['littrow_order']})"
+
+    # ------------------------------------------------------------------ CAD layers (FourierGrating M14)
+    @action("Layer from CAD bodies", description="Write the chosen bodies as STEP and add a cad layer on top")
+    def layer_from_cad(self, ctx):
+        ids = [int(i) for i in ctx.params["cad_bodies"]]
+        if not ids:
+            raise UserError("Choose the bodies first: CAD layer → Bodies (select them, then take the selection).")
+        path = ctx.params["cad_step"]
+        if not path:
+            raise UserError("Choose where to write them: CAD layer → STEP file.")
+        names = [m["name"] for m in ctx.params["materials"]]
+        try:
+            materials = [fg_cad.material_of(e, names) for e in ctx.entities(ids)]
+        except ValueError as e:
+            raise UserError(str(e)) from e
+        written = ctx.export_step(ids, path)
+        entry = fg_cad.layer(str(Path(path).resolve()), materials, unit="um" if ctx.params["cad_unit"] == "µm" else "mm",
+                             background=ctx.params["cad_background"], rcwa_slices=int(ctx.params["cad_slices"]))
+        layers = list(ctx.params["layers"]) + [{"type": "json", "thickness": 0.0, "material": "", "lamellae": [],
+                                                "end": 0.0, "json": entry}]
+        ctx.set_params({"layers": layers})
+        checked = ""
+        try:
+            checked = "; " + self._check_layers(ctx, [entry])
+        except UserError as e:
+            ctx.log(f"not checked: {e}")
+        return f"{written} bodies in {Path(path).name}, cad layer {len(layers)} added (top){checked}"
+
+    @action("Check CAD layers", description="FourierGrating's geometry check and band decomposition of every cad layer")
+    def check_cad(self, ctx):
+        cad = [x for x in self.config(ctx)["layers"] if x.get("type") == "cad"]
+        if not cad:
+            raise UserError("No cad layer – add one with Layer from CAD bodies (or as JSON).")
+        return self._check_layers(ctx, cad)
+
+    def _check_layers(self, ctx, cad_layers) -> str:
+        fg = _fg()
+        if not fg.cad.available():
+            raise UserError("this fouriergrating has no CAD slicer (a build with FG_ENABLE_NURBFORGE, FourierGrating docs/cad.md)")
+        cfg = self.config(ctx)
+        findings, bands, ok = [], [], True
+        for k, entry in enumerate(cad_layers):
+            one = {**cfg, "layers": [entry]}
+            try:
+                report = fg.cad.check(None, one)
+            except Exception as e:  # noqa: BLE001 - FourierGrating's message is for the user
+                raise UserError(f"FourierGrating: {e}") from e
+            f, b = fg_cad.report_rows(f"cad {k + 1}", report)
+            findings += f
+            bands += b
+            ok = ok and bool(report.get("ok"))
+            if k == 0 and ctx.params.get("cad_preview"):
+                Path(ctx.params["cad_preview"]).write_text(
+                    fg.cad.preview(None, one, float(ctx.params["cad_preview_y"])), encoding="utf-8")
+        run = ctx.result_set("FourierGrating CAD layers")
+        ctx.table(run, "Bands", ["layer", "y from / µm", "y to / µm", "kind", "area fractions"], bands)
+        if findings:
+            ctx.table(run, "Findings", ["layer", "severity", "code", "message", "where / µm"], findings)
+        errors = sum(1 for f in findings if f[1] == "error")
+        return f"{len(bands)} bands, {errors} errors, {len(findings) - errors} warnings" + ("" if ok else " – not usable")

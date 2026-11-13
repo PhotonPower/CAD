@@ -82,6 +82,19 @@ class TestPlugin(Plugin):
             return f"refused: {e}"
         return "not refused"
 
+    @action("Export STEP")
+    def export_step(self, ctx):
+        import os
+        import tempfile
+
+        bodies = [e["id"] for e in ctx.entities() if e["name"].startswith("body")]
+        path = os.path.join(tempfile.mkdtemp(), "bodies.step")
+        try:
+            ctx.export_step(bodies + [e["id"] for e in ctx.entities() if e["name"] == "target"], path)
+        except RuntimeError as e:
+            refused = str(e)
+        return f"{ctx.export_step(bodies, path)}|{path}|{refused}"
+
     @action("Needs input")
     def needs_input(self, ctx):
         raise UserError("Choose a file first.")

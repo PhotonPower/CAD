@@ -8,6 +8,7 @@
 #include <nurbforge/nurbforge.hpp>
 
 #include "document/document.hpp"
+#include "kernel/step_import.hpp"
 #include "document/selection.hpp"
 #include "plugins/plugin_manager.hpp"
 #include "results/result_store.hpp"
@@ -51,7 +52,7 @@ class TestPluginHost : public QObject {
     host_->start(python_, plugins::PluginManager::nfcadPythonPath());
     QVERIFY2(ready.wait(20000), qPrintable(failed.isEmpty() ? QStringLiteral("timeout")
                                                             : failed.first().at(0).toString()));
-    QCOMPARE(host_->actions().size(), std::size_t{10});
+    QCOMPARE(host_->actions().size(), std::size_t{11});
     QCOMPARE(host_->paramsSchema().size(), 5);
     QCOMPARE(host_->paramsSchema()[0].toObject()["name"].toString(), QStringLiteral("count"));  // order kept
   }
@@ -200,6 +201,27 @@ class TestPluginHost : public QObject {
     QCOMPARE(bars.size(), std::size_t{1});
     QCOMPARE(bars[0]->bars->values, (std::vector<double>{0.25, 0.5}));
     QCOMPARE(bars[0]->bars->y_label, QStringLiteral("efficiency"));
+  }
+
+  void exportStep() {
+    // ADR 0010, W4: ctx.export_step writes shells as STEP (named after the entities, in the given
+    // order) for a kernel plugin; a curve among them is refused
+    doc_.addEntities({document::make_entity(nf::make_box({0, 0, 0}, {1, 1, 1}), QStringLiteral("body_a")),
+                      document::make_entity(nf::make_box({0, 0, 1}, {1, 1, 2}), QStringLiteral("body_b"))},
+                     QStringLiteral("add"));
+    QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
+    QVERIFY(host_->run(QStringLiteral("export_step")) > 0);
+    QVERIFY(waitFinished(finished));
+    const QStringList parts = finished.first().at(3).toString().split(QLatin1Char('|'));
+    QCOMPARE(parts.size(), 3);
+    QCOMPARE(parts[0], QStringLiteral("2"));
+    QVERIFY2(parts[2].contains(QStringLiteral("only surfaces and shells")), qPrintable(parts[2]));
+    const auto read = kernel::import_step(parts[1]);
+    QVERIFY2(read.error.isEmpty(), qPrintable(read.error));
+    QCOMPARE(read.shells.size(), std::size_t{2});
+    QCOMPARE(read.shells[0].name, QStringLiteral("body_a"));
+    QCOMPARE(read.shells[1].name, QStringLiteral("body_b"));
+    QVERIFY(std::abs(read.shells[1].shell.volume() - 2.0) < 1e-9);  // corner (0,0,1), edges 1 x 1 x 2
   }
 
   void cancel() {
