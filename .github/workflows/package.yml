@@ -24,7 +24,7 @@ jobs:
     name: Windows installer
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: jurplel/install-qt-action@v4
         with:
           version: "6.8.*"
@@ -67,7 +67,7 @@ jobs:
           dnf install -y rpm-build gcc-c++ git cmake ninja-build \
                          qt6-qtbase-devel qt6-qtbase-private-devel qt6-qtsvg-devel \
                          qt6-qtshadertools-devel mesa-libGL-devel
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: rpmbuild
         run: |
           rpmbuild -bb packaging/linux/raytatouille-fusion.spec \
@@ -89,7 +89,7 @@ jobs:
     env:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       # Qt from qt.io: universal (arm64 + x86_64) binaries; Homebrew's Qt is arm64 only. Qt 6.8's
       # CMake files still link the AGL framework, which current macOS SDKs no longer have.
       - uses: jurplel/install-qt-action@v4
@@ -131,7 +131,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v4
         with:
           path: dist
