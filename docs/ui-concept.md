@@ -163,7 +163,10 @@ an edit (the Raytracer does so in *Follow the workflow*). Other plugins add bloc
 own (ADR 0010, W2): the engine asks them for their catalogues – the *Add block* menu shows those
 blocks with their plugin – and has such a block evaluated in its plugin's process; the workflow
 records which plugin provides a type, and a block whose plugin is missing stays with its data,
-marked `graph.provider_missing` by the check.
+marked `graph.provider_missing` by the check. The Raytracer provides the Raytatouille blocks
+(`rtt.*`, W3): they are computed in its process, prepared once per run with the whole graph (the
+system from the blocks' data, the glass catalogues of the source); without the Raytracer the
+engine computes them itself.
 
 Once the workflow holds the system it is the truth for the Raytracer plugin: the engine's runs,
 *Trace rays*, *Camera image* and *Optimise* compute with the system the workflow makes (the glass
