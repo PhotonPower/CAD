@@ -17,6 +17,14 @@ the plugin environment.
   as bars in the *Plot* window; ΣR, ΣT, absorption and the energy balance in the log. For a scan
   (list or range) the first point is solved.
 
-**Next steps:** scans over λ, angle and polarisation as curves, near-field sections as images,
+**Step 2: Scan.** Every point of the λ, angle and polarisation lists and ranges and of a
+`sweep` (under *Advanced*, e.g. `{"parameter": "/layers/0/thickness_um", "values": {"from": 0.1,
+"to": 0.3, "steps": 11}}`), computed in parallel by FourierGrating. The *Plot* window shows ΣR,
+ΣT and every order that reaches *Orders from efficiency* somewhere, over the quantity with the
+most values (or the chosen *x axis*); every further varying quantity gives its own curves
+(e.g. `R 0 (δ = 90)`). An order that is evanescent at some points has no points there.
+*Also write CSV*: every order at every point, as FourierGrating's `efficiencies.csv`.
+
+**Next steps:** near-field sections as images,
 layers from CAD (STEP), optimisation with exact gradients, exports, and the grating blocks `fg.*`
 in the node workflow.

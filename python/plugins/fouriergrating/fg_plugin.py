@@ -11,6 +11,7 @@ from pathlib import Path
 from nfcad import Param, Plugin, UserError, action
 
 import fg_config
+import fg_scan
 
 _LAMELLA = {
     "from": Param.number(0.0, decimals=6, unit="µm", label="from x"),
@@ -69,6 +70,13 @@ class FourierGratingPlugin(Plugin):
                                             {"name": "glass", "kind": "n", "n": 1.5, "k": 0.0, "json": None}],
                                 item_label="name", label="Materials"),
         "layers": Param.list(_LAYER, item_label="type", label="Layers (bottom to top)"),
+        "scan_x": Param.choice(["auto", *fg_scan.AXES], "auto", label="x axis", group="Scan",
+                               description="auto: the quantity with the most values; the other varying ones give separate curves"),
+        "scan_min": Param.number(0.01, min=0.0, max=1.0, decimals=4, label="Orders from efficiency", group="Scan",
+                                 description="an order gets a curve if it reaches this efficiency somewhere"),
+        "scan_max_curves": Param.integer(24, min=1, max=500, label="At most curves", group="Scan"),
+        "scan_csv": Param.file("", filter="CSV (*.csv)", save=True, label="Also write CSV", group="Scan",
+                               description="every order at every point, as FourierGrating's efficiencies.csv"),
         "advanced": Param.json({}, label="Further settings (JSON)", group="Advanced",
                                description="solver options, sweeps, near field, output – as in the configuration file"),
         "_order": Param.json([], hidden=True),
@@ -137,3 +145,36 @@ class FourierGratingPlugin(Plugin):
         ctx.log(f"ΣR = {total['R']:.6g}, ΣT = {total['T']:.6g}, A = {absorption:.6g}"
                 + (f", energy balance {balance:.6g}" if balance is not None else ""))
         return f"ΣR {total['R']:.4f}, ΣT {total['T']:.4f}, A {absorption:.4f} ({len(rows)} orders)"
+
+    @action("Scan", description="Every point of the λ / angle / polarisation lists and ranges and of a sweep: "
+                                "efficiency per order as curves")
+    def scan(self, ctx):
+        fg = _fg()
+        cfg = self.config(ctx)
+        ctx.progress(0.05, "scanning …")
+        try:
+            res = fg.solve_scan(cfg)
+        except Exception as e:  # noqa: BLE001 - FourierGrating's message is for the user
+            raise UserError(f"FourierGrating: {e}") from e
+        columns = res.columns
+        try:
+            x_key = fg_scan.x_axis(columns, ctx.params["scan_x"])
+        except ValueError as e:
+            raise UserError(str(e)) from e
+        sweep = res.sweep_parameter or "sweep"
+        found = fg_scan.curves(columns, x_key, float(ctx.params["scan_min"]), sweep_label=sweep)
+        limit = int(ctx.params["scan_max_curves"])
+        if len(found) > limit:
+            ctx.log(f"warning: {len(found)} curves, the first {limit} are shown – raise 'Orders from efficiency' "
+                    "or 'At most curves'")
+            found = found[:limit]
+        x_label = sweep if x_key == "sweep_value" else fg_scan.AXES[x_key]
+        run = ctx.result_set(f"FourierGrating scan over {x_label}")
+        for c in found:
+            ctx.curve(run, c.name, c.x, c.y, x_label=x_label, y_label="efficiency")
+        points = len(res.points)
+        written = ""
+        if ctx.params["scan_csv"]:
+            rows = fg_scan.write_csv(columns, ctx.params["scan_csv"])
+            written = f", {rows} rows in {Path(ctx.params['scan_csv']).name}"
+        return f"{points} points, {len(found)} curves over {x_label}{written}"

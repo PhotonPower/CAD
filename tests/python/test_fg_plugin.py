@@ -46,6 +46,41 @@ p["nz"] = 5  # a value the file lacked, set off its default by the user, is writ
 assert fg_config.to_config(p)["truncation"] == {"Nx": 4, "Nz": 5}
 
 try:
+    import fg_scan  # numpy
+except ImportError:
+    print("numpy not installed: scan and solve skipped")
+    sys.exit(77)
+
+# scan curves from columns (one row per order and point), without FourierGrating: λ in 3 values,
+# φ in 2; R0 everywhere, T1 only at λ = 0.5 (evanescent above), R1 always below the threshold
+cols: dict = {k: [] for k in ("sweep_value", "lambda_um", "phi_deg", "psi_deg", "delta_deg", "side", "n", "m",
+                              "efficiency")}
+for lam in (0.5, 0.6, 0.7):
+    for phi in (0.0, 10.0):
+        for side, n, eff in (("R", 0, 0.1 + phi / 100), ("R", 1, 0.001), ("T", 0, 0.5)) + (
+                (("T", 1, 0.3),) if lam == 0.5 else ()):
+            for k, v in zip(cols, (0.0, lam, phi, 0.0, 0.0, side, n, 0, eff), strict=True):
+                cols[k].append(v)
+assert fg_scan.varying(cols) == ["lambda_um", "phi_deg"]
+assert fg_scan.x_axis(cols) == "lambda_um"  # most values
+assert fg_scan.x_axis(cols, "phi_deg") == "phi_deg"
+for bad in ("psi_deg",):
+    try:
+        fg_scan.x_axis(cols, bad)
+        raise AssertionError("not refused")
+    except ValueError as e:
+        assert "does not vary" in str(e)
+found = {c.name: c for c in fg_scan.curves(cols, "lambda_um", 0.01)}
+assert sorted(found) == sorted(f"{s} (φ = {p})" for p in (0, 10) for s in ("ΣR", "ΣT", "R 0", "T 0", "T 1")), found
+assert found["R 0 (φ = 10)"].y == [0.2, 0.2, 0.2] and found["R 0 (φ = 10)"].x == [0.5, 0.6, 0.7]
+assert found["T 1 (φ = 0)"].x == [0.5]  # only where it propagates
+assert found["ΣT (φ = 0)"].y == [0.8, 0.5, 0.5]
+with tempfile.TemporaryDirectory() as d:
+    assert fg_scan.write_csv({**cols, "amp": [1 + 2j] * len(cols["n"])}, Path(d) / "s.csv") == len(cols["n"])
+    head = (Path(d) / "s.csv").read_text().splitlines()[0]
+    assert head.endswith("efficiency,amp_re,amp_im"), head
+
+try:
     import fouriergrating  # noqa: F401
 except ImportError:
     print("fouriergrating not installed: solve skipped")
@@ -73,6 +108,9 @@ class Ctx:
     def bars(self, run, name, labels, values, **k):
         self.out["bars"] = (labels, values)
 
+    def curve(self, run, name, x, y, **k):
+        self.out.setdefault("curves", {})[name] = (x, y)
+
     def set_params(self, values):
         self.params.update(values)
 
@@ -92,3 +130,16 @@ total = sum(r[3] for r in rows)
 assert len(ctx.out["bars"][0]) == len(rows)
 assert 0.0 < total <= 1.0 + 1e-9, total  # absorbing si: R + T < 1
 print("ok", len(rows), "orders, R+T =", total)
+
+# a real scan: λ over 5 values, two polarisations -> curves per δ
+with tempfile.TemporaryDirectory() as d:
+    scan_cfg = dict(LAMELLAR, incidence={"lambda_um": {"from": 0.5, "to": 0.7, "steps": 5}, "phi_deg": 10,
+                                         "psi_deg": 0, "delta_deg": [0, 90]})
+    ctx = Ctx({**fg_config.to_params(scan_cfg), "scan_x": "auto", "scan_min": 0.01, "scan_max_curves": 24,
+               "scan_csv": str(Path(d) / "scan.csv")})
+    message = plugin.scan(ctx)
+    assert "10 points" in message, message
+    sums = ctx.out["curves"]["ΣR (δ = 90)"]
+    assert len(sums[0]) == 5 and all(0 < v < 1 for v in sums[1]), sums
+    assert (Path(d) / "scan.csv").exists()
+print("scan ok:", message)
