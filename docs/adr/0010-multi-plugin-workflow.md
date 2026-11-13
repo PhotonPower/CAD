@@ -1,6 +1,7 @@
 # ADR 0010 – One node workflow, blocks from many plugins
 
-Status: **proposed** 2026-11-13 (draft for the maintainer's approval; chosen direction: "Weg 2")
+Status: **accepted** 2026-11-13 (by the maintainer; questions 1–4 as proposed, GUI-FourierGrating
+stays for server use)
 
 **Context.** The node workflow (RTT-Fusion, [ui-concept.md](../ui-concept.md)) is run today by a
 single plugin, the *Raytracer*: it holds the block catalogue, checks and plans the graph, executes
@@ -15,7 +16,7 @@ that must know every block type, no independent signing and release per kernel.
 ADR 0008 stays: one Python process per plugin, JSON over a local socket, large arrays as mapped
 files, one signing key. This ADR adds what a shared workflow needs.
 
-## Decision (proposed)
+## Decision
 
 **D1 – A workflow engine of its own.** A built-in process *Workflow* (Python, RTT-Fusion's model,
 unrolling, checks, planner, executor and result cache) runs the node workflow; it is shipped and
@@ -120,14 +121,11 @@ Costs: a request protocol and a port-data format to maintain; data crossing proc
 (mapped files, no copy through CAD); the engine is one more process. The single-process path of
 today remains the reference for W1–W4 (bitwise or 1e−12).
 
-## Open questions for the maintainer
+## Answers of the maintainer (2026-11-13)
 
-1. **Engine as a process of its own (D1)**, or inside the Raytracer plugin until a second provider
-   exists? (Proposal: its own process from W1 on – the Raytracer must not stay special.)
-2. **Parallel blocks across plugins (D3)** from the start, or sequential first? (Proposal:
-   sequential in W2, parallel later – the plan is a DAG, so this is an executor change only.)
-3. **Type ids:** plugin id as prefix (`fg.grating`) as proposed?
-4. **FourierGrating plugin scope (W4):** as in the table above – everything of GUI-FourierGrating
-   except its server infrastructure, plus the gaps G1 and G2 in the CAD core first?
-5. **GUI-FourierGrating afterwards:** kept for server use (it is a web app with a job queue), or
-   retired once the plugin covers it?
+1. The engine is a process of its own from W1 on.
+2. Blocks of different plugins run one after the other first; in parallel later.
+3. Type ids carry the plugin's id as prefix (`fg.grating`).
+4. The FourierGrating plugin takes over GUI-FourierGrating except its server infrastructure; the
+   CAD-core gaps G1 and G2 come first (W4a).
+5. GUI-FourierGrating stays for server use (web app with job queue); it is not retired.
