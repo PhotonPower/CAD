@@ -95,6 +95,12 @@ class Context:
         self._host.send({"type": "notify", "method": "workflow.state",
                          "args": {"states": {str(k): bool(v) for k, v in states.items()}}})
 
+    def set_params(self, values: dict) -> None:
+        """Sets parameters of this plugin (e.g. from a configuration file the user loads); the panel
+        shows them and the next action gets them. Unknown names are an error."""
+        self._host.request("params.set", {"values": dict(values)})
+        self.params.update(values)
+
     def block_catalogues(self) -> list:
         """The block types the other plugins provide (ADR 0010): {"provider", "version", "type"}
         per type; for the workflow engine."""

@@ -93,6 +93,7 @@ document as modified but is not an undo step.
 | `ctx.cancelled()` / `ctx.check_cancel()` | the user pressed Cancel (or Esc); `check_cancel` raises `Cancelled` |
 | `ctx.selection` | ids of the selected objects when the action started |
 | `ctx.params` | parameter values from the *Plugin* panel, converted to Python types (see below) |
+| `ctx.set_params({name: value})` | sets parameters of this plugin (e.g. from a configuration file the user loads): saved in the document, shown in the panel, given to the next action; an unknown name is an error |
 | `ctx.entities(ids=None, selection=False)` | objects as dicts; `geometry` in the [.nfcad format](file-format.md) |
 | `ctx.add(geometry, name, attributes, group=0)` | new object (in a model tree group), returns its id |
 | `ctx.remove(id)` | removes an object |

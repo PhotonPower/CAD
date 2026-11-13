@@ -164,6 +164,9 @@ class Document : public QObject {
   void modificationChanged(bool modified);
   /// The node workflow was replaced or edited.
   void workflowChanged();
+  /// A plugin set its own parameters (ctx.set_params): the panel shows the new values. Not
+  /// emitted for edits in the panel itself.
+  void pluginParametersSet(const QString& plugin);
   void workflowShowRequested();
   void workflowRunning(const QString& node);
   void workflowState(const QJsonObject& states);
