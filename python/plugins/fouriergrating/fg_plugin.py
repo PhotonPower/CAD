@@ -11,6 +11,7 @@ from pathlib import Path
 from nfcad import Param, Plugin, UserError, action
 
 import fg_config
+import fg_nearfield
 import fg_scan
 
 _LAMELLA = {
@@ -77,6 +78,16 @@ class FourierGratingPlugin(Plugin):
         "scan_max_curves": Param.integer(24, min=1, max=500, label="At most curves", group="Scan"),
         "scan_csv": Param.file("", filter="CSV (*.csv)", save=True, label="Also write CSV", group="Scan",
                                description="every order at every point, as FourierGrating's efficiencies.csv"),
+        "nf_show": Param.choice(list(fg_nearfield.QUANTITIES), "|E|²", label="Show", group="Near field"),
+        "nf_y_from": Param.number(-0.2, decimals=6, unit="µm", label="y from", group="Near field",
+                                  description="the vertical cut spans y from … to (0 = bottom of the stack)"),
+        "nf_y_to": Param.number(0.5, decimals=6, unit="µm", label="y to", group="Near field"),
+        "nf_horizontal_y": Param.number(0.1, decimals=6, unit="µm", label="Horizontal cut at y", group="Near field"),
+        "nf_vertical_z": Param.number(0.0, decimals=6, unit="µm", label="Vertical cut at z (2D)", group="Near field"),
+        "nf_nx": Param.integer(400, min=2, max=4000, label="Points x", group="Near field"),
+        "nf_ny": Param.integer(300, min=2, max=4000, label="Points y", group="Near field"),
+        "nf_nz": Param.integer(200, min=2, max=4000, label="Points z (2D)", group="Near field"),
+        "nf_periods": Param.integer(2, min=1, max=20, label="Periods", group="Near field"),
         "advanced": Param.json({}, label="Further settings (JSON)", group="Advanced",
                                description="solver options, sweeps, near field, output – as in the configuration file"),
         "_order": Param.json([], hidden=True),
@@ -178,3 +189,37 @@ class FourierGratingPlugin(Plugin):
             rows = fg_scan.write_csv(columns, ctx.params["scan_csv"])
             written = f", {rows} rows in {Path(ctx.params['scan_csv']).name}"
         return f"{points} points, {len(found)} curves over {x_label}{written}"
+
+    @action("Near field", description="The field in the grating at the first incidence point: the vertical cut "
+                                      "(x–y) and the horizontal cut as images or a curve")
+    def near_field(self, ctx):
+        fg = _fg()
+        cfg = self.config(ctx)
+        cfg["nearfield"] = {**cfg.get("nearfield", {}), **fg_config.nearfield(ctx.params, complete=True),
+                            "enabled": True}
+        ctx.progress(0.05, "near field …")
+        try:
+            cuts = fg.near_field(cfg)
+        except Exception as e:  # noqa: BLE001 - FourierGrating's message is for the user
+            raise UserError(f"FourierGrating: {e}") from e
+        quantity = ctx.params["nf_show"]
+        inc = cuts.get("incidence", {})
+        run = ctx.result_set(f"FourierGrating near field λ = {inc.get('lambda_um', '?')} µm")
+        shown = []
+        for name in ("vertical", "horizontal"):
+            if name not in cuts:
+                continue
+            try:
+                view = fg_nearfield.show(cuts[name], quantity)
+            except (KeyError, ValueError) as e:
+                raise UserError(str(e)) from e
+            title = f"{quantity} – {name} cut"
+            if isinstance(view, fg_nearfield.Line):
+                ctx.curve(run, title, view.x, view.y, x_label=view.x_label, y_label=quantity)
+            else:
+                ctx.image(run, title, view.values, view.width, view.height, extent=view.extent,
+                          x_label=view.x_label, y_label=view.y_label, colormap=view.colormap,
+                          value_range=view.value_range,
+                          description=str(cuts[name].get("meta", {}).get("normalization", "")))
+            shown.append(name)
+        return f"{quantity}: {', '.join(shown)} cut" + ("s" if len(shown) > 1 else "")

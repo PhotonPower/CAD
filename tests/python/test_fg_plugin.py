@@ -29,7 +29,8 @@ OTHER = {  # forms the panel keeps as JSON: tensor material, other layer type, s
     "materials": {"air": {"n": 1.0}, "co": {"eps_tensor": [[1, 0, 0], [0, 1, 0], [0, 0, 1]]}},
     "superstrate": "air", "substrate": "co",
     "layers": [{"type": "rings", "thickness_um": 0.1, "radii_um": [0.2], "materials": ["co", "air"]}],
-    "sweep": {"path": "layers.0.thickness_um", "values": [0.1, 0.2]}, "output": {"dir": "out"},
+    "sweep": {"parameter": "/layers/0/thickness_um", "values": [0.1, 0.2]}, "output": {"dir": "out"},
+    "nearfield": {"enabled": True, "y_range_um": [-0.3, 0.6], "nx": 100, "quantities": ["E"]},
 }
 
 for cfg in (LAMELLAR, OTHER):
@@ -42,6 +43,12 @@ assert p["layers"][0]["lamellae"] == [{"from": 0.0, "material": "glass"}, {"from
 assert p["materials"][2] == {"name": "si", "kind": "n", "n": 3.88, "k": 0.02, "json": None}
 assert fg_config.to_params(OTHER)["lambda_um"] == "0.5:0.7:21"
 assert fg_config.incidence_value("0.5, 0.6") == [0.5, 0.6]
+assert "nearfield" not in fg_config.to_config(fg_config.to_params(LAMELLAR))  # not added
+p_nf = fg_config.to_params(OTHER)
+assert (p_nf["nf_y_from"], p_nf["nf_nx"], p_nf["nf_ny"]) == (-0.3, 100, 300)
+p_nf["nf_periods"] = 3  # changed: written; the file's keys stay, the defaults stay out
+assert fg_config.to_config(p_nf)["nearfield"] == {**OTHER["nearfield"], "periods": 3}
+assert fg_config.nearfield(p_nf, complete=True)["ny"] == 300
 p["nz"] = 5  # a value the file lacked, set off its default by the user, is written
 assert fg_config.to_config(p)["truncation"] == {"Nx": 4, "Nz": 5}
 
@@ -75,6 +82,24 @@ assert sorted(found) == sorted(f"{s} (φ = {p})" for p in (0, 10) for s in ("ΣR
 assert found["R 0 (φ = 10)"].y == [0.2, 0.2, 0.2] and found["R 0 (φ = 10)"].x == [0.5, 0.6, 0.7]
 assert found["T 1 (φ = 0)"].x == [0.5]  # only where it propagates
 assert found["ΣT (φ = 0)"].y == [0.8, 0.5, 0.5]
+# near-field cuts as pictures and lines (synthetic): rows by y, y descending is turned round
+import fg_nearfield  # noqa: E402
+import numpy as np  # noqa: E402
+
+cut = {"axis1_name": "x", "axis2_name": "y", "axis1_um": [0.0, 0.1, 0.2], "axis2_um": [0.5, 0.0],
+       "Ex": np.array([[1 + 1j, 2, 3], [-4, 5, 6]]), "absE2": np.array([[1.0, 2, 3], [4, 5, 6]])}
+pic = fg_nearfield.show(cut, "Re Ex")
+assert (pic.width, pic.height) == (3, 2) and pic.values.tolist() == [-4, 5, 6, 1, 2, 3]
+assert np.allclose(pic.extent, (-0.05, 0.25, -0.25, 0.75)) and pic.value_range == (-6.0, 6.0)
+assert pic.colormap == "coolwarm" and fg_nearfield.show(cut, "|E|²").value_range is None
+line = fg_nearfield.show({"axis1_um": [0.0, 0.1], "absE2": np.array([1.0, 2.0])}, "|E|²")
+assert isinstance(line, fg_nearfield.Line) and line.y == [1.0, 2.0]
+try:
+    fg_nearfield.show(cut, "|H|²")
+    raise AssertionError("not refused")
+except KeyError as e:
+    assert "absH2" in str(e)
+
 with tempfile.TemporaryDirectory() as d:
     assert fg_scan.write_csv({**cols, "amp": [1 + 2j] * len(cols["n"])}, Path(d) / "s.csv") == len(cols["n"])
     head = (Path(d) / "s.csv").read_text().splitlines()[0]
@@ -111,6 +136,9 @@ class Ctx:
     def curve(self, run, name, x, y, **k):
         self.out.setdefault("curves", {})[name] = (x, y)
 
+    def image(self, run, name, values, width, height, **k):
+        self.out.setdefault("images", {})[name] = (len(values), width, height, k)
+
     def set_params(self, values):
         self.params.update(values)
 
@@ -143,3 +171,12 @@ with tempfile.TemporaryDirectory() as d:
     assert len(sums[0]) == 5 and all(0 < v < 1 for v in sums[1]), sums
     assert (Path(d) / "scan.csv").exists()
 print("scan ok:", message)
+
+# a real near field: the vertical cut as an image, the horizontal one (1D) as a curve
+ctx = Ctx({**fg_config.to_params(LAMELLAR), "nf_show": "|E|²", "nf_nx": 40, "nf_ny": 30})
+message = plugin.near_field(ctx)
+count, width, height, extra = ctx.out["images"]["|E|² – vertical cut"]
+assert (count, width, height) == (1200, 40, 30) and extra["colormap"] == "inferno", ctx.out["images"]
+x = ctx.out["curves"]["|E|² – horizontal cut"][0]
+assert len(x) == 40 and abs(x[-1] - x[0] - 2 * 0.7) < 0.1, (len(x), x[0], x[-1])  # nx points over two periods
+print("near field ok:", message)

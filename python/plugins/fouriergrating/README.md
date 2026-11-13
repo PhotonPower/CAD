@@ -25,6 +25,15 @@ most values (or the chosen *x axis*); every further varying quantity gives its o
 (e.g. `R 0 (δ = 90)`). An order that is evanescent at some points has no points there.
 *Also write CSV*: every order at every point, as FourierGrating's `efficiencies.csv`.
 
-**Next steps:** near-field sections as images,
+**Step 3: Near field.** The field in the grating at the first incidence point: the vertical
+cut (x–y) in the *Image* window, the horizontal cut at *Horizontal cut at y* as a curve (1D
+grating) or an image (x–z, 2D grating). *Show*: |E|², |H|², the power flow Sy, the amount or the
+real part of a component (real parts and Sy with a colour scale symmetric about 0), or the
+material. Range, points and periods are fields of the *Near field* group; they go into the
+configuration file only if it had a `nearfield` block or you changed them. Further keys
+(`quantities`, `reconstruction`, `field`) stay under *Advanced*. Normalisation as in
+FourierGrating: |E_inc| = 1, H as Z0·H.
+
+**Next steps:**
 layers from CAD (STEP), optimisation with exact gradients, exports, and the grating blocks `fg.*`
 in the node workflow.
