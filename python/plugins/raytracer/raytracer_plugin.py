@@ -635,6 +635,44 @@ class RaytracerPlugin(Plugin):
         events = np.asarray(rec.event_surfaces)
         return int(events[-1]) if events.size else None
 
+    # ------------------------------------------------------------------ blocks for the engine (ADR 0010, W3)
+    def _block_provider(self):
+        """RTT-Fusion's provider of this plugin's blocks: the rtt.* types with the Raytatouille
+        backend's evaluators; a run is prepared with the glass catalogues of its source. None
+        without raytatouille or an RTT-Fusion with remote blocks."""
+        if getattr(self, "_provider", None) is None:
+            if rt is None:
+                return None
+            try:
+                remote = importlib.import_module("rtt_fusion.graph.remote")
+                workflow = importlib.import_module("rtt_fusion.graph.workflow")
+                backend_rtt = importlib.import_module("rtt_fusion.graph.backend_rtt")
+            except ImportError:
+                return None
+            registry, _ = workflow.registry()
+            types = [t for t in registry.types() if t.type_id in backend_rtt.EVALUATORS]
+
+            def prepare(graph, plain):
+                lib = rt.MaterialLibrary()
+                for node in graph.nodes.values():
+                    if node.type_id == "rtt.source":
+                        for path in node.params.get("rtt_catalogs", []):
+                            lib.add_catalog(str(path))
+                return {"materials": lib}
+
+            self._provider = remote.BlockProvider(types, dict(backend_rtt.EVALUATORS), prepare)
+        return self._provider
+
+    def blocks(self) -> list:
+        provider = self._block_provider()
+        return provider.catalogue() if provider is not None else []
+
+    def evaluate_block(self, request: dict) -> dict:
+        provider = self._block_provider()
+        if provider is None:
+            return {"ok": False, "error": "the Raytracer needs raytatouille and RTT-Fusion with remote blocks"}
+        return provider.handle(request) if hasattr(provider, "handle") else provider.evaluate(request)
+
     # ------------------------------------------------------------------ node workflow (RTT-Fusion)
     @staticmethod
     def _fusion():

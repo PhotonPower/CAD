@@ -121,7 +121,7 @@ class Gratings(Plugin):
         return self.provider.catalogue()
 
     def evaluate_block(self, request):      # one block for the engine; inputs/outputs as port data
-        return self.provider.evaluate(request)
+        return self.provider.handle(request)  # also "prepare": the run's graph first (ADR 0010 D6)
 ```
 
 CAD routes these requests and starts a plugin when its blocks are asked for; evaluations of one
