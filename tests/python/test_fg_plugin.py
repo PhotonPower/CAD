@@ -49,6 +49,30 @@ assert (p_nf["nf_y_from"], p_nf["nf_nx"], p_nf["nf_ny"]) == (-0.3, 100, 300)
 p_nf["nf_periods"] = 3  # changed: written; the file's keys stay, the defaults stay out
 assert fg_config.to_config(p_nf)["nearfield"] == {**OTHER["nearfield"], "periods": 3}
 assert fg_config.nearfield(p_nf, complete=True)["ny"] == 300
+# CAD layers without FourierGrating: materials of bodies, the layer entry, the report as rows
+import fg_cad  # noqa: E402
+
+mats = ["air", "glass", "si"]
+assert fg_cad.material_of({"id": 1, "name": "si", "attributes": {}}, mats) == "si"
+assert fg_cad.material_of({"id": 1, "name": "Pillar", "attributes": {"material": "glass"}}, mats) == "glass"
+for bad, why in (({"id": 2, "name": "Pillar", "attributes": {}}, "has no material"),
+                 ({"id": 2, "name": "x", "attributes": {"material": "gold"}}, "not in the panel")):
+    try:
+        fg_cad.material_of(bad, mats)
+        raise AssertionError("not refused")
+    except ValueError as e:
+        assert why in str(e), e
+entry = fg_cad.layer("/x/cell.step", ["si", "glass"], unit="um", rcwa_slices=12)
+assert entry["bodies"] == [{"index": 0, "material": "si"}, {"index": 1, "material": "glass"}]
+assert entry["axes"] == {"y": "+Z", "x": "+X"} and entry["slicing"] == {"rcwa_slices": 12}
+f_rows, b_rows = fg_cad.report_rows("cad 1", {
+    "errors": [{"code": "OVERLAP", "message": "bodies 0 and 1 overlap", "where_um": [0.1, 0.2]}],
+    "warnings": [{"code": "FEATURE_SMALL", "message": "thin band"}],
+    "bands": [{"y0_um": 0.0, "y1_um": 0.2, "kind": "extrusion", "area_fractions": {"si": 0.16, "air": 0.84}}]})
+assert f_rows == [["cad 1", "error", "OVERLAP", "bodies 0 and 1 overlap", "0.1, 0.2"],
+                  ["cad 1", "warning", "FEATURE_SMALL", "thin band", ""]]
+assert b_rows == [["cad 1", 0.0, 0.2, "extrusion", "air 0.840, si 0.160"]]
+
 # Littrow: sin φ = −n λ / (2 Λ ν cos ψ); λ 0.6 µm, Λ 0.7 µm, air
 import math  # noqa: E402
 
@@ -258,3 +282,42 @@ assert abs(start_L - 0.000592) < 1e-5 and best_L > 0.00125, (start_L, best_L, me
 depth = ctx.params["layers"][0]["thickness"]  # applied to the panel
 assert 0.15 < depth < 0.2, depth
 print("optimisation ok:", message, "depth", depth)
+
+# a cad layer from a CAD body (needs FourierGrating with the slicer and nurbforge): a silicon
+# pillar 0.2 x 0.2 x 0.2 µm in a 0.5 µm cell -> one extrusion band with 16 % silicon, then a solve
+if not fouriergrating.cad.available():
+    print("fouriergrating without the CAD slicer: cad layers skipped")
+    sys.exit(0)
+import nurbforge as nf  # noqa: E402
+
+PILLARS = {"dimension": "2D", "solver": "rcwa", "truncation": {"Nx": 3, "Nz": 3}, "period_um": {"x": 0.5, "z": 0.5},
+           "incidence": {"lambda_um": 0.6, "phi_deg": 10, "psi_deg": 0, "delta_deg": 45},
+           "materials": {"air": {"n": 1.0}, "glass": {"n": 1.5}, "si": {"n": [3.88, 0.02]}},
+           "superstrate": "air", "substrate": "glass", "layers": []}
+
+
+class CadCtx(Ctx):
+    bodies = [{"id": 7, "name": "si", "attributes": {}, "shell": nf.make_box((0.15, 0.15, 0.0), (0.2, 0.2, 0.2))}]
+
+    def entities(self, ids=None, selection=False):
+        return [b for b in self.bodies if ids is None or b["id"] in ids]
+
+    def export_step(self, ids, path):
+        chosen = self.entities(ids)
+        nf.write_step(path, [b["shell"] for b in chosen], names=[b["name"] for b in chosen])
+        return len(chosen)
+
+
+with tempfile.TemporaryDirectory() as d:
+    ctx = CadCtx({**fg_config.to_params(PILLARS), "cad_bodies": [7], "cad_unit": "µm",
+                  "cad_step": str(Path(d) / "cell.step"), "cad_background": "superstrate", "cad_slices": 10,
+                  "cad_preview_y": 0.1, "cad_preview": str(Path(d) / "cut.svg")})
+    message = plugin.layer_from_cad(ctx)
+    assert ctx.params["layers"][-1]["json"]["type"] == "cad", ctx.params["layers"]
+    columns, bands = ctx.out["table"]
+    assert columns[0] == "layer" and len(bands) == 1 and bands[0][3] == "extrusion", (message, bands)
+    assert abs(bands[0][2] - 0.2) < 1e-9 and "si 0.160" in bands[0][4], bands
+    assert (Path(d) / "cut.svg").read_text().startswith("<svg")
+    plugin.solve(ctx)
+    assert any(r[0] == "R" for r in ctx.out["table"][1])
+print("cad layer ok:", message)

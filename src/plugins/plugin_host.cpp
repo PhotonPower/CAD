@@ -14,6 +14,7 @@
 #include <stdexcept>
 
 #include "document/nfcad_io.hpp"
+#include "kernel/geometry_ops.hpp"
 #include "document/selection.hpp"
 #include "results/result_store.hpp"
 
@@ -295,6 +296,22 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     const EntityId id = doc_->insert(std::move(e));  // live; one undo step at the end of the job
     added_.push_back(id);
     return static_cast<qint64>(id);
+  }
+  if (method == QLatin1String("model.export_step")) {  // bodies for a kernel (ADR 0010, W4: grating layers)
+    std::vector<const document::Entity*> entities;
+    for (const QJsonValue& v : args["ids"].toArray()) {
+      const document::Entity* e = doc_->entity(static_cast<EntityId>(v.toInteger()));
+      if (e == nullptr) throw std::runtime_error("unknown entity " + std::to_string(v.toInteger()));
+      entities.push_back(e);
+    }
+    const QString path = args["path"].toString();
+    if (path.isEmpty()) throw std::runtime_error("export_step: no path");
+    const std::size_t written = kernel::export_step(path, entities);
+    if (written != entities.size()) {
+      throw std::runtime_error("export_step: only surfaces and shells can be written (" + std::to_string(written) +
+                               " of " + std::to_string(entities.size()) + ")");
+    }
+    return static_cast<qint64>(written);
   }
   if (method == QLatin1String("model.remove")) {
     const auto id = static_cast<EntityId>(args["id"].toInteger());

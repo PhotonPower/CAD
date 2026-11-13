@@ -57,6 +57,11 @@ class Context:
             {"geometry": geometry, "name": name, "attributes": attributes or {}, "group": int(group)},
         )
 
+    def export_step(self, ids: Sequence[int], path: str) -> int:
+        """Writes entities (shells, surfaces) as STEP, one named body each (the entity's name), in
+        the given order; returns the number written. Units as File → Export."""
+        return self._host.request("model.export_step", {"ids": [int(i) for i in ids], "path": str(path)})
+
     def remove(self, entity: int) -> None:
         """Removes an entity (undone with the run)."""
         self._host.request("model.remove", {"id": int(entity)})
