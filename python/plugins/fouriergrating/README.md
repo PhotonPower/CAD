@@ -50,5 +50,12 @@ to 2.5 solves per step whatever the number of parameters) at the first incidence
   stops after the current evaluation with the best point so far; *Apply the optimum* writes it
   into the panel.
 
-**Next steps:** layers from CAD (STEP), exports, a Littrow preset, further blocks (`fg.*`: grating
-as S-matrix operator, stacks).
+**Step 6: Littrow and exports.**
+- *Set Littrow angle*: φ at which the reflected *Littrow order* runs back into the incident
+  direction, sin φ = −n λ / (2 Λ ν cos ψ) (FourierGrating's α_n = ν sin φ cos ψ + n λ/Λ; ν of the
+  superstrate, the first λ and ψ of the panel).
+- *Solve: also write CSV*: the order table; *Scan → Also write CSV*: every order at every point;
+  *Near field → Also write .npz*: every quantity of both cuts with axes and metadata.
+
+**Next steps:** layers from CAD (STEP), a cost estimate, further blocks (`fg.*`: grating as
+S-matrix operator, stacks).

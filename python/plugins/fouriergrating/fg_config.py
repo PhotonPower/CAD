@@ -203,3 +203,26 @@ def to_config(p: dict[str, Any]) -> dict[str, Any]:
     cfg.update(advanced)
     order = [k for k in p.get("_order", []) if k in cfg] + [k for k in cfg if k not in p.get("_order", [])]
     return {k: cfg[k] for k in order}
+
+
+def littrow_phi_deg(p: dict[str, Any], order: int) -> float:
+    """φ in degrees at which the reflected order `order` runs back into the incident direction
+    (Littrow): FourierGrating's α_n = ν sin φ cos ψ + n λ/Λ = −α_0, so sin φ = −n λ / (2 Λ ν cos ψ),
+    with ν the superstrate's index and the first λ and ψ of the panel; ValueError if impossible."""
+    import math
+
+    lam = incidence_value(str(p["lambda_um"]))
+    lam = lam["from"] if isinstance(lam, dict) else lam[0] if isinstance(lam, list) else lam
+    psi = incidence_value(str(p.get("psi_deg", "0") or "0"))
+    psi = psi["from"] if isinstance(psi, dict) else psi[0] if isinstance(psi, list) else psi
+    period = float(p["period_x"])
+    if period <= 0:
+        raise ValueError("Littrow needs a period x > 0")
+    sup = next((m for m in p.get("materials", []) if m["name"] == p["superstrate"]), None)
+    if sup is None or sup["kind"] != "n":
+        raise ValueError(f"the superstrate {p['superstrate']!r} needs a refractive index n (not JSON)")
+    nu = float(sup["n"])
+    s = -order * float(lam) / (2.0 * period * nu * math.cos(math.radians(float(psi))))
+    if order == 0 or abs(s) > 1.0:
+        raise ValueError(f"order {order} has no Littrow angle here (sin φ would be {s:.4g})")
+    return math.degrees(math.asin(s))
