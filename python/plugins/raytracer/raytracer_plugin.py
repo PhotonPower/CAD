@@ -101,6 +101,7 @@ class RaytracerPlugin(Plugin):
     }
 
     def __init__(self):
+        self._notes: list[str] = []  # warnings of the images of the last run (RTT-Fusion W65)
         self.revisions: dict[int, object] = {}  # revision -> rt.System
         self.next_revision = 1
         self.path: str | None = None
@@ -856,12 +857,16 @@ class RaytracerPlugin(Plugin):
         window = float(ctx.params.get("workflow_window", 0.0) or 0.0)
         if window > 0:
             for n in graph.nodes.values():
-                if n.type_id == "rtt.detector":
+                if n.type_id in ("rtt.detector", "rtt.part.detector"):  # also a detector of the library
                     n.params["half_size"] = [window, window]
         run = ctx.result_set(f"Workflow {Path(self.loaded_from or 'system').name.split('.')[0]}")
+        self._notes = []
         made = self._run_displays(ctx, run, graph, registry, evaluators, execute, system, compiled, displays)
         ctx.workflow_running("")
-        return "workflow: " + (", ".join(made) if made else "nothing computed")
+        message = "workflow: " + (", ".join(made) if made else "nothing computed")
+        if self._notes:  # shown in the status line, not only in the log
+            message += " – warning: " + "; ".join(self._notes)
+        return message
 
     @staticmethod
     def _hook(ctx, ex, a: float, b: float) -> None:
@@ -902,7 +907,14 @@ class RaytracerPlugin(Plugin):
             key = f"workflow:{node.id}"
             if view.kind == "image" and view.image is not None:
                 ny, nx = view.image.values.shape
-                if float(view.image.values.max()) <= 0.0:
+                note = str(getattr(view.image, "note", "") or "")  # RTT-Fusion W65: too few pixels
+                # here the window is the plugin's "Image window" (or more "Workflow pixels")
+                note = note.replace("set the detector's half size to", "set Image window (plugin panel) to")
+                note = note.replace("use more pixels", "raise Workflow pixels")
+                if note:
+                    ctx.log(f"warning: {node.name or node.id}: {note}")
+                    self._notes.append(f"{node.name or node.id}: {note}")
+                elif float(view.image.values.max()) <= 0.0:
                     hint = ("set the link into the camera to H (right-click on the link → Transport → H) and "
                             "choose a small image window" if "H" in self._available(execute) else
                             "install fieldtracing in the plugin environment, then set the link into the "

@@ -58,6 +58,13 @@ class TestRaytracerPlugin : public QObject {
   QJsonObject params_;
   QString python_;
 
+  /// The finished message of an action (its status line).
+  QString runMessage(const QString& action) {
+    QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
+    if (host_->run(action, params_) == 0 || !finished.wait(120000)) return {};
+    return finished.first().at(3).toString();
+  }
+
   void run(const QString& action, const QJsonObject& target = {}) {
     QSignalSpy finished(host_.get(), &plugins::PluginHost::finished);
     QVERIFY(host_->run(action, params_, target) != 0);
@@ -391,6 +398,21 @@ class TestRaytracerPlugin : public QObject {
     }
     QVERIFY(keyed);
     QCOMPARE(results_.itemsWithKey(QStringLiteral("workflow:show"), results::ResultItem::Kind::Image).size(), std::size_t{1});
+    // the focus of the singlet covers no pixel centre at the detector's aperture: a warning in the
+    // status with a window that fits (RTT-Fusion W65); with that window none
+    QProcess noted;
+    noted.start(python_, {QStringLiteral("-c"), QStringLiteral("from rtt_fusion.graph.imaging import Image; Image.note")});
+    if (!noted.waitForFinished(30000) || noted.exitCode() != 0) return;  // older RTT-Fusion
+    const QString warned = runMessage(QStringLiteral("run_workflow"));
+    QVERIFY2(warned.contains(QStringLiteral("warning: Camera window")), qPrintable(warned));
+    const QString hint = QStringLiteral("set Image window (plugin panel) to about ");
+    QVERIFY2(warned.contains(hint), qPrintable(warned));
+    const double fitting = warned.mid(warned.indexOf(hint) + hint.size()).section(QLatin1Char(' '), 0, 0).toDouble();
+    QVERIFY(fitting > 0.0 && fitting < 1.0);
+    params_.insert(QStringLiteral("workflow_window"), fitting);
+    const QString clean = runMessage(QStringLiteral("run_workflow"));
+    QVERIFY2(!clean.contains(QStringLiteral("warning")), qPrintable(clean));
+    params_.insert(QStringLiteral("workflow_window"), 0.0);
   }
 
   void workflowKeepsResults() {
