@@ -34,6 +34,13 @@ configuration file only if it had a `nearfield` block or you changed them. Furth
 (`quantities`, `reconstruction`, `field`) stay under *Advanced*. Normalisation as in
 FourierGrating: |E_inc| = 1, H as Z0·H.
 
+**Step 4: The grating block in the node workflow.** The plugin provides `fg.grating` (in older
+RTT-Fusion `fusion.grating`; old workflows load through RTT-Fusion's type aliases): a periodic
+sample that sends the diffraction orders on, from a stored Jones table or – with a FourierGrating
+configuration – a table built around the incident rays. The workflow engine sends this block to
+the plugin's process; without the plugin the engine computes it itself, with the same result
+(RTT-Fusion's evaluator in both, compared bit for bit in `test_multi_plugin_workflow`).
+
 **Next steps:**
-layers from CAD (STEP), optimisation with exact gradients, exports, and the grating blocks `fg.*`
-in the node workflow.
+layers from CAD (STEP), optimisation with exact gradients, exports, further blocks (`fg.*`: grating
+as S-matrix operator, stacks).

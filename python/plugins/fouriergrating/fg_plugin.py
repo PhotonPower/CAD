@@ -5,6 +5,7 @@ else as JSON), load and save, single solve with the order table and the efficien
 
 from __future__ import annotations
 
+import importlib
 import json
 from pathlib import Path
 
@@ -93,6 +94,31 @@ class FourierGratingPlugin(Plugin):
         "_order": Param.json([], hidden=True),
         "_present": Param.json(None, hidden=True),
     }
+
+    # ------------------------------------------------------------------ blocks (ADR 0010, W4)
+    def _block_provider(self):
+        """RTT-Fusion's provider of this plugin's blocks: the grating block (`fg.grating`, before
+        RTT-Fusion's rename `fusion.grating`) with RTT-Fusion's evaluator, evaluated in this process.
+        None without RTT-Fusion or one with remote blocks. A grating with a stored Jones table needs
+        no FourierGrating; one with a configuration builds its table with fouriergrating."""
+        if getattr(self, "_provider", None) is None:
+            try:
+                remote = importlib.import_module("rtt_fusion.graph.remote")
+                grating = importlib.import_module("rtt_fusion.graph.grating")
+            except ImportError:
+                return None
+            self._provider = remote.BlockProvider([grating.TYPE], dict(grating.EVALUATORS))
+        return self._provider
+
+    def blocks(self) -> list:
+        provider = self._block_provider()
+        return provider.catalogue() if provider is not None else []
+
+    def evaluate_block(self, request: dict) -> dict:
+        provider = self._block_provider()
+        if provider is None:
+            return {"ok": False, "error": "the FourierGrating plugin needs RTT-Fusion with remote blocks"}
+        return provider.handle(request) if hasattr(provider, "handle") else provider.evaluate(request)
 
     # ------------------------------------------------------------------ configuration
     def config(self, ctx) -> dict:

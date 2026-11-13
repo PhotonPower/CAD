@@ -259,8 +259,11 @@ class TestRaytracerPlugin : public QObject {
     QProcess has_grating;
     has_grating.start(python_, {QStringLiteral("-c"), QStringLiteral("import rtt_fusion.graph.grating")});
     if (has_grating.waitForFinished(30000) && has_grating.exitCode() == 0) {
-      bool grating = false;  // RTT-Fusion R19: the grating sample is in the block library
-      for (const QJsonValue& t : wf["types"].toArray()) grating = grating || t.toObject()["type"].toString() == QStringLiteral("fusion.grating");
+      bool grating = false;  // RTT-Fusion R19: the grating sample (fg.grating; fusion.grating before W4)
+      for (const QJsonValue& t : wf["types"].toArray()) {
+        const QString type = t.toObject()["type"].toString();
+        grating = grating || type == QStringLiteral("fg.grating") || type == QStringLiteral("fusion.grating");
+      }
       QVERIFY(grating);
     }
     QProcess has_particle;
