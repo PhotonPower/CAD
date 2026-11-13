@@ -9,6 +9,7 @@ import argparse
 import importlib
 import json
 import sys
+import queue
 import threading
 import traceback
 from pathlib import Path
@@ -34,6 +35,8 @@ class Host:
         self._next_rid = 1
         self._lock = threading.Lock()
         self._jobs: dict[int, Context] = {}
+        self._evaluations: queue.Queue = queue.Queue()
+        threading.Thread(target=self._evaluate_loop, daemon=True).start()
 
     def send(self, message: dict) -> None:
         self.transport.send(message)
@@ -53,10 +56,15 @@ class Host:
 
     def run(self) -> int:
         actions = [{"id": k, **v} for k, v in self.plugin.actions().items()]
+        try:
+            blocks = list(self.plugin.blocks())
+        except Exception:  # a plugin whose blocks fail still offers its actions
+            self.send({"type": "log", "job": 0, "text": traceback.format_exc()})
+            blocks = []
         self.send({"type": "hello", "api": API_VERSION, "id": self.manifest["id"],
                    "name": self.manifest.get("name", self.manifest["id"]),
                    "version": self.manifest.get("version", ""), "actions": actions,
-                   "params": self.plugin.params_schema()})
+                   "params": self.plugin.params_schema(), "blocks": blocks})
         while True:
             msg = self.transport.receive()
             if msg is None or msg.get("type") == "shutdown":
@@ -71,10 +79,22 @@ class Host:
                 ctx = Context(self, msg["job"], params, msg.get("selection", []), msg.get("target"))
                 self._jobs[ctx.job] = ctx
                 threading.Thread(target=self._run_job, args=(ctx, msg["action"]), daemon=True).start()
+            elif kind == "evaluate":  # a block for the workflow engine (ADR 0010), one at a time
+                self._evaluations.put((msg["rid"], msg.get("request", {})))
             elif kind == "cancel":
                 ctx = self._jobs.get(msg.get("job"))
                 if ctx is not None:
                     ctx._cancel.set()
+
+    def _evaluate_loop(self) -> None:
+        while True:
+            rid, request = self._evaluations.get()
+            try:
+                response = self.plugin.evaluate_block(request)
+            except Exception as e:  # report to the engine instead of dying
+                response = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+                self.send({"type": "log", "job": 0, "text": traceback.format_exc()})
+            self.send({"type": "evaluated", "rid": rid, "response": response})
 
     def _run_job(self, ctx: Context, action: str) -> None:
         try:

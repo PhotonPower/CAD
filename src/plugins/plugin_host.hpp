@@ -6,6 +6,7 @@
 #include <QPointer>
 #include <QProcess>
 #include <QTemporaryDir>
+#include <functional>
 #include <memory>
 #include <map>
 #include <optional>
@@ -75,6 +76,18 @@ class PluginHost : public QObject {
   [[nodiscard]] bool running() const;
   [[nodiscard]] bool ready() const { return ready_; }
   [[nodiscard]] const std::vector<Action>& actions() const { return actions_; }
+  /// Block types this plugin provides to the node workflow (ADR 0010, D2): catalogue entries of
+  /// its hello, opaque to CAD.
+  [[nodiscard]] const QJsonArray& blocks() const { return blocks_; }
+
+  /// Requests a router answers instead of the host (ADR 0010, D3): returns true if it took the
+  /// request – it then answers later with respond().
+  using Router = std::function<bool(PluginHost* self, int rid, const QString& method, const QJsonObject& args)>;
+  void setRouter(Router router) { router_ = std::move(router); }
+  /// The answer to a request of this plugin (rid from its request).
+  void respond(int rid, bool ok, const QJsonValue& result, const QString& error = {}) { reply(rid, ok, result, error); }
+  /// Asks this plugin to evaluate a block (ADR 0010, D3); the answer comes as evaluated(rid, …).
+  void evaluate(int rid, const QJsonObject& request);
   /// Parameter descriptions from the plugin (nfcad.Param, in display order).
   [[nodiscard]] QJsonArray paramsSchema() const { return params_; }
   [[nodiscard]] std::optional<int> activeJob() const { return active_job_; }
@@ -100,6 +113,10 @@ class PluginHost : public QObject {
   void finished(int job, bool ok, bool cancelled, const QString& message, bool user_error = false);
   /// The process ended unexpectedly or could not start.
   void failed(const QString& message);
+  /// The answer of this plugin to evaluate(rid, …).
+  void evaluated(int rid, const QJsonObject& response);
+  /// The process ended (normally or not).
+  void stopped();
 
  private:
   void onConnection();
@@ -126,6 +143,8 @@ class PluginHost : public QObject {
   bool authenticated_ = false;
   bool ready_ = false;
   std::vector<Action> actions_;
+  QJsonArray blocks_;
+  Router router_;
   QJsonArray params_;
   std::optional<std::tuple<QString, QJsonObject, QJsonObject>> queued_;  // run requested before ready
   std::optional<int> active_job_;
