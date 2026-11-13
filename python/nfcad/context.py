@@ -95,6 +95,12 @@ class Context:
         self._host.send({"type": "notify", "method": "workflow.state",
                          "args": {"states": {str(k): bool(v) for k, v in states.items()}}})
 
+    def set_params(self, values: dict) -> None:
+        """Sets parameters of this plugin (e.g. from a configuration file the user loads); the panel
+        shows them and the next action gets them. Unknown names are an error."""
+        self._host.request("params.set", {"values": dict(values)})
+        self.params.update(values)
+
     def block_catalogues(self) -> list:
         """The block types the other plugins provide (ADR 0010): {"provider", "version", "type"}
         per type; for the workflow engine."""
@@ -163,6 +169,27 @@ class Context:
         if key:
             args["key"] = key
         return self._host.request("results.curve", args)
+
+    def table(self, result_set: int, name: str, columns, rows, *, key: str = "") -> int:
+        """A table in the *Table* dock (e.g. the diffraction orders): column heads and rows; cells
+        as text – numbers are written with up to 10 significant digits (format them yourself
+        for other precision)."""
+        def text(v: Any) -> str:
+            return f"{v:.10g}" if isinstance(v, float) else str(v)
+
+        args: dict[str, Any] = {"set": result_set, "name": name, "columns": [str(c) for c in columns],
+                                "rows": [[text(v) for v in row] for row in rows]}
+        if key:
+            args["key"] = key
+        return self._host.request("results.table", args)
+
+    def bars(self, result_set: int, name: str, labels, values, *, y_label: str = "", key: str = "") -> int:
+        """A bar chart in the *Plot* dock (e.g. the efficiency per order): one bar per label."""
+        args: dict[str, Any] = {"set": result_set, "name": name, "labels": [str(v) for v in labels],
+                                "values": [float(v) for v in values], "y_label": y_label}
+        if key:
+            args["key"] = key
+        return self._host.request("results.bars", args)
 
     def append(self, curve: int, x: float, y: float) -> None:
         self._host.send({"type": "notify", "method": "results.append",

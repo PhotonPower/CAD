@@ -93,6 +93,7 @@ document as modified but is not an undo step.
 | `ctx.cancelled()` / `ctx.check_cancel()` | the user pressed Cancel (or Esc); `check_cancel` raises `Cancelled` |
 | `ctx.selection` | ids of the selected objects when the action started |
 | `ctx.params` | parameter values from the *Plugin* panel, converted to Python types (see below) |
+| `ctx.set_params({name: value})` | sets parameters of this plugin (e.g. from a configuration file the user loads): saved in the document, shown in the panel, given to the next action; an unknown name is an error |
 | `ctx.entities(ids=None, selection=False)` | objects as dicts; `geometry` in the [.nfcad format](file-format.md) |
 | `ctx.add(geometry, name, attributes, group=0)` | new object (in a model tree group), returns its id |
 | `ctx.remove(id)` | removes an object |
@@ -104,6 +105,8 @@ document as modified but is not an undo step.
 | `ctx.field(set, name, entity, values, width, height, face=0, colormap=, unit=, value_range=)` | field on a face over its normalised (u, v): `values[j * width + i]` |
 | `ctx.curve(set, name, x, y, x_label=, y_label=)` / `ctx.append(curve, x, y)` | curve in the *Plot* dock, extended live |
 | `ctx.image(set, name, values, width, height, extent=(x0, x1, y0, y1), x_label=, y_label=, colormap=, unit=, value_range=, description=)` | 2D image in the *Image* window (e.g. a camera image): `values[j * width + i]`, row 0 at y0, extent in physical units |
+| `ctx.table(set, name, columns, rows, key=)` | a table in the *Table* dock (opens with the first one; the newest is shown, a choice with several): column heads and rows; floats written with 10 significant digits |
+| `ctx.bars(set, name, labels, values, y_label=, key=)` | a bar chart in the *Plot* dock (shown when no curves are) |
 | `ctx.workflow()` / `ctx.set_workflow(wf)` | Node workflow of the document (RTT-Fusion): `{"graph": rtt-fusion-graph, "types": [...], "diagnostics": [...], "plan": planner result}`; the editor shows the planned representation per link and the conversions per block; shown and edited in the *Node workflow* window, saved in the `.rttf` file |
 
 ### Blocks for the node workflow (ADR 0010)
