@@ -365,6 +365,19 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     doc_->setEntityAttributes(id, a);
     return QJsonValue::Null;
   }
+  if (method == QLatin1String("params.set")) {  // the plugin's own parameters (ADR 0010, W4a)
+    QJsonObject values = doc_->pluginParameters(manifest_.id);
+    const QJsonObject given = args["values"].toObject();
+    QStringList known;
+    for (const QJsonValue& p : params_) known << p.toObject()["name"].toString();
+    for (auto it = given.begin(); it != given.end(); ++it) {
+      if (!known.contains(it.key())) throw std::runtime_error(("no parameter " + it.key()).toStdString());
+      values.insert(it.key(), it.value());
+    }
+    doc_->setPluginParameters(manifest_.id, values);
+    emit doc_->pluginParametersSet(manifest_.id);
+    return true;
+  }
   if (method == QLatin1String("workflow.get")) return doc_->workflow();
   if (method == QLatin1String("workflow.state")) {
     doc_->reportWorkflowState(args["states"].toObject());
@@ -453,6 +466,31 @@ QJsonValue PluginHost::request(const QString& method, const QJsonObject& args) {
     c.y_label = args["y_label"].toString();
     const auto id = results_->addCurve(static_cast<results::ResultId>(args["set"].toInteger()),
                                        args["name"].toString(), std::move(c), args["key"].toString());
+    return static_cast<qint64>(id);
+  }
+  if (method == QLatin1String("results.table")) {
+    results::Table t;
+    for (const QJsonValue& c : args["columns"].toArray()) t.columns << c.toString();
+    for (const QJsonValue& r : args["rows"].toArray()) {
+      QStringList row;
+      for (const QJsonValue& c : r.toArray()) row << c.toString();
+      if (row.size() != t.columns.size()) throw std::runtime_error("table: a row does not match the columns");
+      t.rows.push_back(row);
+    }
+    const auto id = results_->addTable(static_cast<results::ResultId>(args["set"].toInteger()),
+                                       args["name"].toString(), std::move(t), args["key"].toString());
+    return static_cast<qint64>(id);
+  }
+  if (method == QLatin1String("results.bars")) {
+    results::Bars b;
+    for (const QJsonValue& l : args["labels"].toArray()) b.labels << l.toString();
+    for (const QJsonValue& v : args["values"].toArray()) b.values.push_back(v.toDouble());
+    if (static_cast<std::size_t>(b.labels.size()) != b.values.size()) {
+      throw std::runtime_error("bars: labels and values differ in number");
+    }
+    b.y_label = args["y_label"].toString();
+    const auto id = results_->addBars(static_cast<results::ResultId>(args["set"].toInteger()),
+                                      args["name"].toString(), std::move(b), args["key"].toString());
     return static_cast<qint64>(id);
   }
   if (method == QLatin1String("results.append")) {

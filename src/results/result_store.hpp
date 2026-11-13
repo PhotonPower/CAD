@@ -29,6 +29,8 @@ class ResultStore : public QObject {
   /// window that ignores keyed results never sees the item without it)
   ResultId addCurve(ResultId set, const QString& name, Curve curve, const QString& key = {});
   ResultId addImage(ResultId set, const QString& name, Image image, const QString& key = {});
+  ResultId addTable(ResultId set, const QString& name, Table table, const QString& key = {});
+  ResultId addBars(ResultId set, const QString& name, Bars bars, const QString& key = {});
   /// Sets the key of an item (ResultItem::key).
   void setKey(ResultId item, const QString& key);
   /// Items with `key` (of `kind`) from the newest result set that has any (empty if none).
