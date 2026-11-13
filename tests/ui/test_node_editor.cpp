@@ -589,6 +589,58 @@ class TestNodeEditor : public QObject {
     QVERIFY(!node(QJsonObject{{"graph", e.workflow()["model"].toObject()}}, gid).contains("condense"));
   }
 
+  void newRenameDeleteVariants() {
+    NodeEditor e;
+    e.setWorkflow(model_linnik());
+    const QString gid = e.groupBlocks({QStringLiteral("Objective_B"), QStringLiteral("Reference")}, QStringLiteral("ref"));
+    auto group = [&] { return node(QJsonObject{{"graph", e.workflow()["model"].toObject()}}, gid); };
+    // a new variant: a copy of the active one, then active
+    QCOMPARE(e.addVariant(gid, QStringLiteral("ideal")), QStringLiteral("ideal"));
+    QCOMPARE(group()["variant"].toString(), QStringLiteral("ideal"));
+    QCOMPARE(group()["variants"].toObject()["ideal"], group()["variants"].toObject()["main"]);
+    QCOMPARE(e.addVariant(gid, QStringLiteral("ideal")), QStringLiteral("ideal 2"));  // unique
+    // an edit inside goes into the active variant only
+    QVERIFY(e.enterGroup(gid));
+    e.setParams(QStringLiteral("Reference"), QJsonObject{{"offset", QJsonArray{0, 0, 0.001}}});
+    e.leaveGroup();
+    QVERIFY(group()["variants"].toObject()["ideal 2"] != group()["variants"].toObject()["main"]);
+    QCOMPARE(group()["variants"].toObject()["ideal"], group()["variants"].toObject()["main"]);
+    // rename (the active one follows), refuse empty or taken names
+    QVERIFY(e.renameVariant(gid, QStringLiteral("ideal 2"), QStringLiteral("shifted")));
+    QCOMPARE(group()["variant"].toString(), QStringLiteral("shifted"));
+    QVERIFY(!e.renameVariant(gid, QStringLiteral("shifted"), QStringLiteral("main")));
+    QVERIFY(!e.renameVariant(gid, QStringLiteral("shifted"), QStringLiteral("  ")));
+    QCOMPARE(e.variants(gid), (QStringList{"ideal", "main", "shifted"}));
+    // delete: the active one gives way, the last one stays
+    QVERIFY(e.removeVariant(gid, QStringLiteral("shifted")));
+    QVERIFY(e.variants(gid).contains(group()["variant"].toString()));
+    QVERIFY(e.removeVariant(gid, QStringLiteral("ideal")));
+    QVERIFY(!e.removeVariant(gid, QStringLiteral("main")));
+    QCOMPARE(e.variants(gid), QStringList{QStringLiteral("main")});
+    QVERIFY(e.addVariant(QStringLiteral("Beam_splitter"), QStringLiteral("x")).isEmpty());  // no group
+  }
+
+  void highlightedBranchGoesInside() {
+    NodeEditor e;
+    e.setWorkflow(model_linnik());
+    const QString gid = e.groupBlocks({QStringLiteral("Objective_A"), QStringLiteral("Sample")}, QStringLiteral("arm"));
+    nfcad::ui::BranchPanel panel(&e);
+    e.highlightBranch(QStringLiteral("measurement_pupil"));
+    QVERIFY(e.enterGroup(gid));
+    // inside: the inner branch the outer branch's step names, shown in the list and on the blocks
+    QCOMPARE(e.highlightedBranch(), QStringLiteral("measurement"));
+    QCOMPARE(panel.list()->currentItem()->text(), QStringLiteral("measurement"));
+    QCOMPARE(e.nodeItem(QStringLiteral("Sample"))->pen().widthF(), 3.0);
+    e.leaveGroup();
+    QCOMPARE(e.highlightedBranch(), QStringLiteral("measurement_pupil"));  // back as it was
+    // nothing highlighted outside, or a branch not through the group: nothing inside
+    e.highlightBranch(QStringLiteral("reference"));
+    QVERIFY(e.enterGroup(gid));
+    QVERIFY(e.highlightedBranch().isEmpty());
+    e.leaveGroup();
+    QCOMPARE(e.highlightedBranch(), QStringLiteral("reference"));
+  }
+
   void stepChannels() {
     NodeEditor e;
     e.setWorkflow(model_linnik());

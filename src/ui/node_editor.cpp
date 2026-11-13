@@ -425,6 +425,7 @@ void NodeEditor::setWorkflow(const QJsonObject& workflow) {
   workflow_ = workflow;
   if (!modelMode()) scope_.clear();
   while (!scope_.isEmpty() && graph().isEmpty()) scope_.removeLast();  // the group is gone
+  while (outer_highlights_.size() > scope_.size()) outer_highlights_.removeLast();
   showScope();
   QJsonObject g = graph();
   if (!g.isEmpty() && !hasPositions(g)) {
@@ -1700,11 +1701,31 @@ void NodeEditor::showMenu(const QPoint& view_pos, const QPoint& global_pos) {
     if (self.contains("variants")) {  // a group (R28)
       menu.addAction(tr("Open group"), this, [this, id] { enterGroup(id); });
       QMenu* variant = menu.addMenu(tr("Variant"));
+      const QString active = self["variant"].toString();
       for (const QString& v : variants(id)) {
         QAction* a = variant->addAction(v, this, [this, id, v] { setVariant(id, v); });
         a->setCheckable(true);
-        a->setChecked(v == self["variant"].toString());
+        a->setChecked(v == active);
       }
+      variant->addSeparator();
+      variant->addAction(tr("New variant…"), this, [this, id, active] {
+        bool ok = false;
+        const QString name = QInputDialog::getText(this, tr("New variant"),
+                                                   tr("A copy of \"%1\", named:").arg(active),
+                                                   QLineEdit::Normal, active + tr(" copy"), &ok);
+        if (ok) addVariant(id, name);
+      });
+      variant->addAction(tr("Rename variant…"), this, [this, id, active] {
+        bool ok = false;
+        const QString name = QInputDialog::getText(this, tr("Rename variant"), tr("New name:"),
+                                                   QLineEdit::Normal, active, &ok);
+        if (ok && name != active && !renameVariant(id, active, name)) {
+          QMessageBox::information(this, tr("Rename variant"), tr("The name is empty or taken."));
+        }
+      });
+      QAction* del = variant->addAction(tr("Delete variant \"%1\"").arg(active), this,
+                                        [this, id, active] { removeVariant(id, active); });
+      del->setEnabled(variants(id).size() > 1);
       QAction* condensed = menu.addAction(tr("Condensed (plane-wave tables)"), this,
                                           [this, id, self] { setCondensed(id, !self.contains("condense")); });
       condensed->setCheckable(true);
@@ -2191,8 +2212,20 @@ void NodeEditor::showScope() {
 
 bool NodeEditor::enterGroup(const QString& id) {
   if (!modelMode() || !node_of(graph(), id).contains("variants")) return false;
+  // the highlighted branch goes on inside: the inner branch its step through the group names
+  QString inner;
+  for (const QJsonValue& b : graph()["branches"].toArray()) {
+    if (highlighted_.isEmpty() || b.toObject()["name"].toString() != highlighted_) continue;
+    for (const QJsonValue& st : b.toObject()["steps"].toArray()) {
+      if (st.toArray().at(0).toString() == id && inner.isEmpty()) inner = st.toArray().at(3).toString();
+    }
+  }
+  outer_highlights_ << highlighted_;
   scope_ << id;
   highlighted_.clear();
+  for (const QJsonValue& b : graph()["branches"].toArray()) {
+    if (!inner.isEmpty() && b.toObject()["name"].toString() == inner) highlighted_ = inner;
+  }
   cancelBranch();
   showScope();
   QJsonObject g = graph();
@@ -2217,7 +2250,7 @@ bool NodeEditor::enterGroup(const QString& id) {
 void NodeEditor::leaveGroup() {
   if (scope_.isEmpty()) return;
   scope_.removeLast();
-  highlighted_.clear();
+  highlighted_ = outer_highlights_.isEmpty() ? QString() : outer_highlights_.takeLast();
   cancelBranch();
   showScope();
   rebuild();
@@ -2240,6 +2273,72 @@ void NodeEditor::setVariant(const QString& id, const QString& variant) {
   }
   g["nodes"] = nodes;
   setGraph(g);
+}
+
+namespace {
+/// Group `id` in `g` changed by `change(node)`; false if `id` is no group or `change` refuses.
+template <class F>
+bool change_group(QJsonObject& g, const QString& id, F change) {
+  QJsonArray nodes = g["nodes"].toArray();
+  for (int k = 0; k < nodes.size(); ++k) {
+    QJsonObject n = nodes[k].toObject();
+    if (n["id"].toString() != id || !n.contains("variants")) continue;
+    if (!change(n)) return false;
+    nodes[k] = n;
+    g["nodes"] = nodes;
+    return true;
+  }
+  return false;
+}
+}  // namespace
+
+QString NodeEditor::addVariant(const QString& id, const QString& name) {
+  QJsonObject g = graph();
+  QString made;
+  const bool ok = change_group(g, id, [&](QJsonObject& n) {
+    QJsonObject variants = n["variants"].toObject();
+    const QString stem = name.trimmed().isEmpty() ? tr("variant") : name.trimmed();
+    made = stem;
+    for (int k = 2; variants.contains(made); ++k) made = QStringLiteral("%1 %2").arg(stem).arg(k);
+    const QJsonValue copy = variants.value(n["variant"].toString());  // before inserting
+    variants.insert(made, copy);
+    n["variants"] = variants;
+    n["variant"] = made;
+    return true;
+  });
+  if (!ok) return {};
+  setGraph(g);
+  return made;
+}
+
+bool NodeEditor::renameVariant(const QString& id, const QString& from, const QString& to) {
+  const QString name = to.trimmed();
+  QJsonObject g = graph();
+  const bool ok = change_group(g, id, [&](QJsonObject& n) {
+    QJsonObject variants = n["variants"].toObject();
+    if (name.isEmpty() || !variants.contains(from) || variants.contains(name)) return false;
+    const QJsonValue body = variants.take(from);
+    variants.insert(name, body);
+    n["variants"] = variants;
+    if (n["variant"].toString() == from) n["variant"] = name;
+    return true;
+  });
+  if (ok) setGraph(g);
+  return ok;
+}
+
+bool NodeEditor::removeVariant(const QString& id, const QString& name) {
+  QJsonObject g = graph();
+  const bool ok = change_group(g, id, [&](QJsonObject& n) {
+    QJsonObject variants = n["variants"].toObject();
+    if (variants.size() < 2 || !variants.contains(name)) return false;
+    variants.remove(name);
+    n["variants"] = variants;
+    if (n["variant"].toString() == name) n["variant"] = variants.keys().first();
+    return true;
+  });
+  if (ok) setGraph(g);
+  return ok;
 }
 
 void NodeEditor::setCondensed(const QString& id, bool condensed) {

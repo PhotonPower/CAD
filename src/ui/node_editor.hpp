@@ -139,6 +139,13 @@ class NodeEditor : public QGraphicsView {
   void leaveGroup();
   [[nodiscard]] QStringList variants(const QString& id) const;
   void setVariant(const QString& id, const QString& variant);
+  /// A new variant of group `id`: a copy of the active one (same ports, inner branches), then
+  /// active. Returns its name (made unique), empty if `id` is no group.
+  QString addVariant(const QString& id, const QString& name);
+  /// Renames a variant (false: unknown, empty or taken name).
+  bool renameVariant(const QString& id, const QString& from, const QString& to);
+  /// Deletes a variant; the last one stays (false). The active one gives way to another.
+  bool removeVariant(const QString& id, const QString& name);
   /// Condensed (plane-wave tables, R29) or resolved into its blocks.
   void setCondensed(const QString& id, bool condensed);
   /// Makes a group of blocks: connections across become exported ports, each stretch of a branch
@@ -216,6 +223,7 @@ class NodeEditor : public QGraphicsView {
   QHash<QString, bool> states_;
   QList<LinkItem*> connections_;
   QString highlighted_;
+  QStringList outer_highlights_;  // the highlighted branch of each level above the scope
   bool recording_ = false;
   QJsonArray recorded_;  ///< steps [node, port in | null, port out | null]
   QStringList scope_;
