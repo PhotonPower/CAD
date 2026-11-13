@@ -73,6 +73,18 @@ assert f_rows == [["cad 1", "error", "OVERLAP", "bodies 0 and 1 overlap", "0.1, 
                   ["cad 1", "warning", "FEATURE_SMALL", "thin band", ""]]
 assert b_rows == [["cad 1", 0.0, 0.2, "extrusion", "air 0.840, si 0.160"]]
 
+# estimate (rule of thumb of GUI-FourierGrating): OTHER is 2D, Nx = Nz = 3 -> n_f 49, n = 196;
+# λ 21 x φ 2 = 42 points, 2 sweep values; memory = min(42, cores) x 12 x n² x 16 B
+import fg_estimate  # noqa: E402
+
+e = fg_estimate.summary(OTHER, cores=4, ram=10**9)
+assert (e["scan_points"], e["sweep_values"], e["matrix_size"]) == (42, 2, 196), e
+assert e["memory_bytes"] == 4 * 12 * 196**2 * 16 and e["memory_text"] == "28.1 MiB"
+assert "84 solve(s)" in fg_estimate.text(e) and fg_estimate.warning(e) == ""
+assert fg_estimate.summary(OTHER, cores=4, points=1, ram=10**9)["memory_bytes"] == 12 * 196**2 * 16
+assert "RAM" in fg_estimate.warning(fg_estimate.summary(OTHER, cores=4, ram=30 * 2**20))
+assert fg_estimate.matrix_size(LAMELLAR) == 36  # 1D: 4 (2 Nx + 1)
+
 # Littrow: sin φ = −n λ / (2 Λ ν cos ψ); λ 0.6 µm, Λ 0.7 µm, air
 import math  # noqa: E402
 
@@ -226,6 +238,7 @@ with tempfile.TemporaryDirectory() as d:
     plugin.solve(ctx)
     plugin.save_config(ctx)
     assert json.loads(dst.read_text()) == LAMELLAR
+    assert "matrix size n = 36" in plugin.estimate(ctx)
     lines = (Path(d) / "orders.csv").read_text().splitlines()
     assert lines[0] == "side,n,m,efficiency,eff_s,eff_p" and len(lines) == 1 + len(ctx.out["table"][1])
     ctx.params["littrow_order"] = -1

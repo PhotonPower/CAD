@@ -13,6 +13,7 @@ from nfcad import Param, Plugin, UserError, action
 
 import fg_cad
 import fg_config
+import fg_estimate
 import fg_nearfield
 import fg_optimize
 import fg_scan
@@ -231,6 +232,7 @@ class FourierGratingPlugin(Plugin):
     def scan(self, ctx):
         fg = _fg()
         cfg = self.config(ctx)
+        self._warn_memory(ctx, cfg)
         ctx.progress(0.05, "scanning …")
         try:
             res = fg.solve_scan(cfg)
@@ -308,6 +310,7 @@ class FourierGratingPlugin(Plugin):
             raise UserError(str(e).strip("'\"")) from e
         pointers = [p.pointer for p in parameters]
         start = [float(fg_optimize.pointer_get(cfg, p)) for p in pointers]
+        self._warn_memory(ctx, cfg, points=1)
         try:
             sim = fg.Simulation(cfg)
         except Exception as e:  # noqa: BLE001 - FourierGrating's message is for the user
@@ -412,3 +415,17 @@ class FourierGratingPlugin(Plugin):
             ctx.table(run, "Findings", ["layer", "severity", "code", "message", "where / µm"], findings)
         errors = sum(1 for f in findings if f[1] == "error")
         return f"{len(bands)} bands, {errors} errors, {len(findings) - errors} warnings" + ("" if ok else " – not usable")
+
+    # ------------------------------------------------------------------ estimate (GUI-FourierGrating G4)
+    @staticmethod
+    def _warn_memory(ctx, cfg, points=None) -> None:
+        e = fg_estimate.summary(cfg, points=points)
+        if w := fg_estimate.warning(e):
+            ctx.log(f"warning: {w}")
+
+    @action("Estimate", description="Solves, matrix size and rough memory of the panel's computation (rule of thumb)")
+    def estimate(self, ctx):
+        e = fg_estimate.summary(self.config(ctx))
+        if w := fg_estimate.warning(e):
+            ctx.log(f"warning: {w}")
+        return fg_estimate.text(e)

@@ -17,7 +17,8 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
   FourierGrating's exact gradients (live curve, the optimum applied to the panel); *Set Littrow
   angle*; the order table as CSV and the near field as `.npz`; *Layer from CAD bodies* turns
   drawn bodies into a grating layer (FourierGrating's STEP slicer) and *Check CAD layers* shows its
-  bands and findings. Plugins can write entities as STEP (`ctx.export_step`).
+  bands and findings. Plugins can write entities as STEP (`ctx.export_step`). *Estimate* gives
+  the size and rough memory of a computation; *Scan* and *Optimise* warn when it nears the RAM.
 - Plugins: structured parameters (lists, tables, JSON), result tables and bar charts,
   `ctx.set_params` (ADR 0010, W4a).
 - **Camera image** (Raytracer): the irradiance on the last surface of each path from many rays
