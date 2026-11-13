@@ -68,8 +68,19 @@ class Raytracer(Plugin):
 | `Param.numbers(default, unit=)` | comma-separated list (decimal point); invalid input is marked red and blocks the actions | `list[float]` |
 | `Param.point(default)` | x, y, z + **Pick** (click in a view, with object snaps; Esc cancels) | `(x, y, z)` |
 | `Param.entity(kinds=, multiple=)` | **Use selection** takes the selected objects of the given kinds (`point`, `curve`, `surface`, `trimmed_surface`, `shell`) | id, or a list with `multiple=True`; `None` if empty |
+| `Param.list(of={...}, default=[], item_label=)` | ordered entries with *Add*, *Edit…* (a dialog with a form of the parameters `of`, nested lists and tables included), *Remove*, ↑, ↓; `item_label` names an entry in the list | `list[dict]`, each entry converted per field |
+| `Param.table(columns={...}, default=[])` | a table edited in place; columns are number, integer, text or choice parameters (head = label and unit); a wrong cell is marked red and blocks the actions | `list[dict]` per row |
+| `Param.json(default)` | any JSON value as text; invalid text is marked red and blocks the actions | the value (a copy) |
 
 All builders also take `label=`, `group=` (a box in the panel) and `description=` (tooltip).
+Structured parameters (ADR 0010, W4a) describe e.g. a grating's layer stack:
+
+```python
+lamella = {"x": Param.number(0.0, unit="µm"), "material": Param.text("air")}
+params = {"layers": Param.list({"kind": Param.choice(["homogeneous", "lamellar"]),
+                                 "thickness": Param.number(0.1, unit="µm"),
+                                 "lamellae": Param.table(lamella)}, item_label="kind")}
+```
 *Reset parameters* in the panel goes back to the defaults. Changing a parameter marks the
 document as modified but is not an undo step.
 

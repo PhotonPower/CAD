@@ -9,8 +9,10 @@
 namespace nfcad::ui {
 
 /// Form generated from a plugin's parameter schema (nfcad.Param, docs/plugin-api.md):
-/// number, integer, boolean, choice, text, file, numbers (list), point (pick with snaps) and
-/// entity (from the selection). Parameters with a "group" are shown in a box per group.
+/// number, integer, boolean, choice, text, file, numbers (list), point (pick with snaps),
+/// entity (from the selection) and the structured ones (ADR 0010, W4a): list (entries, each a
+/// small form of its own – edited in a dialog with a nested form), table (cells edited in place)
+/// and json (text). Parameters with a "group" are shown in a box per group.
 class PluginForm : public QWidget {
   Q_OBJECT
  public:
@@ -21,6 +23,9 @@ class PluginForm : public QWidget {
     std::function<QString(qint64)> entity_name;
     /// Starts point picking in the views; the callback receives the point.
     std::function<void(std::function<void(double, double, double)>)> pick_point;
+    /// Edits one entry of a list parameter (schema of an entry, the entry); true if accepted. Empty:
+    /// a dialog with a nested form (tests replace it).
+    std::function<bool(const QJsonArray& schema, QJsonObject& entry)> edit_entry;
   };
 
   PluginForm(const QJsonArray& schema, const QJsonObject& values, Callbacks callbacks,
@@ -36,6 +41,10 @@ class PluginForm : public QWidget {
 
  private:
   QWidget* makeEditor(const QJsonObject& p);
+  QWidget* makeList(const QJsonObject& p);
+  QWidget* makeTable(const QJsonObject& p);
+  QWidget* makeJson(const QJsonObject& p);
+  bool editEntry(const QJsonArray& schema, QJsonObject& entry);
   void set(const QString& name, const QJsonValue& value);
   void setValid(const QString& name, bool valid);
 
