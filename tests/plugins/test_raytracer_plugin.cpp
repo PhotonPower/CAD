@@ -17,6 +17,7 @@
 
 #include "document/document.hpp"
 #include "document/selection.hpp"
+#include "plugins/block_router.hpp"
 #include "plugins/plugin_host.hpp"
 #include "plugins/plugin_manager.hpp"
 #include "render/scene.hpp"
@@ -56,6 +57,7 @@ class TestRaytracerPlugin : public QObject {
   results::ResultStore results_;
   std::unique_ptr<plugins::PluginHost> host_;
   std::unique_ptr<plugins::PluginHost> engine_;  // the workflow engine (ADR 0010)
+  std::unique_ptr<plugins::BlockRouter> router_;  // the engine has rtt.* blocks evaluated by the Raytracer (W3)
   QJsonObject params_;
   QJsonObject engine_params_{{"rays", 20000}, {"pixels", 512}, {"window", 0.0}, {"gaussian_waist", 0.0}};
   QString python_;
@@ -103,6 +105,11 @@ class TestRaytracerPlugin : public QObject {
     const auto e = plugins::read_manifest(QStringLiteral(NFCAD_SOURCE_DIR "/python/plugins/workflow"), &error);
     QVERIFY2(e.has_value(), qPrintable(error));
     engine_ = std::make_unique<plugins::PluginHost>(*e, &doc_, &selection_, &results_);
+    router_ = std::make_unique<plugins::BlockRouter>(
+        [this] { return std::vector<plugins::PluginHost*>{engine_.get(), host_.get()}; },
+        [python](plugins::PluginHost* h) { h->start(python, plugins::PluginManager::nfcadPythonPath()); });
+    router_->attach(engine_.get());
+    router_->attach(host_.get());
     QSignalSpy engine_ready(engine_.get(), &plugins::PluginHost::readyChanged);
     engine_->start(python, plugins::PluginManager::nfcadPythonPath());
     QVERIFY(engine_ready.wait(30000));
@@ -409,7 +416,11 @@ class TestRaytracerPlugin : public QObject {
     engine_params_.insert(QStringLiteral("rays"), 500);
     engine_params_.insert(QStringLiteral("pixels"), 32);
     engine_params_.insert(QStringLiteral("window"), 0.0);
+    QSignalSpy by_raytracer(host_.get(), &plugins::PluginHost::evaluated);
     runEngine(QStringLiteral("run_workflow"));
+    QProcess has_remote;  // ADR 0010, W3: the rtt.* blocks computed in the Raytracer's process
+    has_remote.start(python_, {QStringLiteral("-c"), QStringLiteral("import rtt_fusion.graph.remote as r; r.BlockProvider.handle")});
+    if (has_remote.waitForFinished(30000) && has_remote.exitCode() == 0) QVERIFY(by_raytracer.count() >= 2);
     bool keyed = false;
     for (const auto& item : results_.sets().back().items) {
       keyed = keyed || (item.key == QStringLiteral("workflow:show") && item.kind == results::ResultItem::Kind::Image);
