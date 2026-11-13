@@ -167,7 +167,7 @@ interface the plugin host (P3) fills:
 | `Curve` | x / y with labels; `appendToCurve` for live updates | Plot dock (appears with the first curve) |
 
 Results are listed in the *Results* dock (visibility per run and item, delete a run, *Convert to
-CAD curves* for rays). Colour maps: viridis, inferno, plasma, coolwarm, grey. Not yet: saving results with the document (later, with the reference plugin P6), 2D image plots.
+CAD curves* for rays). Colour maps: viridis, inferno, plasma, coolwarm, grey. 2D images (`ctx.image`) open in the *Image* window. Not yet: saving results with the document.
 
 ## 4. Milestones
 
