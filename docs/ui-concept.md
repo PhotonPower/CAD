@@ -103,7 +103,9 @@ A system can also start without a file: *New Raytatouille system* (Raytracer plu
 with default settings (mm/µm, d line, entrance pupil 4 mm, one field point on the axis – editable
 in the source's *Parameters…*), a stop and a detector and the branch "main" into the workflow;
 parts from the library go in between (connect them and record the branch again). It is drawn,
-computed and saved like an imported system.
+computed and saved like an imported system. When an image of the workflow covers too few pixel centres (a focus
+smaller than a pixel would come out empty), *Run workflow* warns in its status line with the size
+of the spot and an *Image window* that fits (RTT-Fusion W65).
 
 With RTT-Fusion R24 *Workflow from system* makes a **model**: a block shows one point per light
 port (on the left where the light first comes in, on the right where it leaves or comes back),
