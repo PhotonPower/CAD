@@ -159,7 +159,11 @@ values you change are written back (a value with more digits than shown stays ex
 0010): it checks, plans and runs the graph whatever plugin provides its blocks, keeps earlier
 results and holds the image settings (rays, pixels, image window, Gaussian illumination) in its
 panel. The plugins that provide blocks describe their editable data and keep it up to date after
-an edit (the Raytracer does so in *Follow the workflow*).
+an edit (the Raytracer does so in *Follow the workflow*). Other plugins add block types of their
+own (ADR 0010, W2): the engine asks them for their catalogues – the *Add block* menu shows those
+blocks with their plugin – and has such a block evaluated in its plugin's process; the workflow
+records which plugin provides a type, and a block whose plugin is missing stays with its data,
+marked `graph.provider_missing` by the check.
 
 Once the workflow holds the system it is the truth for the Raytracer plugin: the engine's runs,
 *Trace rays*, *Camera image* and *Optimise* compute with the system the workflow makes (the glass
