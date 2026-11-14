@@ -68,8 +68,10 @@ MATERIALS = pt_bsdf.Materials.from_rows([
     {"name": "mirror", "kind": "mirror", "reflectance": 0.9},
     {"name": "glass", "kind": "glass", "ior": 1.5},
     {"name": "glossy", "kind": "glossy", "reflectance": 0.7, "roughness": 0.3},
+    {"name": "tinted", "kind": "glass", "ior": 1.5, "absorption": 0.05},
+    {"name": "sheet", "kind": "diffuse", "reflectance": 0.3, "transmittance": 0.6},
 ])
-BLACK, WHITE, MIRROR, GLASS, GLOSSY = range(5)
+BLACK, WHITE, MIRROR, GLASS, GLOSSY, TINTED, SHEET = range(7)
 
 
 def scene_of(geometries, materials, sources, closed=()):
@@ -223,6 +225,26 @@ sensor = pt_scene.TexelSensor(scene, [7], 4)
 for method in ("light", "bidir"):
     total = values(scene, sensor, method, 30_000, 30).sum()
     assert abs(total - 0.96 / 1.04) < 0.01, (method, total)
+
+# ---- the same plate absorbing 0.05 / mm: T = (1 − R)² a / (1 − R² a²) with a = exp(−0.05 · 10)
+scene = scene_of([box((-50, -50, 0), (50, 50, 10)), rect((-1, -1, -20), (2, 0, 0), (0, 2, 0)),
+                  rect((-40, -40, 30), (80, 0, 0), (0, 80, 0))], [TINTED, BLACK, BLACK],
+                 [pt_scene.SourceSpec("beam", 1.0, 0.5, "front", entities=(1,))], (0,))
+inner = math.exp(-0.5)
+total = values(scene, pt_scene.TexelSensor(scene, [7], 4), "light", 30_000, 30).sum()
+assert abs(total - 0.96 ** 2 * inner / (1 - 0.04 ** 2 * inner ** 2)) < 0.01, total
+
+# ---- a diffusing sheet (reflects 0.3, lets 0.6 through) between a lamp and the floor of a closed box
+scene = scene_of([box((0, 0, 0), (100, 100, 100)), rect((0.5, 0.5, 50), (99, 0, 0), (0, 99, 0)),
+                  rect((40, 40, 80), (0, 20, 0), (20, 0, 0))], [WHITE, SHEET, BLACK],
+                 [pt_scene.SourceSpec("a", 1.0, 90, "front", entities=(2,))], (0,))
+sensor = pt_scene.TexelSensor(scene, [0, 6], 2)                      # the floor and the sheet
+reference = values(scene, sensor, "light", 60_000, 10)
+assert 0.2 < reference[:4].sum() < reference[4:].sum()
+for method in ("path", "bidir"):
+    got = values(scene, sensor, method, 30_000, 10)
+    assert abs(got[:4].sum() / reference[:4].sum() - 1) < 0.04, (method, got[:4].sum(), reference[:4].sum())
+    assert abs(got[4:].sum() / reference[4:].sum() - 1) < 0.04, (method, got[4:].sum(), reference[4:].sum())
 
 # ---- an area source in a box with a glossy plate and a mirror wall: the methods agree
 scene = scene_of([rect((-100, -100, 0), (200, 0, 0), (0, 200, 0)), rect((-100, -100, 0), (0, 200, 0), (0, 0, 100)),
