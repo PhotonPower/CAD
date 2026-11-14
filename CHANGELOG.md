@@ -7,6 +7,14 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
 ## [Unreleased]
 
 ### Added
+- **Automotive Lighting plugin** (step 1): the facetted reflector of a clear-lens headlamp. For a
+  filament lamp (H1, H3, H4, H7, H8, H9, H11, HB3, HB4 or own data), the cut-off line and the frame
+  of the mirror, the reflector is cut into zones and strips whose filament images all touch the
+  cut-off – each strip a family of characteristic strips of that condition (an ordinary
+  differential equation). *Generate reflector* adds the facets as trimmed NURBS faces; *Filament
+  images* and *Light distribution* show the images on the screen, the luminous intensity, the test
+  points of UN/ECE R112 and the sharpness of the cut-off; *Show strips* draws the strips.
+  ([python/plugins/automotive_lighting](python/plugins/automotive_lighting/README.md))
 - **Layer stacks** in the node workflow: the FourierGrating plugin provides `fg.stack` (coatings,
   filters, mirror layers between two media, exact per ray), with an RTT-Fusion that has it.
 - **FourierGrating plugin** (ADR 0010, W4, step 1): a grating's structure, materials, layers and
