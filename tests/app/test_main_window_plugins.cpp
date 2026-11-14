@@ -1,4 +1,5 @@
 #include <QDockWidget>
+#include <QTemporaryDir>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QComboBox>
@@ -13,6 +14,7 @@
 #include <QTreeWidget>
 #include <memory>
 
+#include "document/nfcad_io.hpp"
 #include "app/main_window.hpp"
 #include "document/document.hpp"
 #include "document/entity.hpp"
@@ -65,6 +67,41 @@ class TestMainWindowPlugins : public QObject {
     dock->close();
     dock->toggleViewAction()->trigger();
     QVERIFY(dock->isVisible());
+  }
+
+  void workflowOfAnOpenedFileIsShown() {
+    // opening a document with a node workflow shows it (the workflow used to be set silently after
+    // documentReset, so the window got the empty state of before), and a plugin that sets the same
+    // workflow again ("Workflow from system" on an unchanged system) shows it in the window too
+    QStandardPaths::setTestModeEnabled(true);
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("with_workflow.rttf"));
+    const QJsonObject wf{{"graph", QJsonObject{{"format", "rtt-fusion-graph"}, {"version", 1},
+                                               {"nodes", QJsonArray{QJsonObject{{"id", "a"}, {"type", "rtt.source"}},
+                                                                    QJsonObject{{"id", "b"}, {"type", "rtt.detector"}}}},
+                                               {"links", QJsonArray{}}}}};
+    {
+      nfcad::document::Document saved;
+      saved.setWorkflow(wf);
+      saved.setPluginParameters(QStringLiteral("raytracer"), QJsonObject{{"system", "x.rtt.json"}});
+      QVERIFY(nfcad::document::save_nfcad(saved, path).isEmpty());
+    }
+    nfcad::app::MainWindow w;
+    w.setAttribute(Qt::WA_DontShowOnScreen);
+    w.show();
+    QVERIFY(w.openFile(path, true));
+    auto* doc = w.findChild<nfcad::document::Document*>();
+    auto* dock = w.findChild<QDockWidget*>(QStringLiteral("workflowDock"));
+    auto* editor = w.findChild<nfcad::ui::NodeEditor*>();
+    QVERIFY(doc != nullptr && dock != nullptr && editor != nullptr);
+    QCOMPARE(doc->pluginParameters(QStringLiteral("raytracer"))["system"].toString(), QStringLiteral("x.rtt.json"));
+    QVERIFY(dock->isVisible());
+    QVERIFY(editor->nodeItem(QStringLiteral("a")) != nullptr && editor->nodeItem(QStringLiteral("b")) != nullptr);
+    // a window that shows another state gets the document's workflow when a plugin asks
+    editor->setWorkflow({});
+    doc->setWorkflow(doc->workflow());  // unchanged: no workflowChanged
+    doc->requestWorkflowShown();
+    QVERIFY(editor->nodeItem(QStringLiteral("a")) != nullptr);
   }
 
   void escapeLeavesAGroup() {

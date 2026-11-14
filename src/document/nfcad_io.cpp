@@ -265,12 +265,12 @@ QString load_nfcad(Document& doc, const QString& path) {
   } catch (const std::exception& ex) {
     return QObject::tr("invalid geometry: %1").arg(QString::fromUtf8(ex.what()));
   }
-  doc.reset(std::move(layers), std::move(entities), std::move(groups));
   QJsonObject params;
   const QJsonObject plugins = root["plugins"].toObject();
   for (auto it = plugins.begin(); it != plugins.end(); ++it) params.insert(it.key(), it.value().toObject()["params"]);
-  doc.setAllPluginParameters(params);
-  doc.setWorkflowLoaded(root["workflow"].toObject());
+  // parameters and workflow go in with the content: documentReset then announces the loaded state
+  // (before, the workflow was set silently after it and the node workflow window stayed empty)
+  doc.reset(std::move(layers), std::move(entities), std::move(groups), params, root["workflow"].toObject());
   doc.setFilePath(path);
   return {};
 }

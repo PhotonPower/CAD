@@ -51,7 +51,7 @@ namespace nfcad::app {
 using render::DisplayMode;
 
 namespace {
-constexpr int kWindowStateVersion = 7;  // 2: model tree (P1), 3: results + plot (P2), 4: plugin log (P3), 5: plugin panel (P4), 6: image dock, 7: node workflow
+constexpr int kWindowStateVersion = 8;  // 2: model tree (P1), 3: results + plot (P2), 4: plugin log (P3), 5: plugin panel (P4), 6: image dock, 7: node workflow, 8: table
 }
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -498,6 +498,8 @@ void MainWindow::createPanels() {
   // window was closed): show it
   connect(doc_, &document::Document::workflowShowRequested, this, [this, workflow] {
     if (doc_->workflow().isEmpty()) return;
+    // the window may show another state (e.g. one it never got): the document's workflow
+    if (node_editor_->workflow() != doc_->workflow()) node_editor_->setWorkflow(doc_->workflow());
     const bool was_hidden = !workflow->isVisible();
     workflow->show();
     workflow->raise();
