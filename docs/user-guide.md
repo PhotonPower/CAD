@@ -117,8 +117,14 @@ mouse wheel zooms at the cursor, dragging pans, a double-click shows the whole i
 
 The **Raytracer** plugin (Raytatouille) loads `.rtt.json` optical systems, traces rays, shows
 the irradiance on the image surface and optimises with live updates – see its
-[guide](../python/plugins/raytracer/README.md). Writing your own plugins:
-[plugin-api.md](plugin-api.md).
+[guide](../python/plugins/raytracer/README.md).
+
+The **Path Tracer** plugin computes light transport on the CAD model itself: objects become
+light sources, the others get materials (diffuse, mirror, glossy, glass, absorber); it shows the
+irradiance as a texture on the faces and a camera image, by light tracing, path tracing or
+bidirectional path tracing – see its [guide](../python/plugins/pathtracer/README.md).
+
+Writing your own plugins: [plugin-api.md](plugin-api.md).
 
 ## Updates, crashes, settings
 

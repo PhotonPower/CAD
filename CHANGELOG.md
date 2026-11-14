@@ -31,6 +31,12 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
   the size and rough memory of a computation; *Scan* and *Optimise* warn when it nears the RAM.
 - Plugins: structured parameters (lists, tables, JSON), result tables and bar charts,
   `ctx.set_params` (ADR 0010, W4a).
+- **Path Tracer plugin**: light transport on the CAD model – surfaces, bodies and points as light
+  sources (flux, emission cone, side), materials on the others (absorber, diffuse with
+  transmission, mirror, glossy, glass with absorption); *Irradiance* as a texture on the faces
+  (W/m²) with a table per face, *Camera image* (radiance of a pinhole camera) in the Image window;
+  light tracing, path tracing and bidirectional path tracing as one estimator with multiple
+  importance sampling; *Show light paths* and *Show camera* as previews. NumPy only.
 - **Camera image** (Raytracer): the irradiance on the last surface of each path from many rays
   (default 200 000 per field and wavelength, millions possible), square pixels over the
   sensor, shown in the new **Image** window and optionally on the surface in 3D. The quick
