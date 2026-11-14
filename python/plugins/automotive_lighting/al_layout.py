@@ -388,13 +388,12 @@ def strip_curve(frame: StripFrame, c: float, keep_above: bool, inset: float = 0.
     return Circle(centre, radius, inside=inside)
 
 
-def _deepest_q(polys_pq: list[np.ndarray]) -> float:
-    """The section of the cell nearest to the lamp axis' level (q = 0) – there the base paraboloid is
-    deepest along the strip. The start curve lies in this section: from it the strips of a facet
-    whose aims diverge run forward (towards the rim) only and fan out; started further out they
-    would cross on the way in."""
-    q = np.concatenate([poly[:, 1] for poly in polys_pq])
-    return float(min(max(0.0, q.min()), q.max()))
+def _deepest_q(q_lo: float, q_hi: float) -> float:
+    """The section of a facet's rectangle nearest to the lamp axis' level (q = 0) – there the base
+    paraboloid is deepest along the strip. The start curve lies in this section: from it the strips
+    of a facet whose aims diverge run forward (towards the rim) only and fan out; started further
+    out they would cross on the way in."""
+    return float(min(max(0.0, q_lo), q_hi))
 
 
 def layout(frame_poly: np.ndarray, hole_radius: float, zones: list[Zone], cutoff: Cutoff, focal: float,
@@ -431,7 +430,7 @@ def layout(frame_poly: np.ndarray, hole_radius: float, zones: list[Zone], cutoff
             both = np.concatenate(pq)
             rect = (both[:, 0].min() - margin, both[:, 0].max() + margin,
                     both[:, 1].min() - margin, both[:, 1].max() + margin)
-            q_start = _deepest_q(pq)
+            q_start = _deepest_q(rect[2], rect[3])
             spec = FacetSpec(m, frame, (c0, c1), (t_right, t_left), rect, q_start)
             cells.append(Cell(zi, k, spec, strip))
     if not cells:

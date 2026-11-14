@@ -8,7 +8,7 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
 
 ### Added
 - **Automotive Lighting plugin**: the facetted reflector of a clear-lens headlamp. For a
-  filament lamp (H1, H3, H4, H7, H8, H9, H11, HB3, HB4 or own data), the cut-off line and the frame
+  filament lamp (H1, H4, H7, H8, H9, H11, HB3, HB4 or own data), the cut-off line and the frame
   of the mirror, the reflector is cut into zones and strips whose filament images all touch the
   cut-off – each strip a family of characteristic strips of that condition (an ordinary
   differential equation). *Generate reflector* adds the facets as trimmed NURBS faces; *Filament

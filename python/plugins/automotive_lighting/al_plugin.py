@@ -69,16 +69,14 @@ def zones_of(rows: list[dict]) -> tuple[Zone, ...]:
 class AutomotiveLighting(Plugin):
     params = {
         "lamp": Param.choice([*LAMPS, CUSTOM], "H7", label="Lamp", group="Lamp",
-                             description="filament length / diameter and luminous flux after UN/ECE R37 "
-                                         "(nominal values); Custom takes the fields below"),
+                             description="lamps with a filament along the axis: its length / diameter and luminous "
+                                         "flux after UN/ECE R37 (nominal values); Custom takes the fields below"),
         "custom_length": Param.number(4.1, min=0.1, max=30.0, decimals=2, unit="mm", label="Custom: filament length",
                                       group="Lamp"),
         "custom_diameter": Param.number(1.3, min=0.05, max=10.0, decimals=2, unit="mm",
                                         label="Custom: filament diameter", group="Lamp"),
         "custom_flux": Param.number(1500.0, min=1.0, max=100000.0, decimals=0, unit="lm", label="Custom: luminous flux",
                                     group="Lamp"),
-        "custom_axial": Param.boolean(True, label="Custom: filament along the axis", group="Lamp",
-                                      description="off: transverse filament (horizontal, across the axis)"),
         "position": Param.point((0.0, 0.0, 0.0), label="Filament centre", group="Lamp",
                                 description="the light leaves along +X, +Z is up"),
         "traffic": Param.choice([RIGHT, LEFT], RIGHT, label="Traffic", group="Cut-off",
@@ -119,6 +117,9 @@ class AutomotiveLighting(Plugin):
         "fillet": Param.number(0.3, min=0.0, max=5.0, decimals=2, unit="mm", label="Fillet radius",
                                group="Connecting faces", description="at the foot and the head of every wall"),
         "reflectance": Param.number(0.85, min=0.0, max=1.0, decimals=2, label="Reflectance", group="Analysis"),
+        "reflectance_connections": Param.number(0.85, min=0.0, max=1.0, decimals=2,
+                                                label="Reflectance of the connecting faces", group="Analysis",
+                                                description="0: their light does not count (masked or matt walls)"),
         "sampling": Param.number(1.0, min=0.2, max=10.0, decimals=2, unit="mm", label="Mirror points every",
                                  group="Analysis", description="lattice of the light distribution"),
         "image_points": Param.integer(150, min=1, max=5000, label="Filament images (number)", group="Analysis"),
@@ -130,7 +131,7 @@ class AutomotiveLighting(Plugin):
         if params["lamp"] != CUSTOM:
             return LAMPS[params["lamp"]]
         return Lamp(CUSTOM, float(params["custom_length"]), float(params["custom_diameter"]),
-                    float(params["custom_flux"]), axial=bool(params["custom_axial"]))
+                    float(params["custom_flux"]))
 
     @staticmethod
     def cutoff_of(params: dict) -> Cutoff:
@@ -200,6 +201,10 @@ class AutomotiveLighting(Plugin):
             ctx.progress(0.9 + 0.1 * (k + 1) / len(faces), "adding the faces …")
         for w in r.warnings:
             ctx.log(f"warning: {w}")
+        held = [f"{c.zone + 1}.{c.strip}" for c, f in zip(r.cells, r.facets) if f.aim_limited]
+        if held:
+            ctx.log(f"aim held back in {len(held)} facets ({', '.join(held[:12])}{' …' if len(held) > 12 else ''}): "
+                    "the mirror there cannot throw its light as far sideways as the zone asks")
         x0, x1 = r.depth()
         ctx.log(f"{len(r.cells)} facets in {len(r.settings.zones)} zones, mirror area {r.area / 100.0:.1f} cm² "
                 f"(front view), x from {x0 + origin[0]:.1f} to {x1 + origin[0]:.1f} mm; the filament images lie "
@@ -245,7 +250,9 @@ class AutomotiveLighting(Plugin):
             ctx.progress(0.9 + 0.1 * fraction, text)
 
         dist = al_photometry.light_distribution(r, spacing=float(ctx.params["sampling"]),
-                                                reflectance=float(ctx.params["reflectance"]), progress=progress)
+                                                reflectance=float(ctx.params["reflectance"]),
+                                                reflectance_connections=float(ctx.params["reflectance_connections"]),
+                                                progress=progress)
         run = ctx.result_set(f"Low beam {r.settings.lamp.name}")
         ctx.image(run, "Luminous intensity", dist.intensity.reshape(-1), len(dist.h), len(dist.v),
                   extent=_extent(dist), x_label="H / °", y_label="V / °", unit="cd",

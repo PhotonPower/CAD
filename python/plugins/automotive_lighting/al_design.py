@@ -40,6 +40,9 @@ from al_optics import Filament
 from al_spline import Graph
 
 
+MIN_ALONG = 0.5        # the strips of a facet keep at least this cosine (60°) to the direction of its strip
+
+
 class DesignError(ValueError):
     """The facet cannot be built with these settings (the message says what to change)."""
 
@@ -225,6 +228,7 @@ class Facet:
     spec: FacetSpec
     graph: Graph
     extrapolated: bool = False     # the strips did not reach every corner of the rectangle
+    aim_limited: bool = False      # the aim was held back where the mirror cannot throw its light there
     start_curve: np.ndarray = field(default_factory=lambda: np.zeros((0, 3)))   # x, y, z along T
     strips: np.ndarray = field(default_factory=lambda: np.zeros((0, 0, 3)))     # some strips: (k, nodes, 3)
     net: tuple | None = None       # (P, n) of every strip node, kept on request (tests)
@@ -269,6 +273,18 @@ def build_facet(spec: FacetSpec, fil: Filament, *, step: float = 0.5, knot_spaci
     c_lo, c_hi = spec.c_range
     a_lo, a_hi = spec.aim_range
 
+    a_mid = 0.5 * (a_lo + a_hi)
+    limited = [0]
+
+    def along(a: float, y: float, z: float) -> float:
+        """Cosine (front view) of the angle between the strips of a facet aimed at `a` on the base
+        paraboloid at (y, z) and the direction q; signed."""
+        v = (-m[0] + m[1] * a) / m[2]
+        tx, ty, tz = m[1] * v + m[2] * a, m[2] - m[0] * v, -m[0] * a - m[1]          # m x (1, -a, v)
+        ny, nz = -y / (2.0 * fr.focal), -z / (2.0 * fr.focal)                        # normal (1, ny, nz)
+        cy, cz = nz * tx - tz, ty - ny * tx                                          # (normal x tau) in the front view
+        return (cy * e_q3[1] + cz * e_q3[2]) / max(math.hypot(cy, cz), 1e-300)
+
     def aim_at(p: float, q: float) -> float:
         # linear across the strip; beyond its borders it levels off smoothly (10 % further at most):
         # the facet continues there without aiming ever further sideways
@@ -279,7 +295,27 @@ def build_facet(spec: FacetSpec, fil: Filament, *, step: float = 0.5, knot_spaci
         elif s < 0.0:
             t = min(-s, 0.2)
             s = -(t - t * t / 0.4)
-        return a_lo + (a_hi - a_lo) * s
+        a = a_lo + (a_hi - a_lo) * s
+        # a mirror wall cannot throw its light across itself: where the aim asks for that, the
+        # strips would turn along the start section. The aim is held back to MIN_ALONG there.
+        y, z = fr.yz(p, q)
+        reference = along(a_mid, y, z)
+        sign = 1.0 if reference >= 0.0 else -1.0
+        if sign * along(a, y, z) >= MIN_ALONG:
+            return a
+        if abs(reference) < MIN_ALONG:
+            raise DesignError("this part of the mirror cannot throw its light where the zone is aimed (it would "
+                              "have to cross the mirror's own wall) – aim the zone less far sideways")
+        good, bad = a_mid, a
+        for _ in range(40):
+            middle = 0.5 * (good + bad)
+            if sign * along(middle, y, z) >= MIN_ALONG:
+                good = middle
+            else:
+                bad = middle
+        if 0.0 <= s <= 1.0:
+            limited[0] += 1
+        return good
 
     # grid along the strips: q_start is a node, the B-spline sites are nodes (knot spacing 3 h)
     h = step
@@ -348,7 +384,8 @@ def build_facet(spec: FacetSpec, fil: Filament, *, step: float = 0.5, knot_spaci
             raise DesignError("a facet becomes too steep or folds – reduce the spread (aims) of its zone, "
                               "the strip width or the zone's extent")
         pp = P[..., 1] * fr.e_p[0] + P[..., 2] * fr.e_p[1]     # (strips, nodes)
-        if np.any(np.diff(pp, axis=0) <= 0.0):
+        near = (pp[:-1] <= p1 + 2.0 * h) & (pp[1:] >= p0 - 2.0 * h)      # pairs of strips that pass the rectangle
+        if np.any((np.diff(pp, axis=0) <= 0.0) & near):
             raise DesignError("the strips of a facet cross: its aims converge too strongly (let the aims of "
                               "the zone run the other way or reduce the spread), or it is aimed so far sideways "
                               "that the light would have to pass the mirror's own wall")
@@ -365,12 +402,14 @@ def build_facet(spec: FacetSpec, fil: Filament, *, step: float = 0.5, knot_spaci
     fp_all = -(N[..., 1] * fr.e_p[0] + N[..., 2] * fr.e_p[1]) / N[..., 0]
     values = np.empty((n_p, n_q))
     for col, j in enumerate(rows):
-        values[:, col], _ = _hermite(pp[:, j], P[:, j, 0], fp_all[:, j], graph.sites_p)
+        use = np.flatnonzero((pp[:, j] >= p0 - 2.0 * h) & (pp[:, j] <= p1 + 2.0 * h))   # the strips at the rectangle
+        lo_i, hi_i = max(use[0] - 1, 0), min(use[-1] + 2, len(pp))                       # (those far off may cross)
+        values[:, col], _ = _hermite(pp[lo_i:hi_i, j], P[lo_i:hi_i, j, 0], fp_all[lo_i:hi_i, j], graph.sites_p)
     graph.interpolate(values)
 
     every = max(1, round(2.5 / h))
     facet = Facet(spec, graph, extrapolated=extrapolated, start_curve=PT,
-                  strips=P[len(P) // 2 % every::every].astype(np.float32))
+                  strips=P[len(P) // 2 % every::every].astype(np.float32), aim_limited=limited[0] > 0)
     if keep_net:
         facet.net = (P, N)
     return facet

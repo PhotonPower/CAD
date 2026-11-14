@@ -1,7 +1,7 @@
 # Automotive Lighting plugin
 
-The reflector of a **clear-lens headlamp**: for a filament lamp (H1, H3, H4, H7, H8, H9, H11, HB3,
-HB4 or your own data) the mirror is facetted so that the low beam gets its **cut-off line** from the
+The reflector of a **clear-lens headlamp**: for a filament lamp (H1, H4, H7, H8, H9, H11, HB3, HB4
+or your own data – lamps with the filament along the axis) the mirror is facetted so that the low beam gets its **cut-off line** from the
 mirror alone, and the facets are joined to one surface that can be moulded. Needs only NumPy in
 the plugin environment.
 
@@ -21,7 +21,8 @@ and V upwards.
 - *Reflector*: the focal length of the base paraboloid, the strip width and the **zones**.
 - *Connecting faces*: on / off, the draft angle of the walls between the facets and the fillet
   radius at their foot and head.
-- *Analysis*: reflectance, the lattice of mirror points, the number of filament images.
+- *Analysis*: reflectance of the mirror and of the connecting faces (0: masked or matt walls),
+  the lattice of mirror points, the number of filament images.
 
 **Zones.** A zone is a sector about the lamp axis (azimuth 0° = left, 90° = up, 180° = right, seen
 in the driving direction; each row reaches to the next row's start). Its facets use one branch of
@@ -78,7 +79,9 @@ base paraboloid. So on the whole facet every filament image touches the cut-off,
 the B-spline (reported, typically below 0.05°); the aim holds on the start curve and drifts with
 the distance from it. The start curve lies at the facet's deepest section, so that strips whose
 aims diverge (right border aimed right) fan out towards the rim; aims that converge too strongly
-make the strips cross, which is reported.
+make the strips cross, which is reported. A steep part of the mirror cannot throw its light
+across its own wall: where the zone's aim asks for that, the aim is held back (the log names the
+facets).
 
 The **strip borders** follow the characteristics of a facet aimed at the middle of the zone's
 aims: sections of the base paraboloid with parallel planes, which are straight lines in the front
@@ -118,6 +121,8 @@ narrower strips, a smaller spread per strip, or neighbouring zones with similar 
 - Photometry: the coil as an evenly shining cylinder, one reflection at the facets and the
   connecting faces, nothing shades (a wall does not shadow the facet behind it), no light leaving
   the lamp directly, no bulb glass, no cover lens. The cut-off is sharper than a real lamp's.
+- Filaments along the lamp axis only. With a transverse filament (H3, fog lamps) both ends of the
+  coil touch a horizontal cut-off over whole areas of the mirror; that case needs its own treatment.
 - The lamp hole must be large enough for the bands between the zones, which meet at the lamp
   axis; the strips must be wider than their connecting faces (both are reported).
 - The frame should be convex or nearly so; the lamp axis is +X; the faces are separate trimmed

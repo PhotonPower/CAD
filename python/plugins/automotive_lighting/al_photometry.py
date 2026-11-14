@@ -109,16 +109,30 @@ class Distribution:
     def lux_25m(self) -> np.ndarray:
         return self.intensity / 625.0
 
+    def measured(self, half_h: float = 0.25, half_v: float = 0.1) -> np.ndarray:
+        """The intensity as a photometer sees it: at every point the mean over the window of at()."""
+        ni = max(0, int(round(half_h / (self.h[1] - self.h[0]) - 0.5)))
+        nj = max(0, int(round(half_v / (self.v[1] - self.v[0]) - 0.5)))
+        padded = np.pad(self.intensity, ((nj, nj), (ni, ni)), mode="edge")
+        out = np.zeros_like(self.intensity)
+        for dj in range(2 * nj + 1):
+            for di in range(2 * ni + 1):
+                out += padded[dj:dj + len(self.v), di:di + len(self.h)]
+        return out / ((2 * nj + 1) * (2 * ni + 1))
+
 
 def light_distribution(reflector: Reflector, *, spacing: float = 1.0, n_axial: int = 12, n_around: int = 24,
                        h_range=(-40.0, 40.0), v_range=(-15.0, 10.0), dh: float = 0.25, dv: float = 0.1,
-                       reflectance: float = 0.85, progress=None) -> Distribution:
+                       reflectance: float = 0.85, reflectance_connections: float | None = None,
+                       progress=None) -> Distribution:
     """The luminous intensity of the reflector by rays from every sample of the coil's surface to
     every mirror point of a front-view lattice (`spacing`, mm)."""
     lamp: Lamp = reflector.settings.lamp
     fil = reflector.filament
     P, N, A, part = reflector.samples(spacing)
     connection = np.array([p.kind != FACET for p in reflector.parts()], dtype=bool)[part] if len(part) else part
+    rho = np.where(connection, reflectance if reflectance_connections is None else reflectance_connections,
+                   reflectance)
     flux_connections = 0.0
     Q, nu, dA = fil.surface_samples(n_axial, n_around)
     luminance = lamp.flux / (math.pi * dA * len(Q))        # lm / (sr mm²)
@@ -144,8 +158,9 @@ def light_distribution(reflector: Reflector, *, spacing: float = 1.0, n_axial: i
         flux_mirror += float(w.sum())
         out = d - 2.0 * np.einsum("mki,mi->mk", d, n)[..., None] * n[:, None, :]
         ok = (out[..., 0] > 1e-6) & (w > 0.0)
-        flux_connections += float((w * ok)[connection[start:start + chunk]].sum()) * reflectance
-        w, out = w[ok] * reflectance, out[ok]
+        w = w * rho[start:start + chunk, None]
+        flux_connections += float((w * ok)[connection[start:start + chunk]].sum())
+        w, out = w[ok], out[ok]
         flux_beam += float(w.sum())
         H = np.degrees(np.arctan(-out[:, 1] / out[:, 0]))
         V = np.degrees(np.arctan(out[:, 2] / out[:, 0]))
@@ -214,7 +229,7 @@ def test_points(dist: Distribution, cutoff: Cutoff) -> list[list]:
     H, V = np.meshgrid(dist.h, dist.v)
     zone3 = _inside([(sign * h, v) for h, v in ZONE_III], H, V)
     if zone3.any():
-        value = float(dist.intensity[zone3].max())
+        value = float(dist.measured()[zone3].max())
         rows.append(["zone III", "", "", round(value, 1), round(value / 625.0, 2), f"≤ {ZONE_III_MAX:.0f} cd",
                      "ok" if value <= ZONE_III_MAX else "not met"])
     hs = dist.h[(dist.h >= ZONE_IV[0]) & (dist.h <= ZONE_IV[1])][::2]
@@ -227,10 +242,11 @@ def test_points(dist: Distribution, cutoff: Cutoff) -> list[list]:
 
 
 def glare(dist: Distribution, cutoff: Cutoff, clearance: float = 0.2) -> float:
-    """The highest intensity (cd) more than `clearance` degrees above the cut-off line."""
+    """The highest intensity (cd, over a photometer's window) more than `clearance` degrees above
+    the cut-off line."""
     line = np.degrees(np.arctan(cutoff.line(np.tan(np.radians(dist.h)))))
-    above = dist.v[:, None] > line[None, :] + clearance
-    return float(dist.intensity[above].max()) if above.any() else 0.0
+    above = dist.v[:, None] > line[None, :] + clearance + 0.1
+    return float(dist.measured()[above].max()) if above.any() else 0.0
 
 
 def sharpness(dist: Distribution, cutoff: Cutoff, h_deg: float = 2.5) -> tuple[float, float]:

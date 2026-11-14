@@ -262,11 +262,11 @@ def profiles(border, u_range: tuple[float, float], along: float, draft_deg: floa
     to the mirror (what the sides are beyond the frame or in the lamp hole does not count);
     `extra`: more room across, for the walls of strips that end at this border. None where nothing
     is to connect."""
-    h = min(FINE, radius / 8.0) if radius > 0.0 else FINE
     spans = max(1, math.ceil((u_range[1] - u_range[0]) / along))
     n_u = spans + 3
     stations = Graph(u_range, (-1.0, 1.0), n_u, 4).sites_p
     # the step at the border first: it sets the room the wall and its fillets need
+    h = 0.01
     near = np.array([-1.5 * h, -0.5 * h, 0.5 * h, 1.5 * h])
     U, X = np.meshgrid(stations, near, indexing="ij")
     y, z = border.yz(U, X)
@@ -275,7 +275,11 @@ def profiles(border, u_range: tuple[float, float], along: float, draft_deg: floa
     if not on_mirror.any():
         return None
     step = float(np.abs(1.5 * a[:, 1] - 0.5 * a[:, 0] - 1.5 * b[:, 0] + 0.5 * b[:, 1])[on_mirror].max())
+    if step < 1e-4:
+        return None
     window = 1.3 * step * math.tan(math.radians(draft_deg)) + 3.0 * radius + 0.4 + extra
+    # the raster resolves the fillets, or without them the wall itself
+    h = min(FINE, radius / 8.0) if radius > 0.0 else min(FINE, max(0.005, 0.2 * step * math.tan(math.radians(draft_deg))))
     if window + 0.3 > margin:
         raise NeedsMargin(window + 0.5)
     if 2.2 * window > room:
@@ -294,8 +298,7 @@ def profiles(border, u_range: tuple[float, float], along: float, draft_deg: floa
     F, G = blend(a, b, h, draft_deg, radius)
     usable = window - radius - 4.0 * h          # the ball feels the window's ends within its radius
     reach = _reach((np.abs(F - G) > TOLERANCE) & mirror(y.ravel(), z.ravel()).reshape(y.shape), half, h)
-    if reach == 0.0:
-        return None
+    reach = max(reach, 2.0 * h)                  # a step, however low, gets its band
     cramped = reach + TAPER > usable             # runs out into the sides earlier than it should
     return Profiles(border, u_range, n_u, xi, F, G, step, min(reach, usable - TAPER), window, cramped)
 

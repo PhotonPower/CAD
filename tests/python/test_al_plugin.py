@@ -89,6 +89,15 @@ try:
 except al_design.DesignError as e:
     assert "cross" in str(e)
 
+# a facet on the steep left wall asked to aim far to the left: the aim is held back, the facet stands
+wall = al_design.build_facet(al_design.FacetSpec(cut.plane(al_optics.HORIZONTAL), al_design.StripFrame.of(
+    cut.plane(al_optics.HORIZONTAL), 0.0, 20.0), (70.0, 80.0), (tan(10), tan(-40)), (68, 82, 20, 45), 20.0), fil)
+assert wall.aim_limited and not facet.aim_limited
+x, n = wall.evaluate(np.array([79.0]), np.array([21.0]))
+chief = al_photometry.reflect(np.array([[x[0], 79.0, 21.0]]) / np.linalg.norm([x[0], 79.0, 21.0]), n)
+assert tan(-40) < al_optics.screen(chief)[0][0] < tan(-10)                  # further right than asked, still left
+assert "H3" not in al_optics.LAMPS                                          # transverse coils: not yet
+
 # ---- polygons: clipping with lines and circles
 square = np.array([[-10.0, -10.0], [10.0, -10.0], [10.0, 10.0], [-10.0, 10.0]])
 half = al_layout.clip(square, al_layout.Line(np.array([1.0, 0.0]), 2.0))
@@ -225,6 +234,11 @@ assert np.max(np.hypot(Nz[:, 1], Nz[:, 2]) / Nz[:, 0]) < 1.5 / tan(5.0)    # (a 
 assert rc.cutoff_error < 0.1                                                # the facets between them are untouched
 dist_c = al_photometry.light_distribution(rc, spacing=1.0, n_axial=6, n_around=12)
 assert 0 < dist_c.flux_connections < 0.4 * dist_c.flux_beam
+masked = al_photometry.light_distribution(rc, spacing=1.0, n_axial=6, n_around=12, reflectance_connections=0.0)
+assert masked.flux_connections == 0.0 and al_photometry.glare(masked, cut) < 1.0 < al_photometry.glare(dist_c, cut)
+assert abs(masked.flux_beam + dist_c.flux_connections - dist_c.flux_beam) < 1e-6
+flat = al_photometry.Distribution(dist_c.h, dist_c.v, np.full_like(dist_c.intensity, 7.0), 1.0, 1.0, 1.0)
+assert np.allclose(flat.measured(), 7.0) and abs(dist_c.measured().mean() / dist_c.intensity.mean() - 1) < 0.05
 rows_c = {row[0]: row for row in al_photometry.test_points(dist_c, cut)}
 assert rows_c["50R"][3] > 10000 and rows_c["B50L"][3] < 350                # stray light of the walls stays low
 g_c, v_c = al_photometry.sharpness(dist_c, cut)
