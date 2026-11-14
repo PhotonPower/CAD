@@ -8,7 +8,8 @@ Sources
   points     emit evenly into all directions; the points of one source share its flux
 
 Sensors
-  TexelSensor   irradiance on faces: the flux arriving (from both sides) in every texel
+  TexelSensor   irradiance on faces: the flux arriving (from both sides) in every texel; also on
+                faces with a detector material, which the light passes
   Camera        a pinhole camera: radiance per pixel"""
 
 from __future__ import annotations
@@ -20,6 +21,19 @@ import numpy as np
 import pt_bsdf
 import pt_bvh
 import pt_mesh
+
+
+class _Part:
+    """The BVH of some of the mesh's triangles; hits name the triangles of the mesh."""
+
+    def __init__(self, mesh: pt_mesh.Mesh, tris: np.ndarray):
+        self.tris = tris
+        self.bvh = pt_bvh.BVH(mesh.v0[tris], mesh.e1[tris], mesh.e2[tris])
+
+    def intersect(self, o, d, tmax=None, *, any_hit: bool = False, accept=None):
+        inner = None if accept is None else (lambda ray, t, b1, b2: accept(ray, self.tris[t], b1, b2))
+        t, tri, b1, b2 = self.bvh.intersect(o, d, tmax, any_hit=any_hit, accept=inner)
+        return t, np.where(tri >= 0, self.tris[np.maximum(tri, 0)], -1), b1, b2
 
 
 @dataclass
@@ -44,7 +58,16 @@ class Scene:
         self.size = float(np.linalg.norm(hi - lo))
         self.eps = 1e-7 * max(self.size, 1e-12)
         self.flipped = self._orient(closed) if len(closed) else []
-        self.tri_material = np.asarray(entity_material, dtype=np.int64)[mesh.face_entity][mesh.face]
+        self.face_material = np.asarray(entity_material, dtype=np.int64)[mesh.face_entity]
+        self.tri_material = self.face_material[mesh.face]
+        # detectors are no surfaces for the light: they get a BVH of their own, used only to find
+        # where rays cross them
+        virtual = materials.kind[self.tri_material] == pt_bsdf.DETECTOR
+        self.face_virtual = materials.kind[self.face_material] == pt_bsdf.DETECTOR
+        self.detectors = None
+        if virtual.any():
+            self.detectors = _Part(mesh, np.nonzero(virtual)[0])
+            self.bvh = _Part(mesh, np.nonzero(~virtual)[0]) if not virtual.all() else None
         self._sources(sources)
 
     # ------------------------------------------------------------------ rays
@@ -52,11 +75,21 @@ class Scene:
         return self.mesh.accept(tri, b1, b2)
 
     def hit(self, o: np.ndarray, d: np.ndarray):
-        """Nearest hit: t, triangle (-1: none), b1, b2."""
+        """Nearest hit: t, triangle (-1: none), b1, b2. Detectors are not hit."""
+        if self.bvh is None:
+            n = len(o)
+            return np.full(n, np.inf), np.full(n, -1, dtype=np.int64), np.zeros(n), np.zeros(n)
         return self.bvh.intersect(o, d, accept=self._accept if self.mesh.masks.size else None)
 
     def occluded(self, o: np.ndarray, target: np.ndarray) -> np.ndarray:
-        return self.bvh.occluded(o, target - o, accept=self._accept if self.mesh.masks.size else None)
+        if self.bvh is None:
+            return np.zeros(len(o), dtype=bool)
+        return self.bvh.intersect(o, target - o, 1.0, any_hit=True,
+                                  accept=self._accept if self.mesh.masks.size else None)[1] >= 0
+
+    def crossing(self, o: np.ndarray, d: np.ndarray, tmax: np.ndarray):
+        """Nearest crossing of a detector before tmax: t, triangle (-1: none), b1, b2."""
+        return self.detectors.intersect(o, d, tmax, accept=self._accept if self.mesh.masks.size else None)
 
     def offset(self, p: np.ndarray, ng: np.ndarray, towards: np.ndarray) -> np.ndarray:
         """p moved a hair off its surface to the side of the direction `towards`."""
@@ -136,6 +169,9 @@ class Scene:
                 fs = np.nonzero(np.isin(mesh.face_entity, np.asarray(spec.entities)) & (mesh.face_area > 0))[0]
                 if not fs.size:
                     raise ValueError(f"source {spec.name!r}: its surfaces have no area")
+                if self.face_virtual[fs].any():
+                    raise ValueError(f"source {spec.name!r}: a detector cannot be a source (light passes it "
+                                     f"as if it were not there)")
                 if (self.face_source[fs] >= 0).any():
                     raise ValueError(f"source {spec.name!r}: a surface already belongs to another source")
                 self.face_source[fs] = len(flux)
@@ -249,6 +285,7 @@ class TexelSensor:
         self.texel_area = np.concatenate([mesh.texel_areas(int(f), w, h).ravel()
                                           for f, (w, h) in zip(self.faces, self.size)])
         self.area = float(mesh.face_area[self.faces].sum())
+        self.crossed = bool(scene.face_virtual[self.faces].any())   # light passes some of the faces
 
     def texel(self, tri: np.ndarray, uv: np.ndarray) -> np.ndarray:
         """Texel of points on triangles (-1: not on a sensor face)."""

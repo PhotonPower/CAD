@@ -9,6 +9,8 @@ side. One channel (radiometric, no colour). Kinds:
   glossy       a lobe around the mirror direction (normalised Phong), width from `roughness`
   glass        smooth dielectric with refractive index `ior` inside (behind the front side),
                Fresnel reflection and refraction; `absorption` (1/mm) inside (Beer–Lambert)
+  detector     no surface at all for the light: rays pass as if it were not there. Only a place
+               to measure the irradiance (the scene keeps such faces out of the tracing)
 
 mirror and glass scatter into single directions ("specular"); they cannot be connected to
 other points, only followed."""
@@ -19,8 +21,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-ABSORBER, DIFFUSE, MIRROR, GLOSSY, GLASS = range(5)
-KINDS = ["absorber", "diffuse", "mirror", "glossy", "glass"]
+ABSORBER, DIFFUSE, MIRROR, GLOSSY, GLASS, DETECTOR = range(6)
+KINDS = ["absorber", "diffuse", "mirror", "glossy", "glass", "detector"]
 
 
 @dataclass
