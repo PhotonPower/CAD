@@ -1,0 +1,9 @@
+{
+  "id": "pathtracer",
+  "name": "Path Tracer",
+  "version": "0.1.0",
+  "api": 1,
+  "entry": "pathtracer_plugin:PathTracerPlugin",
+  "requires": ["numpy"],
+  "description": "Light transport on the CAD model: objects as light sources, materials on the others; irradiance as textures on the faces and a camera image, by light tracing, path tracing or bidirectional path tracing."
+}
