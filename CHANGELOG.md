@@ -37,6 +37,7 @@ versioning: [SemVer](https://semver.org): from 1.0 on, the `.nfcad` format and t
   (W/m²) with a table per face, *Camera image* (radiance of a pinhole camera) in the Image window;
   light tracing, path tracing and bidirectional path tracing as one estimator with multiple
   importance sampling; *Show light paths* and *Show camera* as previews. NumPy only.
+  Material `detector`: a face the light passes unchanged, only to measure the irradiance there.
 - **Camera image** (Raytracer): the irradiance on the last surface of each path from many rays
   (default 200 000 per field and wavelength, millions possible), square pixels over the
   sensor, shown in the new **Image** window and optionally on the surface in 3D. The quick

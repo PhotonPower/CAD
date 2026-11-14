@@ -32,6 +32,8 @@ DEFAULT_MATERIALS = [
      "absorption": 0.0},
     {"name": "diffuser", "kind": "diffuse", "reflectance": 0.3, "transmittance": 0.6, "roughness": 0.2, "ior": 1.5,
      "absorption": 0.0},
+    {"name": "detector", "kind": "detector", "reflectance": 0.0, "transmittance": 0.0, "roughness": 0.2, "ior": 1.5,
+     "absorption": 0.0},
 ]
 DEFAULT_SOURCES = [{"name": "lamp", "flux": 1.0, "half_angle": 90.0, "side": "front"}]
 

@@ -70,8 +70,9 @@ MATERIALS = pt_bsdf.Materials.from_rows([
     {"name": "glossy", "kind": "glossy", "reflectance": 0.7, "roughness": 0.3},
     {"name": "tinted", "kind": "glass", "ior": 1.5, "absorption": 0.05},
     {"name": "sheet", "kind": "diffuse", "reflectance": 0.3, "transmittance": 0.6},
+    {"name": "detector", "kind": "detector"},
 ])
-BLACK, WHITE, MIRROR, GLASS, GLOSSY, TINTED, SHEET = range(7)
+BLACK, WHITE, MIRROR, GLASS, GLOSSY, TINTED, SHEET, DETECTOR = range(8)
 
 
 def scene_of(geometries, materials, sources, closed=()):
@@ -198,6 +199,40 @@ for method in pt_integrator.METHODS:
     centre = flux.reshape(10, 10)[4:6, 4:6].sum() / (solid_angle(20, 20, 50) / (4 * math.pi))
     assert abs(centre - 1) < 0.08, (method, centre)
     assert np.allclose(sensor.texel_area, 400)
+
+# ---- detectors: the light passes them. Two between the source and a white floor measure the solid
+# angles they fill (also what the floor sends back up); the floor gets what it gets without them
+floor = rect((-100, -100, 0), (200, 0, 0), (0, 200, 0))
+upper, lower = rect((-25, -25, 25), (50, 0, 0), (0, 50, 0)), rect((-10, -10, 10), (20, 0, 0), (0, 20, 0))
+source = [pt_scene.SourceSpec("p", 1.0, points=((0, 0, 50),))]
+plain = scene_of([floor], [BLACK], source)
+scene = scene_of([floor, upper, lower], [BLACK, DETECTOR, DETECTOR], source)
+assert scene.detectors is not None and scene.hit(np.array([[0.0, 0, 50]]), np.array([[0.0, 0, -1]]))[0][0] == 50
+sensor = pt_scene.TexelSensor(scene, [0, 1, 2], 2)
+assert sensor.crossed and not pt_scene.TexelSensor(plain, [0], 2).crossed
+expected = [solid_angle(100, 100, 50), solid_angle(25, 25, 25), solid_angle(10, 10, 40)]
+for method in pt_integrator.METHODS:
+    flux = values(scene, sensor, method, 40_000).reshape(3, 4).sum(axis=1) * 4 * math.pi
+    assert (np.abs(flux / expected - 1) < [0.05, 0.05, 0.12]).all(), (method, flux / expected)   # (few samples
+                                                                                                # on the small one)
+scene = scene_of([floor, upper], [WHITE, DETECTOR], source)          # the floor reflects 0.6: more passes
+sensor = pt_scene.TexelSensor(scene, [1], 2)
+reference = values(scene, sensor, "light", 80_000).sum()
+assert reference * 4 * math.pi > 1.1 * expected[1]
+for method in ("path", "bidir"):
+    got = values(scene, sensor, method, 40_000).sum()
+    assert abs(got / reference - 1) < 0.04, (method, got, reference)
+only = scene_of([upper], [DETECTOR], source)                         # nothing but a detector
+flux = values(only, pt_scene.TexelSensor(only, [0], 2), "light", 20_000).sum() * 4 * math.pi
+assert only.bvh is None and abs(flux / expected[1] - 1) < 0.05
+camera = pt_scene.Camera((0, 0, 200), (0, 0, 0), (0, 1, 0), 20.0, 2, 2)      # and a camera does not see them
+seen = [values(sc, camera, "path", 4_000, 2).mean() for sc in (scene_of([floor], [WHITE], source), scene)]
+assert abs(seen[1] / seen[0] - 1) < 1e-9
+try:
+    scene_of([floor, upper], [BLACK, DETECTOR], [pt_scene.SourceSpec("a", 1.0, entities=(1,))])
+    raise AssertionError("not refused")
+except ValueError as e:
+    assert "detector cannot be a source" in str(e), e
 
 # ---- a closed diffuse box with a point source inside: what arrives is Phi / (1 − rho)
 scene = scene_of([box((0, 0, 0), (100, 100, 100))], [WHITE], [pt_scene.SourceSpec("p", 1.0, points=((50, 50, 50),))], (0,))

@@ -7,7 +7,8 @@ that happens to hit a source / a light subpath that happens to hit a sensor face
 differ only in the set of (s, t) they use:
 
   light   light tracing: t = 0 for irradiance on faces (particles deposit their flux where they
-          land), t = 1 for a camera (every vertex of a light path is connected to the camera)
+          land – or pass, on detector faces), t = 1 for a camera (every vertex of a light path is
+          connected to the camera)
   path    path tracing from the sensor: s = 0 (the path hits a source) and s = 1 (connection to a
           point of a source, "next event estimation")
   bidir   bidirectional path tracing: all of them
@@ -63,6 +64,9 @@ class Path:
         self.escape = np.full(n, -1, dtype=np.int64)         # vertex whose ray left the scene
         self.escape_dir = np.zeros((n, 3))
         self.rays = 0
+        #: where rays crossed detector faces: {k: [crossings]} for the rays towards vertex k – each
+        #: the vertex-k data (paths j, p, ns, wo, pf, tex, beta) of a subpath that ends there
+        self.cross: dict[int, list[dict]] = {}
 
     def cos(self, k: int, j: np.ndarray, w: np.ndarray) -> np.ndarray:
         """|cos| between the normal of vertex k and w; 1 for points."""
@@ -90,6 +94,8 @@ def _walk(scene, sensor, path: Path, start: dict, beta0: np.ndarray, rng, radian
         o = scene.offset(path.p[k - 1, idx], path.ng[k - 1, idx], dk)
         t, tri, b1, b2 = scene.hit(o, dk)
         path.rays += len(idx)
+        if not radiance and sensor is not None and not sensor.camera and sensor.crossed:
+            path.cross[k] = _crossings(scene, sensor, path, k, idx, o, dk, t, pdf[idx], beta[idx])
         got = tri >= 0
         lost = idx[~got]
         alive[lost] = False
@@ -137,6 +143,57 @@ def _walk(scene, sensor, path: Path, start: dict, beta0: np.ndarray, rng, radian
         d[idx] = wi
         pdf[idx] = pd
         alive[idx] = ok
+
+
+def _crossings(scene, sensor, path: Path, k: int, idx, o, d, tmax, pdf, beta) -> list[dict]:
+    """Where the rays towards vertex k cross detector faces of the sensor before they arrive (or
+    leave the scene): one entry per crossing along the rays (first, second, …)."""
+    mesh = scene.mesh
+    out = []
+    act = np.arange(len(idx))
+    done = np.zeros(len(idx))                                # distance already searched
+    for _ in range(64):
+        t, tri, b1, b2 = scene.crossing(o[act] + d[act] * done[act][:, None], d[act], tmax[act] - done[act])
+        path.rays += len(act)
+        got = tri >= 0
+        if not got.any():
+            break
+        act, t, tri, b1, b2 = act[got], t[got] + done[act[got]], tri[got], b1[got], b2[got]
+        done[act] = t + scene.eps
+        ns, uv = mesh.shade(tri, b1, b2)
+        cs = _dot(ns, d[act])
+        tex = sensor.texel(tri, uv)
+        ok = (tex >= 0) & (cs * _dot(mesh.ng[tri], d[act]) > 0)
+        a = act[ok]
+        if not a.size:
+            continue
+        j = idx[a]
+        p = o[a] + t[ok][:, None] * d[a]
+        dist2 = np.sum((p - path.p[k - 1, j]) ** 2, axis=1)
+        out.append({"j": j, "p": p, "ns": ns[ok], "wo": -d[a], "tex": tex[ok], "beta": beta[a],
+                    "pf": pdf[a] * np.abs(cs[ok]) / dist2})
+    return out
+
+
+def _detector_deposits(scene, sensor, light: Path, eye: Path | None, method: str, depth: int,
+                       accum: np.ndarray) -> None:
+    """The light subpaths that crossed detector faces: each crossing is the end of a path made
+    with t = 0, like a hit of a sensor face – only that the subpath goes on behind it."""
+    rows = ("p", "ns", "wo", "pf", "tex", "valid", "beta")
+    for k, crossings in light.cross.items():
+        s = k + 1
+        if s > depth + 1 or not enabled(method, False, s, 0):
+            continue
+        saved = {name: getattr(light, name)[k].copy() for name in rows}
+        for c in crossings:
+            j = c["j"]
+            light.valid[k] = False
+            light.valid[k, j] = True
+            for name in ("p", "ns", "wo", "pf", "tex", "beta"):
+                getattr(light, name)[k, j] = c[name]
+            _strategy(scene, sensor, light, eye, s, 0, method, accum)
+        for name in rows:
+            getattr(light, name)[k] = saved[name]
 
 
 def light_subpaths(scene, sensor, n: int, k: int, rng) -> Path:
@@ -356,6 +413,8 @@ def render(scene, sensor, method: str, samples: int, depth: int, *, seed: int = 
             for t in range(0, k_eye + 1):
                 if 2 <= s + t <= depth + 1 and enabled(method, sensor.camera, s, t):
                     rays += _strategy(scene, sensor, light, eye, s, t, method, accum)
+        if light.cross:
+            _detector_deposits(scene, sensor, light, eye, method, depth, accum)
         done += n
         if progress is not None:
             progress(done / samples)

@@ -22,6 +22,7 @@ wavelengths yet.
    | `mirror` | reflectance | ideal mirror |
    | `glossy` | reflectance, roughness | a lobe around the mirror direction (normalised Phong, exponent 2/roughness² − 2) |
    | `glass` | index, absorption | smooth dielectric: Fresnel reflection and refraction, absorption inside (1/mm); the body must be closed and stand in air |
+   | `detector` | – | no surface for the light – it passes as if the object were not there; only a place to measure the irradiance (a measuring plane in free space). Not visible to the camera, cannot be a source |
 
 2. **Sources** (table in the panel: flux in W, half-angle, side). Select surfaces, bodies or
    points, write a source's name into *Source for the selection* and choose *Selection: make it a
@@ -38,6 +39,8 @@ wavelengths yet.
 3. **Irradiance.** *Irradiance on* (use the selection; empty: every surface), *Texels (longer
    side)*, then *Irradiance*: every face gets a texture with the irradiance in W/m² – the light
    arriving from both sides –, and the *Table* window lists area, flux, mean and maximum per face.
+   To measure without disturbing the light, draw a surface where you want to know the
+   irradiance and give it the material `detector`.
    Texels in which a trimmed face has hardly any area stay empty.
 
 4. **Camera.** Position, *Looks at* (both with *Pick*), up direction, horizontal field of view and
@@ -78,6 +81,6 @@ diffuse box, a glass plate).
 ## Not yet
 
 Colour and wavelengths (dispersion), measured materials and rough glass, glass touching glass,
-detectors that light passes through unchanged, sources with a measured distribution, a lens
+sources with a measured distribution, a lens
 camera with depth of field, the exact NURBS surface at a hit (instead of the triangle), a
 compiled intersection kernel, keeping results with the document.
