@@ -24,7 +24,8 @@ class Lamp:
     length: float                 # mm, filament (coil) length
     diameter: float               # mm, coil diameter
     flux: float                   # lm at the test voltage
-    axial: bool = True            # coil along the lamp axis (X); else transverse (along Y)
+    axial: bool = True            # coil along the lamp axis (X); else transverse (along Y) – not yet
+                                  # supported by the facets: both coil ends touch the cut-off over whole areas
     window: tuple[float, float] | None = None   # light only into azimuths atan2(z, y) in this range / deg
     note: str = ""
 
@@ -33,7 +34,6 @@ class Lamp:
 # typical values of the coil – check the lamp's R37 sheet or data sheet; "Custom" takes the panel's.
 LAMPS: dict[str, Lamp] = {
     "H1": Lamp("H1", 5.0, 1.4, 1550.0, note="55 W, axial coil"),
-    "H3": Lamp("H3", 5.0, 1.4, 1450.0, axial=False, note="55 W, transverse coil"),
     "H4 (low beam)": Lamp("H4 (low beam)", 5.5, 1.5, 1000.0, window=(-15.0, 180.0),
                           note="55 W coil above its shield: light only into the upper 195°"),
     "H7": Lamp("H7", 4.1, 1.3, 1500.0, note="55 W, axial coil"),

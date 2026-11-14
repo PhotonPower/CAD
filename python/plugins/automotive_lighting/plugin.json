@@ -1,9 +1,9 @@
 {
   "id": "al",
   "name": "Automotive Lighting",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "api": 1,
   "entry": "al_plugin:AutomotiveLighting",
   "requires": ["numpy"],
-  "description": "Clear-lens headlamp: the facetted reflector of a low beam for a filament lamp (H4, H7, …) – mirror strips whose filament images touch the cut-off line, filament images and light distribution (UN/ECE R112 test points)."
+  "description": "Clear-lens headlamp: the facetted reflector of a low beam for a filament lamp (H4, H7, …) – mirror strips whose filament images touch the cut-off line, joined by walls with draft and fillets to one mouldable surface; filament images and light distribution (UN/ECE R112 test points)."
 }

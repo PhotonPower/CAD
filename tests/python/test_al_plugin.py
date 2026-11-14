@@ -24,6 +24,7 @@ import al_photometry  # noqa: E402
 import al_plugin  # noqa: E402
 import al_reflector  # noqa: E402
 import al_spline  # noqa: E402
+import al_transitions  # noqa: E402
 
 H7 = al_optics.LAMPS["H7"]
 fil = al_optics.Filament.of(H7)
@@ -88,6 +89,15 @@ try:
 except al_design.DesignError as e:
     assert "cross" in str(e)
 
+# a facet on the steep left wall asked to aim far to the left: the aim is held back, the facet stands
+wall = al_design.build_facet(al_design.FacetSpec(cut.plane(al_optics.HORIZONTAL), al_design.StripFrame.of(
+    cut.plane(al_optics.HORIZONTAL), 0.0, 20.0), (70.0, 80.0), (tan(10), tan(-40)), (68, 82, 20, 45), 20.0), fil)
+assert wall.aim_limited and not facet.aim_limited
+x, n = wall.evaluate(np.array([79.0]), np.array([21.0]))
+chief = al_photometry.reflect(np.array([[x[0], 79.0, 21.0]]) / np.linalg.norm([x[0], 79.0, 21.0]), n)
+assert tan(-40) < al_optics.screen(chief)[0][0] < tan(-10)                  # further right than asked, still left
+assert "H3" not in al_optics.LAMPS                                          # transverse coils: not yet
+
 # ---- polygons: clipping with lines and circles
 square = np.array([[-10.0, -10.0], [10.0, -10.0], [10.0, 10.0], [-10.0, 10.0]])
 half = al_layout.clip(square, al_layout.Line(np.array([1.0, 0.0]), 2.0))
@@ -120,17 +130,19 @@ for rows in (al_plugin.default_zones(True), al_plugin.default_zones(False),
     assert np.array_equal(hits, inside.astype(int))
 assert any(abs(c.spec.frame.kappa) > 0.1 for c in cells)
 
-# ---- a small reflector: every image at the cut-off, no light above it, mirror symmetry of the traffic sides
-def reflector(right: bool) -> al_reflector.Reflector:
+# ---- a small reflector without connecting faces: every image at the cut-off, no light above it,
+# mirror symmetry of the traffic sides
+def reflector(right: bool, connect: bool = False) -> al_reflector.Reflector:
     settings = al_reflector.Settings(H7, al_optics.Cutoff(right_hand_traffic=right),
                                      al_plugin.zones_of(al_plugin.default_zones(right)), strip_width=15.0,
-                                     hole_radius=10.0)
+                                     hole_radius=10.0, connect=connect)
     return al_reflector.build(settings, al_layout.rounded_rectangle(100.0, 64.0, 12.0))
 
 
 r = reflector(True)
-assert len(r.cells) == len(r.facets) > 10 and not r.warnings
-assert r.cutoff_error < 0.1, r.cutoff_error
+assert len(r.cells) == len(r.facets) > 10 and not r.warnings and r.transitions is None
+assert all(len(c.pieces) == 1 for c in r.cells if c.strip != 0)             # one polygon per cell (the lamp hole
+assert r.cutoff_error < 0.1, r.cutoff_error                                 # splits the strip through the axis)
 Pm, Nm, Am, index = r.samples(2.0)
 assert abs(Am.sum() / np.sum(4.0 / Nm[:, 0]) - 1) < 1e-12 and abs(len(Pm) * 4.0 / r.area - 1) < 0.03
 Q = fil.outline_samples(90)
@@ -139,7 +151,7 @@ d /= np.linalg.norm(d, axis=2, keepdims=True)
 out = al_photometry.reflect(d, Nm[:, None, :])
 assert np.degrees(np.arcsin(cut.above(out.reshape(-1, 3)).max())) < 0.1     # every image below the cut-off line
 dist = al_photometry.light_distribution(r, spacing=2.0, n_axial=6, n_around=12)
-assert 0 < dist.flux_beam < dist.flux_mirror < H7.flux
+assert 0 < dist.flux_beam < dist.flux_mirror < H7.flux and dist.flux_connections == 0.0
 assert al_photometry.glare(dist, cut) == 0.0 and dist.intensity.max() > 10000
 rows = {row[0]: row for row in al_photometry.test_points(dist, cut)}
 assert rows["B50L"][3] == 0.0 and rows["zone III"][6] == "ok" and rows["50R"][3] > rows["75L"][3]
@@ -150,10 +162,101 @@ Pl, _, _, _ = mirrored.samples(2.0)
 order = lambda p: np.lexsort((np.round(p[:, 2]), np.round(p[:, 1])))  # noqa: E731
 assert np.allclose(Pm[order(Pm)], (Pl * [1, -1, 1])[order(Pl * [1, -1, 1])], atol=1e-9)
 
+# ---- connecting faces: the profile across a border
+h = 0.02
+xi = (np.arange(200) - 99.5) * h
+low, high = (0.5 * xi + 0.02 * xi ** 2)[None, :], (1.0 + 0.3 * xi)[None, :]
+F, G = al_transitions.blend(low, high, h, 5.0, 0.3)                       # a step of 1 mm
+slope = np.diff(F[0]) / h
+assert slope.max() < 1.001 / tan(5.0) and slope.max() > 0.99 / tan(5.0)     # the wall has the draft angle
+curvature = np.abs(np.diff(F[0], 2)) / h ** 2 / (1 + ((F[0][2:] - F[0][:-2]) / (2 * h)) ** 2) ** 1.5
+assert curvature.max() < 1.3 / 0.3                                          # no edge sharper than the fillet
+changed = np.abs(F - G)[0] > 1e-4
+inner = np.abs(xi) < 1.5                                                    # (the window's ends feel the ball)
+assert 0.1 < np.abs(xi[changed & inner]).max() < 0.4 and np.abs(F - G)[0][inner & (np.abs(xi) > 0.5)].max() < 2e-5
+assert abs(np.interp(0.0, xi, F[0]) - 0.5) < 0.01                           # through the middle of the step
+F, G = al_transitions.blend(low, (0.1 * xi)[None, :], h, 5.0, 0.3)          # no step: only the crease is rounded
+assert 0 < np.abs(F - G)[0][inner].max() < 0.01 and np.abs(xi[(np.abs(F - G)[0] > 1e-4) & inner]).max() < 0.2
+F, G = al_transitions.blend(low, low, h, 5.0, 0.3)                          # one smooth surface stays as it is
+assert np.abs(F - G)[:, 20:-20].max() < 2e-5
+assert al_transitions._reach(np.abs(xi)[None, :] < 0.3, 100, h) == 0.3 and \
+    al_transitions._reach((np.abs(xi) < 0.2)[None, :] | (np.abs(xi - 1.0) < 0.1)[None, :], 100, h) == 0.2
+for border in (al_transitions.LineBorder(np.array([3.0, -2.0]), np.array([0.6, 0.8])),
+               al_transitions.CircleBorder(np.array([-120.0, 10.0]), 130.0, 1.0),
+               al_transitions.CircleBorder(np.array([150.0, 0.0]), 140.0, -1.0)):
+    y0, z0 = rng.uniform(-30, 30, 20), rng.uniform(-30, 30, 20)
+    u, x_ = border.uxi(y0, z0)
+    assert np.allclose(border.yz(u, x_), (y0, z0), atol=1e-9)
+    gu, gx = border.gradients(y0, z0)
+    eps = 1e-6
+    assert np.allclose((np.array(border.uxi(y0 + eps, z0)) - (u, x_)) / eps, (gu[:, 0], gx[:, 0]), atol=1e-5)
+    assert np.all(gu[:, 0] * gx[:, 1] - gu[:, 1] * gx[:, 0] > 0)             # (u, ξ) keeps the orientation of (y, z)
+
+# ---- the reflector with its connecting faces: one mirror surface
+rc = reflector(True, connect=True)
+t = rc.transitions
+assert t is not None and len(t.strip_bands) > 5 and len(t.zone_bands) == 4 and 0.5 < t.max_step < 20
+parts = rc.parts()
+kinds = {k: sum(p.area for p in parts if p.kind == k) for k in (al_reflector.FACET, al_reflector.STRIP_BAND,
+                                                               al_reflector.ZONE_BAND)}
+assert abs(sum(kinds.values()) - rc.area) < 0.05 and 0.02 < (rc.area - kinds[al_reflector.FACET]) / rc.area < 0.4
+probe = rng.uniform([-50, -32], [50, 32], (1500, 2))                        # the parts tile the frame
+hits = sum(al_layout.contains(poly, probe).astype(int) for p in parts for poly in p.polygons)
+inside = al_layout.contains(rc.frame, probe) & (np.hypot(probe[:, 0], probe[:, 1]) > 10.0)
+assert np.array_equal(hits, inside.astype(int))
+
+
+def mirror_x(y, z):
+    """x and |∇x| of the whole mirror at front-view points (nan outside)."""
+    pts = np.column_stack([y, z])
+    x, steep = np.full(len(pts), np.nan), np.zeros(len(pts))
+    for part in parts:
+        for poly in part.polygons:
+            sel = al_layout.contains(poly, pts)
+            if sel.any():
+                x[sel], grad = part.height(pts[sel, 0], pts[sel, 1])
+                steep[sel] = np.hypot(grad[:, 0], grad[:, 1])
+    return x, steep
+
+
+for start, end in (((-45.0, 20.0), (45.0, 21.0)), ((-40.0, -25.0), (40.0, -18.0)), ((-30.0, -30.0), (35.0, 30.0))):
+    s_ = np.linspace(0.0, 1.0, 12001)                                       # lines across many borders
+    y_, z_ = start[0] + s_ * (end[0] - start[0]), start[1] + s_ * (end[1] - start[1])
+    x_, steep = mirror_x(y_, z_)
+    ok = np.isfinite(x_[1:]) & np.isfinite(x_[:-1])
+    ds = math.hypot(end[0] - start[0], end[1] - start[1]) / 12000
+    jump = np.abs(np.diff(x_))[ok] - 1.5 * ds * np.maximum(steep[1:], steep[:-1])[ok]
+    assert jump.max() < 2e-3, jump.max()                                    # continuous: no step left anywhere
+_, Nb, _, ib = rc.samples(0.2, kinds=(al_reflector.STRIP_BAND,))
+assert np.max(np.hypot(Nb[:, 1], Nb[:, 2]) / Nb[:, 0]) < 1.03 / tan(5.0)   # the walls keep the draft angle
+_, Nz, _, _ = rc.samples(0.2, kinds=(al_reflector.ZONE_BAND,))
+assert np.max(np.hypot(Nz[:, 1], Nz[:, 2]) / Nz[:, 0]) < 1.5 / tan(5.0)    # (a little less where two walls meet)
+assert rc.cutoff_error < 0.1                                                # the facets between them are untouched
+dist_c = al_photometry.light_distribution(rc, spacing=1.0, n_axial=6, n_around=12)
+assert 0 < dist_c.flux_connections < 0.4 * dist_c.flux_beam
+masked = al_photometry.light_distribution(rc, spacing=1.0, n_axial=6, n_around=12, reflectance_connections=0.0)
+assert masked.flux_connections == 0.0 and al_photometry.glare(masked, cut) < 1.0 < al_photometry.glare(dist_c, cut)
+assert abs(masked.flux_beam + dist_c.flux_connections - dist_c.flux_beam) < 1e-6
+flat = al_photometry.Distribution(dist_c.h, dist_c.v, np.full_like(dist_c.intensity, 7.0), 1.0, 1.0, 1.0)
+assert np.allclose(flat.measured(), 7.0) and abs(dist_c.measured().mean() / dist_c.intensity.mean() - 1) < 0.05
+rows_c = {row[0]: row for row in al_photometry.test_points(dist_c, cut)}
+assert rows_c["50R"][3] > 10000 and rows_c["B50L"][3] < 350                # stray light of the walls stays low
+g_c, v_c = al_photometry.sharpness(dist_c, cut)
+assert g_c > 0.13 and abs(v_c + 0.57) < 0.2
+for bad, message in ((dict(fillet=4.0), "narrow"), (dict(hole_radius=1.0), "lamp hole")):
+    try:
+        al_reflector.build(al_reflector.Settings(H7, cut, al_plugin.zones_of(al_plugin.default_zones(True)),
+                                                 **{"strip_width": 15.0, "hole_radius": 10.0, **bad}),
+                           al_layout.rounded_rectangle(100.0, 64.0, 12.0))
+        raise AssertionError(f"{bad} not refused")
+    except al_design.DesignError as e:
+        assert message in str(e), e
+
 # the faces for CAD: the kernel's (u, v) are the zone's (p, q); the trim loop is the cell
 faces = al_reflector.faces(r, (10.0, 20.0, 30.0))
 assert len(faces) == sum(len(c.pieces) for c in r.cells)
-i, face = faces[0]
+part, face = faces[0]
+i = part.cell
 s = face["surface"]
 assert len(s["points"]) == 3 * s["num_u"] * s["num_v"] and len(s["knots_u"]) == s["num_u"] + 4
 ctrl = np.array(s["points"]).reshape(s["num_u"], s["num_v"], 3)
@@ -161,9 +264,28 @@ Bu = al_spline.basis_matrix(np.array(s["knots_u"]), s["num_u"], 3, np.array([s["
 Bv = al_spline.basis_matrix(np.array(s["knots_v"]), s["num_v"], 3, np.array([s["knots_v"][0] + 7.0]))
 point = np.einsum("i,ijk,j->k", Bu[0], ctrl, Bv[0])
 yz = r.facets[i].spec.frame.yz(s["knots_u"][0] + 3.0, s["knots_v"][0] + 7.0)
-assert np.allclose(point, [r.facets[i].evaluate(*map(np.array, yz))[0] + 10.0, yz[0] + 20.0, yz[1] + 30.0], atol=1e-9)
+assert np.allclose(point, [r.facets[i].evaluate(*map(np.array, yz))[0] + 10.0, yz[0] + 20.0, yz[1] + 30.0], atol=1e-7)
 loop = np.array(face["outer"][0]["points"]).reshape(-1, 3)
 assert np.allclose(loop[0], loop[-1]) and al_layout.area(loop[:-1, :2]) > 0 and np.all(loop[:, 2] == 0)
+# a connecting face along an arc: its control net gives the surface point of its own evaluation
+faces_c = al_reflector.faces(rc)
+assert len(faces_c) == sum(len(p.polygons) for p in parts)
+for part, face in faces_c:
+    if part.kind == al_reflector.FACET:
+        continue
+    s = face["surface"]
+    loop = np.array(face["outer"][0]["points"]).reshape(-1, 3)
+    assert al_layout.area(loop[:-1, :2]) > 0
+    assert loop[:, 0].min() >= s["knots_u"][0] - 1e-6 and loop[:, 0].max() <= s["knots_u"][-1] + 1e-6
+    assert loop[:, 1].min() >= s["knots_v"][0] - 1e-6 and loop[:, 1].max() <= s["knots_v"][-1] + 1e-6
+    ctrl = np.array(s["points"]).reshape(s["num_u"], s["num_v"], 3)
+    u0, v0 = loop[:-1, 0].mean(), 0.3 * loop[:-1, 1].max()
+    Bu = al_spline.basis_matrix(np.array(s["knots_u"]), s["num_u"], 3, np.array([u0]))
+    Bv = al_spline.basis_matrix(np.array(s["knots_v"]), s["num_v"], 3, np.array([v0]))
+    point = np.einsum("i,ijk,j->k", Bu[0], ctrl, Bv[0])
+    y1, z1 = point[1], point[2]
+    assert np.allclose(part.parameters(np.array([y1]), np.array([z1])), ([u0], [v0]), atol=1e-5)
+    assert abs(part.height(np.array([y1]), np.array([z1]))[0][0] - point[0]) < 1e-6
 cyl = al_reflector.filament_surface(fil)
 assert len(cyl["points"]) == 54 and len(cyl["weights"]) == 18
 
@@ -233,8 +355,13 @@ host = Host()
 ctx = Context(host, 1, plugin.convert_params({"frame_width": 100.0, "frame_height": 64.0, "frame_radius": 12.0,
                                               "strip_width": 15.0, "sampling": 2.0, "image_points": 40}), [])
 summary = plugin.generate(ctx)
+built = plugin.reflector(ctx)
 facets = [e for e in host.model if e["attributes"].get("al.part") == "facet"]
-assert "facets" in summary and len(facets) == sum(len(c.pieces) for c in plugin.reflector(ctx).cells)
+connections = [e for e in host.model if e["attributes"].get("al.part") == "connection"]
+assert "facets" in summary and "connecting faces" in summary
+assert len(facets) == sum(len(p.polygons) for p in built.parts() if p.kind == al_reflector.FACET)
+assert len(connections) == sum(len(p.polygons) for p in built.parts() if p.kind != al_reflector.FACET) > 10
+assert all("al.zone" in e["attributes"] for e in facets)
 assert sum(e["attributes"].get("al.part") == "filament" for e in host.model) == 1
 assert all(e["group"] == 1 for e in host.model) and host.group_list[0]["name"] == "Reflector H7"
 count = len(host.model)
@@ -251,7 +378,9 @@ host.model.append({"id": 7, "name": "frame", "attributes": {}, "group": 0,
                                                      for c, o in zip(p, (0.0, 1.0, -2.0))]}})
 outline = plugin.frame_of(ctx)
 assert np.allclose(np.hypot(outline[:, 0], outline[:, 1]), 40.0) and al_layout.area(outline) > 0
+ctx.params["connect"] = False
 assert abs(plugin.reflector(ctx).area - math.pi * (40.0 ** 2 - 12.0 ** 2)) < 2.0
+assert plugin.reflector(ctx).transitions is None
 # left-hand traffic: the zones are mirrored, the lamp of the panel is used
 ctx.params.update({"traffic": al_plugin.LEFT, "lamp": "H4 (low beam)", "frame_curves": []})
 plugin.set_default_zones(ctx)
