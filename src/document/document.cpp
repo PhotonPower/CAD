@@ -586,11 +586,11 @@ void Document::touchLayer(LayerId id) {
 void Document::clear() { reset({default_layer()}, {}); }
 
 void Document::reset(std::vector<Layer> layers, std::vector<Entity> entities,
-                     std::vector<Group> groups) {
+                     std::vector<Group> groups, QJsonObject plugin_parameters, QJsonObject workflow) {
   undo_.clear();
   entities_.clear();
-  plugin_parameters_ = {};
-  workflow_ = {};
+  plugin_parameters_ = std::move(plugin_parameters);
+  workflow_ = std::move(workflow);
   settings_dirty_ = false;
   groups_ = std::move(groups);
   layers_ = std::move(layers);

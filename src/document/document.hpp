@@ -149,9 +149,11 @@ class Document : public QObject {
   void setEntityLayer(EntityId id, LayerId layer);
   /// Removes everything, keeps the default layer, clears the undo stack.
   void clear();
-  /// Replaces the content (after loading a file); clears the undo stack.
-  void reset(std::vector<Layer> layers, std::vector<Entity> entities,
-             std::vector<Group> groups = {});
+  /// Replaces the content (after loading a file); clears the undo stack. The plugin parameters and
+  /// the node workflow of a loaded file are set before `documentReset` is emitted, so that whoever
+  /// reacts to it (the node workflow window) sees the loaded state.
+  void reset(std::vector<Layer> layers, std::vector<Entity> entities, std::vector<Group> groups = {},
+             QJsonObject plugin_parameters = {}, QJsonObject workflow = {});
 
  signals:
   void entityAdded(nfcad::document::EntityId id);
