@@ -270,8 +270,16 @@ def build_facet(spec: FacetSpec, fil: Filament, *, step: float = 0.5, knot_spaci
     a_lo, a_hi = spec.aim_range
 
     def aim_at(p: float, q: float) -> float:
+        # linear across the strip; beyond its borders it levels off smoothly (10 % further at most):
+        # the facet continues there without aiming ever further sideways
         s = (fr.strip_coordinate(p, q) - c_lo) / (c_hi - c_lo)
-        return a_lo + (a_hi - a_lo) * min(max(s, -0.25), 1.25)
+        if s > 1.0:
+            t = min(s - 1.0, 0.2)
+            s = 1.0 + t - t * t / 0.4
+        elif s < 0.0:
+            t = min(-s, 0.2)
+            s = -(t - t * t / 0.4)
+        return a_lo + (a_hi - a_lo) * s
 
     # grid along the strips: q_start is a node, the B-spline sites are nodes (knot spacing 3 h)
     h = step
@@ -341,8 +349,9 @@ def build_facet(spec: FacetSpec, fil: Filament, *, step: float = 0.5, knot_spaci
                               "the strip width or the zone's extent")
         pp = P[..., 1] * fr.e_p[0] + P[..., 2] * fr.e_p[1]     # (strips, nodes)
         if np.any(np.diff(pp, axis=0) <= 0.0):
-            raise DesignError("the strips of a facet cross (the aims converge too strongly): let the aims "
-                              "of the zone run the other way or reduce the spread")
+            raise DesignError("the strips of a facet cross: its aims converge too strongly (let the aims of "
+                              "the zone run the other way or reduce the spread), or it is aimed so far sideways "
+                              "that the light would have to pass the mirror's own wall")
         lo, hi = pp[0].max(), pp[-1].min()
         if lo <= p0 + 1e-9 and hi >= p1 - 1e-9:
             break

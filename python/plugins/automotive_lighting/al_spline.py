@@ -59,6 +59,42 @@ def basis_matrix(knots: np.ndarray, n: int, degree: int, t, deriv: int = 0) -> n
     return out
 
 
+def local_basis(knots: np.ndarray, n: int, degree: int, t: np.ndarray, deriv: int = 0) -> tuple[np.ndarray, np.ndarray]:
+    """The degree + 1 basis functions that do not vanish at each t (or their first derivatives):
+    (first index (m,), values (m, degree + 1)) – the functions first … first + degree. t within
+    the domain."""
+    t = np.asarray(t, dtype=float)
+    span = np.clip(np.searchsorted(knots, t, side="right") - 1, degree, n - 1)
+
+    def values(p: int) -> np.ndarray:        # N_{span-p … span, p}
+        N = np.zeros((len(t), p + 1))
+        N[:, 0] = 1.0
+        for j in range(1, p + 1):
+            saved = np.zeros(len(t))
+            for r in range(j):
+                right = knots[span + r + 1] - t
+                left = t - knots[span + 1 - j + r]
+                temp = N[:, r] / (right + left)
+                N[:, r] = saved + right * temp
+                saved = left * temp
+            N[:, j] = saved
+        return N
+
+    if deriv == 0:
+        return span - degree, values(degree)
+    low = values(degree - 1)                 # N_{span-degree+1 … span, degree-1}
+    D = np.zeros((len(t), degree + 1))
+    for a in range(degree + 1):
+        i = span - degree + a
+        if a >= 1:
+            d0 = knots[i + degree] - knots[i]
+            D[:, a] += degree * low[:, a - 1] / np.where(d0 > 0, d0, 1.0)
+        if a <= degree - 1:
+            d1 = knots[i + degree + 1] - knots[i + 1]
+            D[:, a] -= degree * low[:, a] / np.where(d1 > 0, d1, 1.0)
+    return span - degree, D
+
+
 class Graph:
     """x = f(p, q): a bicubic B-spline over [p0, p1] x [q0, q1], interpolating values given at the
     Greville abscissae. The control points of (p, q) at the Greville abscissae make the
@@ -79,18 +115,24 @@ class Graph:
         self.coeff = np.linalg.solve(Bp, np.linalg.solve(Bq, np.asarray(values, dtype=float).T).T)
 
     def evaluate(self, p, q) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """f, ∂f/∂p, ∂f/∂q at scattered points (arrays of the same shape)."""
+        """f, ∂f/∂p, ∂f/∂q at scattered points (arrays of the same shape). Outside the rectangle
+        the surface continues with the slope of its rim (C1)."""
         p = np.asarray(p, dtype=float)
         shape = p.shape
         p, q = p.reshape(-1), np.asarray(q, dtype=float).reshape(-1)
-        Bp = basis_matrix(self.knots_p, self.n_p, DEGREE, p)
-        Bq = basis_matrix(self.knots_q, self.n_q, DEGREE, q)
-        Dp = basis_matrix(self.knots_p, self.n_p, DEGREE, p, deriv=1)
-        Dq = basis_matrix(self.knots_q, self.n_q, DEGREE, q, deriv=1)
-        cq = self.coeff @ Bq.T  # (n_p, N)
-        f = np.einsum("ni,in->n", Bp, cq)
-        fp = np.einsum("ni,in->n", Dp, cq)
-        fq = np.einsum("ni,in->n", Bp, self.coeff @ Dq.T)
+        pc = np.clip(p, self.knots_p[0], self.knots_p[-1])
+        qc = np.clip(q, self.knots_q[0], self.knots_q[-1])
+        ip, Bp = local_basis(self.knots_p, self.n_p, DEGREE, pc)
+        iq, Bq = local_basis(self.knots_q, self.n_q, DEGREE, qc)
+        _, Dp = local_basis(self.knots_p, self.n_p, DEGREE, pc, deriv=1)
+        _, Dq = local_basis(self.knots_q, self.n_q, DEGREE, qc, deriv=1)
+        offsets = np.arange(DEGREE + 1)
+        local = self.coeff[(ip[:, None] + offsets)[:, :, None], (iq[:, None] + offsets)[:, None, :]]   # (N, 4, 4)
+        along_q = np.einsum("nab,nb->na", local, Bq)
+        f = np.einsum("na,na->n", along_q, Bp)
+        fp = np.einsum("na,na->n", along_q, Dp)
+        fq = np.einsum("nab,na,nb->n", local, Bp, Dq)
+        f = f + fp * (p - pc) + fq * (q - qc)
         return f.reshape(shape), fp.reshape(shape), fq.reshape(shape)
 
     def evaluate_grid(self, p, q) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

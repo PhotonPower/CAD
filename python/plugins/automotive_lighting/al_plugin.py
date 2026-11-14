@@ -1,10 +1,11 @@
 """Automotive Lighting plugin: the facetted reflector of a clear-lens headlamp (low beam).
 
 For a filament lamp (H7, H4, …) and the frame of the reflector, the mirror is cut into zones and
-strips; every strip is a surface whose filament images touch the cut-off line (al_design). Step 1:
-the facets as trimmed NURBS faces, the filament images and the light distribution with the test
-points of UN/ECE R112. Coordinates: +X the driving direction, +Y left, +Z up, the filament centre
-at *Filament centre*.
+strips; every strip is a surface whose filament images touch the cut-off line (al_design); walls
+with draft and fillets connect the strips to one mirror surface that can be moulded
+(al_transitions). The faces as trimmed NURBS, the filament images and the light distribution with
+the test points of UN/ECE R112. Coordinates: +X the driving direction, +Y left, +Z up, the filament
+centre at *Filament centre*.
 """
 
 from __future__ import annotations
@@ -109,6 +110,14 @@ class AutomotiveLighting(Plugin):
         "knot_spacing": Param.number(1.5, min=0.3, max=10.0, decimals=2, unit="mm", label="Surface knots every",
                                      group="Reflector", description="of the facets' B-splines; smaller: closer to "
                                                                     "the computed strips, more control points"),
+        "connect": Param.boolean(True, label="Connecting faces", group="Connecting faces",
+                                 description="walls with draft and fillets between the facets: one mirror surface "
+                                             "that can be moulded; off: the bare facets with steps between them"),
+        "draft": Param.number(5.0, min=0.5, max=45.0, decimals=1, unit="°", label="Draft angle",
+                              group="Connecting faces",
+                              description="between the walls and the demoulding direction X"),
+        "fillet": Param.number(0.3, min=0.0, max=5.0, decimals=2, unit="mm", label="Fillet radius",
+                               group="Connecting faces", description="at the foot and the head of every wall"),
         "reflectance": Param.number(0.85, min=0.0, max=1.0, decimals=2, label="Reflectance", group="Analysis"),
         "sampling": Param.number(1.0, min=0.2, max=10.0, decimals=2, unit="mm", label="Mirror points every",
                                  group="Analysis", description="lattice of the light distribution"),
@@ -153,7 +162,9 @@ class AutomotiveLighting(Plugin):
             frame = self.frame_of(ctx)
             settings = al_reflector.Settings(self.lamp_of(p), self.cutoff_of(p), zones_of(p["zones"]),
                                              focal=float(p["focal"]), strip_width=float(p["strip_width"]),
-                                             hole_radius=float(p["hole_radius"]), knot_spacing=float(p["knot_spacing"]))
+                                             hole_radius=float(p["hole_radius"]), knot_spacing=float(p["knot_spacing"]),
+                                             connect=bool(p["connect"]), draft=float(p["draft"]),
+                                             fillet=float(p["fillet"]))
             key = hashlib.sha256(repr(settings).encode() + frame.tobytes()).hexdigest()
             if getattr(self, "_built", (None, None))[0] != key:
                 def progress(fraction: float, text: str) -> None:
@@ -165,7 +176,8 @@ class AutomotiveLighting(Plugin):
             raise UserError(str(e)) from e
         return self._built[1]
 
-    @action("Generate reflector", description="The facets of the reflector as trimmed NURBS faces (and the filament)")
+    @action("Generate reflector", description="The mirror as trimmed NURBS faces – the facets and the connecting "
+                                              "faces between them – and the filament")
     def generate(self, ctx):
         r = self.reflector(ctx)
         origin = tuple(float(v) for v in ctx.params["position"])
@@ -177,21 +189,33 @@ class AutomotiveLighting(Plugin):
         ctx.add(al_reflector.filament_surface(r.filament, origin), f"Filament {r.settings.lamp.name}",
                 {"al.part": "filament"}, group)
         faces = al_reflector.faces(r, origin)
-        for k, (index, geometry) in enumerate(faces):
+        for k, (part, geometry) in enumerate(faces):
             ctx.check_cancel()
-            cell = r.cells[index]
-            zone = r.settings.zones[cell.zone]
-            ctx.add(geometry, f"Facet {cell.zone + 1}.{cell.strip}",
-                    {"al.part": "facet", "al.zone": cell.zone + 1, "al.strip": cell.strip, "al.branch": zone.branch},
-                    group)
-            ctx.progress(0.9 + 0.1 * (k + 1) / len(faces), "adding the facets …")
+            attributes = {"al.part": "facet" if part.kind == al_reflector.FACET else "connection"}
+            if part.cell >= 0:
+                cell = r.cells[part.cell]
+                attributes.update({"al.zone": cell.zone + 1, "al.strip": cell.strip,
+                                   "al.branch": r.settings.zones[cell.zone].branch})
+            ctx.add(geometry, part.label, attributes, group)
+            ctx.progress(0.9 + 0.1 * (k + 1) / len(faces), "adding the faces …")
         for w in r.warnings:
             ctx.log(f"warning: {w}")
         x0, x1 = r.depth()
         ctx.log(f"{len(r.cells)} facets in {len(r.settings.zones)} zones, mirror area {r.area / 100.0:.1f} cm² "
                 f"(front view), x from {x0 + origin[0]:.1f} to {x1 + origin[0]:.1f} mm; the filament images lie "
                 f"within {r.cutoff_error:.3f}° of the cut-off")
-        return f"{len(r.cells)} facets, images within {r.cutoff_error:.3f}° of the cut-off"
+        connected = ""
+        if r.transitions is not None:
+            t = r.transitions
+            parts = r.parts()
+            lost = sum(p.area for p in parts if p.kind != al_reflector.FACET)
+            _, N, _, index = r.samples(0.25, kinds=(al_reflector.STRIP_BAND, al_reflector.ZONE_BAND))
+            steepest = float(np.max(np.hypot(N[:, 1], N[:, 2]) / N[:, 0])) if len(N) else 0.0
+            ctx.log(f"{len(t.bands)} connecting faces: steps up to {t.max_step:.2f} mm, fillet radius {t.radius:g} mm, "
+                    f"smallest draft angle {math.degrees(math.atan2(1.0, steepest)):.1f}° (set: {t.draft:g}°; less "
+                    f"only where two walls meet), {100.0 * lost / r.area:.1f} % of the mirror area")
+            connected = f", {len(t.bands)} connecting faces"
+        return f"{len(r.cells)} facets{connected}, images within {r.cutoff_error:.3f}° of the cut-off"
 
     # ------------------------------------------------------------------ analysis
     @action("Filament images", description="The filament images of points all over the mirror on the measuring "
@@ -200,7 +224,7 @@ class AutomotiveLighting(Plugin):
         r = self.reflector(ctx)
         count = int(ctx.params["image_points"])
         spacing = max(0.5, math.sqrt(r.area / count))
-        P, N, _, _ = r.samples(spacing)
+        P, N, _, _ = r.samples(spacing, kinds=(al_reflector.FACET,))
         images = al_photometry.filament_images(P, N, r.filament)
         h_range, v_range = (-45.0, 45.0), (-15.0, 5.0)
         values, width, height = al_photometry.draw_images(images, r.settings.cutoff, h_range, v_range)
@@ -225,7 +249,7 @@ class AutomotiveLighting(Plugin):
         run = ctx.result_set(f"Low beam {r.settings.lamp.name}")
         ctx.image(run, "Luminous intensity", dist.intensity.reshape(-1), len(dist.h), len(dist.v),
                   extent=_extent(dist), x_label="H / °", y_label="V / °", unit="cd",
-                  description="single reflection at the facets; 625 cd = 1 lx at 25 m")
+                  description="single reflection at the facets and the connecting faces; 625 cd = 1 lx at 25 m")
         ctx.table(run, "R112 test points (class B, passing beam)",
                   ["point", "H / °", "V / °", "I / cd", "E at 25 m / lx", "required", ""],
                   al_photometry.test_points(dist, cutoff))
@@ -239,9 +263,10 @@ class AutomotiveLighting(Plugin):
         g, v_cut = al_photometry.sharpness(dist, cutoff)
         glare = al_photometry.glare(dist, cutoff)
         ctx.log(f"flux: lamp {dist.flux_lamp:.0f} lm, onto the mirror {dist.flux_mirror:.0f} lm, in the beam "
-                f"{dist.flux_beam:.0f} lm; maximum {dist.intensity.max():.0f} cd; cut-off at V = {v_cut:.2f}° with "
-                f"G = {g:.2f} (R112 asks for 0.13 … 0.40; this model has no stray light, a real lamp is softer); "
-                f"more than 0.2° above the cut-off at most {glare:.0f} cd")
+                f"{dist.flux_beam:.0f} lm, of it {dist.flux_connections:.0f} lm from the connecting faces; maximum "
+                f"{dist.intensity.max():.0f} cd; cut-off at V = {v_cut:.2f}° with G = {g:.2f} (R112 asks for 0.13 … "
+                f"0.40; the model's coil shines evenly and nothing scatters, a real lamp is softer); more than 0.2° "
+                f"above the cut-off at most {glare:.0f} cd")
         return (f"{dist.flux_beam:.0f} lm in the beam ({100.0 * dist.flux_beam / dist.flux_lamp:.0f} %), maximum "
                 f"{dist.intensity.max():.0f} cd, cut-off G = {g:.2f}")
 

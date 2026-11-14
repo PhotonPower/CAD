@@ -2,9 +2,9 @@
 luminous intensity of the low beam with the test points of UN/ECE R112.
 
 Model: the coil is a cylinder whose lateral surface shines evenly in all directions (Lambertian,
-luminance L = flux / (π · area)); every mirror point reflects once (reflectance ρ); no light that
-leaves the lamp directly, none from the connecting faces between the strips, no cover lens. NumPy
-only."""
+luminance L = flux / (π · area)); every mirror point – on the facets and on the connecting faces –
+reflects once (reflectance ρ) and nothing shades it; no light that leaves the lamp directly, no
+bulb glass, no cover lens. NumPy only."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from al_optics import Cutoff, Filament, Lamp, screen
-from al_reflector import Reflector
+from al_reflector import FACET, Reflector
 
 
 def reflect(d: np.ndarray, n: np.ndarray) -> np.ndarray:
@@ -96,6 +96,7 @@ class Distribution:
     flux_beam: float               # lm in the beam (all directions forward)
     flux_mirror: float             # lm that reach the mirror
     flux_lamp: float
+    flux_connections: float = 0.0  # lm of the beam that come from the connecting faces
 
     def at(self, h_deg: float, v_deg: float, half_h: float = 0.25, half_v: float = 0.1) -> float:
         """Mean intensity in a small window about a point (a photometer's aperture)."""
@@ -116,7 +117,9 @@ def light_distribution(reflector: Reflector, *, spacing: float = 1.0, n_axial: i
     every mirror point of a front-view lattice (`spacing`, mm)."""
     lamp: Lamp = reflector.settings.lamp
     fil = reflector.filament
-    P, N, A, _ = reflector.samples(spacing)
+    P, N, A, part = reflector.samples(spacing)
+    connection = np.array([p.kind != FACET for p in reflector.parts()], dtype=bool)[part] if len(part) else part
+    flux_connections = 0.0
     Q, nu, dA = fil.surface_samples(n_axial, n_around)
     luminance = lamp.flux / (math.pi * dA * len(Q))        # lm / (sr mm²)
     nh = int(round((h_range[1] - h_range[0]) / dh))
@@ -141,6 +144,7 @@ def light_distribution(reflector: Reflector, *, spacing: float = 1.0, n_axial: i
         flux_mirror += float(w.sum())
         out = d - 2.0 * np.einsum("mki,mi->mk", d, n)[..., None] * n[:, None, :]
         ok = (out[..., 0] > 1e-6) & (w > 0.0)
+        flux_connections += float((w * ok)[connection[start:start + chunk]].sum()) * reflectance
         w, out = w[ok] * reflectance, out[ok]
         flux_beam += float(w.sum())
         H = np.degrees(np.arctan(-out[:, 1] / out[:, 0]))
@@ -154,7 +158,7 @@ def light_distribution(reflector: Reflector, *, spacing: float = 1.0, n_axial: i
     th, tv = np.tan(np.radians(h))[None, :], np.tan(np.radians(v))[:, None]
     # solid angle of a cell: dh dv / (1 + h² + v²)^(3/2) in the tangents, dh = dH / cos² H
     omega = (math.radians(dh) * (1 + th ** 2)) * (math.radians(dv) * (1 + tv ** 2)) / (1 + th ** 2 + tv ** 2) ** 1.5
-    return Distribution(h, v, flux.reshape(nv, nh) / omega, flux_beam, flux_mirror, lamp.flux)
+    return Distribution(h, v, flux.reshape(nv, nh) / omega, flux_beam, flux_mirror, lamp.flux, flux_connections)
 
 
 # ------------------------------------------------------------------ UN/ECE R112, class B passing beam
@@ -231,13 +235,21 @@ def glare(dist: Distribution, cutoff: Cutoff, clearance: float = 0.2) -> float:
 
 def sharpness(dist: Distribution, cutoff: Cutoff, h_deg: float = 2.5) -> tuple[float, float]:
     """The cut-off as R112 measures it, on the vertical line `h_deg` on the side of the oncoming
-    traffic: G = log I(V) - log I(V + 0.1°), its maximum and the V where it lies (degrees)."""
+    traffic: G = log I(V) - log I(V + 0.1°), its maximum within 2° of the nominal cut-off and the V
+    where it lies (degrees). Only where I(V) is at least 2 % of the line's maximum: the weak stray
+    light above the cut-off is noisy in this computation and is no cut-off."""
     h = -h_deg if cutoff.right_hand_traffic else h_deg
     cols = (dist.h >= h - 0.5) & (dist.h <= h + 0.5)
     profile = dist.intensity[:, cols].mean(axis=1)
-    step = max(1, int(round(0.1 / (dist.v[1] - dist.v[0]))))
-    floor = max(float(profile.max()) * 1e-4, 1e-9)
-    logs = np.log10(np.maximum(profile, floor))
+    dv = dist.v[1] - dist.v[0]
+    step = max(1, int(round(0.1 / dv)))
+    top = float(profile.max())
+    if top <= 0.0:
+        return 0.0, float("nan")
+    logs = np.log10(np.maximum(profile, 1e-3 * top))
     g = logs[:-step] - logs[step:]
-    k = int(np.argmax(g))
-    return float(g[k]), float(dist.v[k] + 0.5 * (dist.v[step] - dist.v[0]))
+    valid = (np.abs(dist.v[:-step] + 0.5 * step * dv - cutoff.v_deg) <= 2.0) & (profile[:-step] >= 0.02 * top)
+    if not valid.any():
+        return 0.0, float("nan")
+    k = int(np.argmax(np.where(valid, g, -np.inf)))
+    return float(g[k]), float(dist.v[k] + 0.5 * step * dv)

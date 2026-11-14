@@ -2,15 +2,14 @@
 
 The reflector of a **clear-lens headlamp**: for a filament lamp (H1, H3, H4, H7, H8, H9, H11, HB3,
 HB4 or your own data) the mirror is facetted so that the low beam gets its **cut-off line** from the
-mirror alone. Needs only NumPy in the plugin environment.
+mirror alone, and the facets are joined to one surface that can be moulded. Needs only NumPy in
+the plugin environment.
 
 Coordinates: **+X** is the driving direction (the light leaves along +X), **+Y** left, **+Z** up; the
 centre of the filament lies at *Filament centre*. On the measuring screen H is positive to the right
 and V upwards.
 
-## Step 1 (this version)
-
-**Panel**
+## Panel
 
 - *Lamp*: the filament as a cylinder (length, diameter) and its luminous flux; nominal flux of
   UN/ECE R37, typical coil dimensions – check them against the lamp's sheet, or enter them under
@@ -20,6 +19,8 @@ and V upwards.
 - *Frame*: the outline of the mirror seen along X – closed curves drawn in CAD (*Frame (curves)*,
   joined end to end) or a rounded rectangle – and the radius of the lamp hole.
 - *Reflector*: the focal length of the base paraboloid, the strip width and the **zones**.
+- *Connecting faces*: on / off, the draft angle of the walls between the facets and the fillet
+  radius at their foot and head.
 - *Analysis*: reflectance, the lattice of mirror points, the number of filament images.
 
 **Zones.** A zone is a sector about the lamp axis (azimuth 0° = left, 90° = up, 180° = right, seen
@@ -31,19 +32,23 @@ spread of each strip). *below cut-off* keeps the images of a zone that far under
 rising branch carries it, the other flank forms the horizontal cut-off and the hot spot, top and
 bottom spread the light.
 
-**Actions**
+## Actions
 
-- **Generate reflector**: every facet as a trimmed NURBS face (bicubic B-spline, trimmed with its
-  cell) and the filament as a cylinder, in the model-tree group *Reflector &lt;lamp&gt;*; a new run
-  replaces the last reflector. The log gives the area, the depth and how close the filament images
-  lie to the cut-off.
-- **Filament images**: the outlines of the filament images of points all over the mirror on the
+- **Generate reflector**: the mirror as trimmed NURBS faces – every facet (bicubic B-spline,
+  trimmed with its cell) and every connecting face – and the filament as a cylinder, in the
+  model-tree group *Reflector &lt;lamp&gt;*; a new run replaces the last reflector. The faces carry
+  the attribute `al.part` (`facet`, `connection`, `filament`). The log gives the area, the depth,
+  how close the filament images lie to the cut-off, the highest step, the smallest draft angle
+  and the share of the mirror the connecting faces take.
+- **Filament images**: the outlines of the filament images of points all over the facets on the
   screen, with the cut-off line (*Image* window).
 - **Light distribution**: the luminous intensity (cd; 625 cd = 1 lx at 25 m) as an image, the test
   points and zones of UN/ECE R112 (class B, passing beam) as a table, a vertical cut through the
-  cut-off at 2.5° and a horizontal cut at V = −0.86° as curves; flux, the sharpness G of the
-  cut-off and the highest intensity above it in the log.
+  cut-off at 2.5° and a horizontal cut at V = −0.86° as curves; flux (also what the connecting
+  faces send into the beam – stray light), the sharpness G of the cut-off and the highest
+  intensity above it in the log.
 - **Show strips**: the start curve and some characteristic strips of every facet as lines.
+- **Default zones**: the zone table for the chosen traffic side.
 
 ## The method
 
@@ -83,11 +88,37 @@ Where the long edge of the filament image is parallel to the cut-off, the end of
 touches changes; the surface is smooth there but its curvature jumps (the strips are integrated
 with the change located inside the step).
 
+## Connecting faces
+
+Neighbouring facets meet with a step that changes along their border (each facet starts on the
+base paraboloid, then follows its own differential equation). So that the mirror is one surface
+that can be injection-moulded – demoulding along X – the facets are joined by **walls with a draft
+angle**, **rounded** at their foot and head. Across a border (ξ, in the front view) the mirror is
+the raw profile G – one facet for ξ < 0, the other for ξ > 0 – turned into
+
+    F1 = median(L, w, U)      the wall w through the middle of the step, with the slope
+                              cot(draft), kept between the envelopes L ≤ G ≤ U of that slope;
+    F2 = open(close(F1))      a ball of the fillet radius rolled over both sides.
+
+Where the step vanishes the wall does too, and only the crease between the facets is rounded.
+The profiles of all stations along a border make a **band**, a bicubic B-spline that runs out
+into the facets on both sides; the facets are trimmed back to it. There are two levels: the bands
+between the strips of a zone, then the bands along the rays between two zones – their two sides
+are the zones as built so far, strips and bands – so the junctions are covered too. All bands
+between zones have one width.
+
+What to expect: the walls keep the draft angle (a little less only where two walls meet at a
+junction – the smallest angle is logged); bands and facets join within about 0.01 mm; the bands
+take 10 – 15 % of the mirror with the default settings and send their light elsewhere – the
+light distribution shows it as stray light above the cut-off. Lower steps mean narrower walls:
+narrower strips, a smaller spread per strip, or neighbouring zones with similar aims.
+
 ## Limits of this version
 
-- The facets are separate faces: neighbouring strips meet with a step. The connecting faces with
-  draft and the fillets for injection moulding are the next step.
-- Photometry: the coil as an evenly shining cylinder, one reflection, no light leaving the lamp
-  directly, no bulb glass, no cover lens, no stray light – the cut-off is sharper than a real
-  lamp's (G far above R112's 0.40).
-- The frame should be convex or nearly so; the lamp axis is +X.
+- Photometry: the coil as an evenly shining cylinder, one reflection at the facets and the
+  connecting faces, nothing shades (a wall does not shadow the facet behind it), no light leaving
+  the lamp directly, no bulb glass, no cover lens. The cut-off is sharper than a real lamp's.
+- The lamp hole must be large enough for the bands between the zones, which meet at the lamp
+  axis; the strips must be wider than their connecting faces (both are reported).
+- The frame should be convex or nearly so; the lamp axis is +X; the faces are separate trimmed
+  surfaces (not sewn to a shell).

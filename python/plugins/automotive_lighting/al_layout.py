@@ -44,6 +44,20 @@ def contains(poly: np.ndarray, points: np.ndarray) -> np.ndarray:
     return inside
 
 
+def simplified(poly: np.ndarray, tolerance: float) -> np.ndarray:
+    """The polygon with the vertices left out that lie within `tolerance` of the line between
+    their neighbours that are kept (a quick outline for inside tests)."""
+    keep = [0]
+    for i in range(1, len(poly) - 1):
+        a, b = poly[keep[-1]], poly[i + 1]
+        d = b - a
+        off = abs(d[0] * (poly[i, 1] - a[1]) - d[1] * (poly[i, 0] - a[0])) / max(float(np.hypot(*d)), 1e-300)
+        if off > tolerance:
+            keep.append(i)
+    keep.append(len(poly) - 1)
+    return poly[keep]
+
+
 def _tidy(points: list) -> np.ndarray | None:
     """A counter-clockwise polygon without repeated points, or None if it has no area."""
     out: list[np.ndarray] = []
@@ -125,6 +139,62 @@ class Circle:
                 for i in range(1, n)]
 
 
+@dataclass(frozen=True)
+class Wedge:
+    """Keeps the sector from the ray az0 to the ray az1 (radians, counter-clockwise, any width but
+    180° and 360°), moved inwards by `inset`: one clip curve of two rays from an apex."""
+
+    az0: float
+    az1: float
+    inset: float = 0.0
+
+    closed = False
+
+    @property
+    def _lines(self):
+        n0 = np.array([-math.sin(self.az0), math.cos(self.az0)])     # left of the ray az0
+        n1 = np.array([math.sin(self.az1), -math.cos(self.az1)])     # right of the ray az1
+        return n0, n1
+
+    @property
+    def narrow(self) -> bool:
+        return (self.az1 - self.az0) % (2.0 * math.pi) < math.pi
+
+    @property
+    def apex(self) -> np.ndarray:
+        n0, n1 = self._lines
+        return np.linalg.solve(np.array([n0, n1]), np.array([self.inset, self.inset]))
+
+    def value(self, pts: np.ndarray) -> np.ndarray:
+        n0, n1 = self._lines
+        g0, g1 = pts @ n0 - self.inset, pts @ n1 - self.inset
+        return np.minimum(g0, g1) if self.narrow else np.maximum(g0, g1)
+
+    def crossings(self, a: np.ndarray, b: np.ndarray, ga: float, gb: float) -> list[float]:
+        apex, roots = self.apex, []
+        for normal, az in zip(self._lines, (self.az0, self.az1)):
+            fa, fb = (a - apex) @ normal, (b - apex) @ normal
+            if (fa >= 0.0) != (fb >= 0.0):
+                t = fa / (fa - fb)
+                hit = a + t * (b - a) - apex
+                if hit @ np.array([math.cos(az), math.sin(az)]) >= 0.0:      # on the ray, not behind the apex
+                    roots.append(t)
+        differ = (ga >= 0.0) != (gb >= 0.0)
+        if differ and len(roots) != 1:
+            roots = [min(max(ga / (ga - gb), 0.0), 1.0)]
+        if not differ and len(roots) == 1:
+            roots = []
+        return roots
+
+    def position(self, pt: np.ndarray) -> float:
+        n0, n1 = self._lines
+        d = pt - self.apex
+        return -float(np.hypot(*d)) if abs(d @ n0) <= abs(d @ n1) else float(np.hypot(*d))
+
+    def path(self, a: np.ndarray, b: np.ndarray, forward: bool) -> list[np.ndarray]:
+        return [self.apex] if self.position(a) * self.position(b) < 0.0 else []
+
+
 def clip(poly: np.ndarray, curve) -> list[np.ndarray]:
     """The parts of a simple polygon on the kept side of a line or circle (Weiler–Atherton for one
     clip curve): the polygon's boundary inside, joined along the curve."""
@@ -147,8 +217,9 @@ def clip(poly: np.ndarray, curve) -> list[np.ndarray]:
         surrounds = curve.closed and contains(poly, curve.centre[None, :])[0]
         if np.all(g >= 0.0):
             if surrounds and not curve.inside:
-                raise DesignError("a cell of the reflector would have a round hole (a strip border or the lamp "
-                                  "hole lies completely inside it) – use narrower strips or less sideways aim")
+                raise DesignError("a cell of the reflector would have a round hole (the lamp hole or a strip "
+                                  "border lies completely inside it) – use strips narrower than the lamp hole "
+                                  "or less sideways aim")
             return [poly]
         if surrounds and curve.inside:               # the whole circle lies inside the polygon
             start = curve.centre + np.array([curve.radius, 0.0])
@@ -276,24 +347,45 @@ class Cell:
         return sum(area(p) for p in self.pieces)
 
 
-def _sector(polys: list[np.ndarray], az0: float, az1: float) -> list[np.ndarray]:
-    """polys within the sector az0 … az1 (radians, at most 180° wide)."""
-    n0 = np.array([-math.sin(az0), math.cos(az0)])    # left of the ray az0
-    n1 = np.array([math.sin(az1), -math.cos(az1)])    # right of the ray az1
-    return clip_all(clip_all(polys, Line(n0, 0.0)), Line(n1, 0.0))
+def sector_curve(az_from: float, az_to: float, inset: float = 0.0):
+    """The clip curve of the sector az_from … az_to (degrees), moved inwards by `inset`: a wedge,
+    a line for a half plane, None for the full turn."""
+    span = (az_to - az_from) % 360.0 or 360.0
+    if span >= 360.0 - 1e-9:
+        return None
+    a0, a1 = math.radians(az_from), math.radians(az_from + span)
+    if abs(span - 180.0) < 1e-9:
+        return Line(np.array([-math.sin(a0), math.cos(a0)]), inset)
+    return Wedge(a0, a1, inset)
 
 
-def strip_curve(frame: StripFrame, c: float, keep_above: bool):
-    """The border c = const of a zone's strips as a clip curve keeping c >= const (or <=)."""
+def zone_region(frame_poly: np.ndarray, zone: "Zone", inset: float = 0.0) -> list[np.ndarray]:
+    """The frame within the zone's sector (moved inwards by `inset`); the lamp hole is cut out of
+    the strips afterwards (a whole zone around it would be a polygon with a hole)."""
+    curve = sector_curve(zone.az_from, zone.az_to, inset)
+    return [frame_poly] if curve is None else clip(frame_poly, curve)
+
+
+def outside_hole(polys: list[np.ndarray], hole_radius: float) -> list[np.ndarray]:
+    return clip_all(polys, Circle(np.zeros(2), hole_radius, inside=False)) if hole_radius > 0.0 else polys
+
+
+def strip_curve(frame: StripFrame, c: float, keep_above: bool, inset: float = 0.0):
+    """The border c = const of a zone's strips as a clip curve keeping c >= const (or <=), moved
+    by `inset` into the kept side."""
     if abs(frame.kappa) < 1e-7:
         normal = frame.e_p if keep_above else -frame.e_p
-        return Line(normal, c if keep_above else -c)
+        return Line(normal, (c if keep_above else -c) + inset)
     scale = 1.0 + frame.kappa * c / frame.focal
     if scale <= 0.0:
         return None if (frame.kappa > 0.0) == keep_above else "nothing"
     centre = np.array(frame.yz(-2.0 * frame.focal / frame.kappa, 0.0))
     radius = 2.0 * frame.focal / abs(frame.kappa) * math.sqrt(scale)
-    return Circle(centre, radius, inside=(frame.kappa < 0.0) == keep_above)
+    inside = (frame.kappa < 0.0) == keep_above
+    radius += -inset if inside else inset
+    if radius <= 0.0:
+        return "nothing" if inside else None
+    return Circle(centre, radius, inside=inside)
 
 
 def _deepest_q(polys_pq: list[np.ndarray]) -> float:
@@ -316,18 +408,10 @@ def layout(frame_poly: np.ndarray, hole_radius: float, zones: list[Zone], cutoff
         frame_poly = frame_poly[::-1]
     cells: list[Cell] = []
     for zi, zone in enumerate(zones):
-        span = (zone.az_to - zone.az_from) % 360.0 or 360.0
         m = cutoff.plane(zone.branch, zone.below)
         t_right, t_left = math.tan(math.radians(zone.aim_right)), math.tan(math.radians(zone.aim_left))
         frame = StripFrame.of(m, 0.5 * (t_right + t_left), focal)
-        parts = max(2 if span > 179.0 else 1, math.ceil(span / 90.0 - 1e-9))
-        pieces: list[np.ndarray] = []
-        for k in range(parts):
-            a0 = math.radians(zone.az_from + span * k / parts)
-            a1 = math.radians(zone.az_from + span * (k + 1) / parts)
-            pieces += _sector([frame_poly], a0, a1)
-        if hole_radius > 0.0:
-            pieces = clip_all(pieces, Circle(np.zeros(2), hole_radius, inside=False))
+        pieces = zone_region(frame_poly, zone)
         if not pieces:
             continue
         c_all = np.concatenate([frame.strip_coordinate(*frame.pq(p[:, 0], p[:, 1])) for p in pieces])
@@ -340,6 +424,7 @@ def layout(frame_poly: np.ndarray, hole_radius: float, zones: list[Zone], cutoff
                 if curve is None:
                     continue
                 strip = [] if isinstance(curve, str) else clip_all(strip, curve)
+            strip = outside_hole(strip, hole_radius)
             if not strip:
                 continue
             pq = [np.stack(frame.pq(p[:, 0], p[:, 1]), axis=1) for p in strip]
